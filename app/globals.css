@@ -2,19 +2,20 @@
 
 @theme {
   --color-leaf-50: #f0f9f1;
-  --color-leaf-100: #dbf0dd;
+  --color-leaf-100: #DBF0DD;
   --color-leaf-500: #4d9c5a;
   --color-leaf-600: #3d7d48;
   --color-leaf-700: #2f6238;
   --color-leaf-900: #1a3a20;
 
-  --color-earth-50: #faf7f2;
-  --color-earth-100: #f0e9db;
+  --color-earth-50: #FAF6EF;
+  --color-earth-100: #F0E9DB;
   --color-earth-500: #a8845f;
   --color-earth-700: #6b5239;
   --color-earth-900: #3d2e20;
 
   --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Fraunces", Georgia, "Times New Roman", serif;
 }
 
 html {
@@ -25,4 +26,9 @@ body {
   background: var(--color-earth-50);
   color: var(--color-earth-900);
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-serif {
+  font-family: var(--font-serif);
 }
