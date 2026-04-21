@@ -62,7 +62,7 @@ export default async function DashboardPage() {
             href="/admin/configuracion/impuestos"
           />
           <SetupStep
-            done={false}
+            done={(productsDraft ?? 0) + (productsActive ?? 0) > 0}
             title="Sincronizar productos de laboratorios"
             description={`${laboratoriesCount ?? 0} laboratorios · ${dataSourcesCount ?? 0} fuentes configuradas`}
             href="/admin/fuentes"
