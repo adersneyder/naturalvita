@@ -1,29 +1,10 @@
-import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { createClient } from "@/lib/supabase/server";
+import { getAdminUser } from "@/lib/admin-auth";
 import Sidebar from "./_components/Sidebar";
 import Topbar from "./_components/Topbar";
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/admin/login");
-  }
-
-  const { data: adminUser } = await supabase
-    .from("admin_users")
-    .select("email, full_name, role, is_active")
-    .eq("id", user.id)
-    .single();
-
-  if (!adminUser || !adminUser.is_active) {
-    await supabase.auth.signOut();
-    redirect("/admin/login?error=not_authorized");
-  }
+  const adminUser = await getAdminUser();
 
   return (
     <div className="flex min-h-screen bg-[var(--color-earth-50)]">
