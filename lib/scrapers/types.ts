@@ -19,6 +19,9 @@ export type ScrapedProduct = {
   source_price_cop: number | null;
   invima_number: string | null;
   presentation: string | null;
+  presentation_type: string | null;
+  content_value: number | null;
+  content_unit: string | null;
   weight_grams: number | null;
   composition: string | null;
   usage_instructions: string | null;

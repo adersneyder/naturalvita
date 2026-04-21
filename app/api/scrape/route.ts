@@ -298,8 +298,11 @@ async function cancelJob(
 
 /**
  * Inserta o actualiza un producto. Detecta duplicado por (data_source_id, external_id).
- * Si ya existe, NO sobrescribe el precio público (price_cop) ni el estado (status)
- * para preservar las decisiones del admin. Solo actualiza datos del lab.
+ *
+ * Política de actualización:
+ * - El precio del laboratorio ES el precio público (ellos venden a PVP, nosotros compramos a precio distribuidor).
+ * - Cuando el lab cambia precio, lo aplicamos (a menos que el admin haya editado manualmente price_cop).
+ * - NO sobrescribimos: status, category_id, tax_rate_id, tags (decisiones del admin).
  */
 async function upsertProduct(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -311,7 +314,7 @@ async function upsertProduct(
   // Buscar producto existente
   const { data: existing } = await supabase
     .from("products")
-    .select("id, price_cop, status")
+    .select("id, price_cop, source_price_cop")
     .eq("data_source_id", dataSourceId)
     .eq("external_id", product.external_id)
     .maybeSingle();
@@ -323,11 +326,30 @@ async function upsertProduct(
     .eq("is_default", true)
     .single();
 
-  // Generar slug único
+  // Generar slug único: lab + nombre + sufijo de presentación (para diferenciar variantes)
+  // Ej: "millenium-isolate-whey-protein-vainilla-1360g"
+  //     "millenium-isolate-whey-protein-vainilla-2270g"  ← misma proteína, distinto contenido
   const baseSlug = product.external_slug ?? slugify(product.name);
+  const presentationSuffix = buildPresentationSuffix(product);
+  let uniqueSlug = `${laboratorySlug}-${baseSlug}${presentationSuffix}`.substring(0, 100);
 
-  // Generar slug único globalmente: prefijado por lab para evitar colisiones
-  const uniqueSlug = `${laboratorySlug}-${baseSlug}`.substring(0, 100);
+  // Si por algún motivo aún colisiona (ej. dos sabores con misma presentación y mismo nombre base),
+  // agregar sufijo del external_id para garantizar unicidad
+  const { data: slugCollision } = await supabase
+    .from("products")
+    .select("id, data_source_id, external_id")
+    .eq("slug", uniqueSlug)
+    .maybeSingle();
+
+  if (
+    slugCollision &&
+    !(
+      slugCollision.data_source_id === dataSourceId &&
+      slugCollision.external_id === product.external_id
+    )
+  ) {
+    uniqueSlug = `${uniqueSlug.substring(0, 90)}-${product.external_id}`;
+  }
 
   const productData: Record<string, unknown> = {
     laboratory_id: laboratoryId,
@@ -341,6 +363,9 @@ async function upsertProduct(
     usage_instructions: product.usage_instructions,
     invima_number: product.invima_number,
     presentation: product.presentation,
+    presentation_type: product.presentation_type,
+    content_value: product.content_value,
+    content_unit: product.content_unit,
     weight_grams: product.weight_grams,
     source_url: product.source_url,
     source_price_cop: product.source_price_cop,
@@ -354,19 +379,20 @@ async function upsertProduct(
   let productId: string;
 
   if (existing) {
-    // Producto ya existe: actualizar solo datos del lab, preservar decisiones admin
-    // Si el lab cambió el precio, marcamos para revisión
-    const priceChanged =
-      existing.price_cop !== product.source_price_cop &&
-      product.source_price_cop !== null;
+    // Producto existente: actualizar datos del lab.
+    // Si el admin NO había editado manualmente el precio (price_cop === source_price_cop_anterior),
+    // entonces actualizamos price_cop al nuevo precio del lab.
+    const adminEditedPrice =
+      existing.source_price_cop !== null &&
+      existing.price_cop !== existing.source_price_cop;
+
+    const updateData = adminEditedPrice
+      ? productData // mantener price_cop actual
+      : { ...productData, price_cop: product.source_price_cop };
 
     const { error: updateError } = await supabase
       .from("products")
-      .update({
-        ...productData,
-        source_price_change_pending: priceChanged,
-        // NO actualizar: price_cop, status, tax_rate_id, category_id, tags
-      })
+      .update(updateData)
       .eq("id", existing.id);
 
     if (updateError) throw new Error(updateError.message);
@@ -377,13 +403,13 @@ async function upsertProduct(
     return "updated";
   }
 
-  // Producto nuevo: crear con precio del lab como sugerido
+  // Producto nuevo: precio del lab = precio público
   const { data: created, error: createError } = await supabase
     .from("products")
     .insert({
       ...productData,
-      price_cop: product.source_price_cop, // primer precio = precio del lab
-      status: "draft", // requiere aprobación
+      price_cop: product.source_price_cop,
+      status: "draft", // requiere aprobación del admin antes de salir al público
       needs_review: true,
     })
     .select()
@@ -397,6 +423,18 @@ async function upsertProduct(
   await syncProductImages(supabase, productId, product.images, laboratorySlug, product.external_id);
 
   return "created";
+}
+
+/**
+ * Genera sufijo de slug basado en presentación.
+ * Ej: { type: "softgels", value: 60, unit: "units" } → "-60u"
+ * Ej: { type: "powder", value: 1360, unit: "g" } → "-1360g"
+ */
+function buildPresentationSuffix(product: ScrapedProduct): string {
+  if (!product.content_value || !product.content_unit) return "";
+  const value = Math.round(product.content_value);
+  const unit = product.content_unit === "units" ? "u" : product.content_unit;
+  return `-${value}${unit}`;
 }
 
 async function syncProductImages(
