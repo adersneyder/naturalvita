@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import MagicLinkDetector from "./_components/MagicLinkDetector";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -38,7 +39,10 @@ export default function RootLayout({
 }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="es-CO">
-      <body>{children}</body>
+      <body>
+        <MagicLinkDetector />
+        {children}
+      </body>
     </html>
   );
 }
