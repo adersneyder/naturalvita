@@ -369,3 +369,213 @@ export async function reorderImages(
   revalidatePath(`/admin/productos/${productId}`);
   return { success: true };
 }
+
+// =====================================================
+// BULK · COLECCIONES Y ATRIBUTOS
+// =====================================================
+
+export async function bulkAddToCollection(
+  productIds: string[],
+  collectionId: string,
+): Promise<ActionResult> {
+  await requireRole(["owner", "admin", "editor"]);
+  if (productIds.length === 0) {
+    return { success: false, error: "Sin productos seleccionados" };
+  }
+  if (!collectionId) return { success: false, error: "Selecciona una colección" };
+
+  const supabase = await createClient();
+
+  // Buscar pares ya existentes para insertar solo los faltantes
+  const { data: existing } = await supabase
+    .from("product_collections")
+    .select("product_id")
+    .eq("collection_id", collectionId)
+    .in("product_id", productIds);
+
+  const existingSet = new Set(
+    (existing ?? []).map((r: { product_id: string }) => r.product_id),
+  );
+  const toInsert = productIds
+    .filter((pid) => !existingSet.has(pid))
+    .map((pid) => ({ product_id: pid, collection_id: collectionId }));
+
+  if (toInsert.length === 0) {
+    revalidatePath("/admin/productos");
+    return { success: true, affected: 0 };
+  }
+
+  const { error } = await supabase.from("product_collections").insert(toInsert);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/admin/productos");
+  return { success: true, affected: toInsert.length };
+}
+
+export async function bulkRemoveFromCollection(
+  productIds: string[],
+  collectionId: string,
+): Promise<ActionResult> {
+  await requireRole(["owner", "admin", "editor"]);
+  if (productIds.length === 0) {
+    return { success: false, error: "Sin productos seleccionados" };
+  }
+  if (!collectionId) return { success: false, error: "Selecciona una colección" };
+
+  const supabase = await createClient();
+  const { error, count } = await supabase
+    .from("product_collections")
+    .delete({ count: "exact" })
+    .eq("collection_id", collectionId)
+    .in("product_id", productIds);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/admin/productos");
+  return { success: true, affected: count ?? 0 };
+}
+
+export type BulkAttributePayload =
+  | { kind: "boolean_true" }
+  | { kind: "select"; option_id: string }
+  | { kind: "multi_select_add"; option_ids: string[] }
+  | { kind: "text"; text_value: string };
+
+export async function bulkSetAttributeValue(
+  productIds: string[],
+  attributeId: string,
+  payload: BulkAttributePayload,
+): Promise<ActionResult> {
+  await requireRole(["owner", "admin", "editor"]);
+  if (productIds.length === 0) {
+    return { success: false, error: "Sin productos seleccionados" };
+  }
+  if (!attributeId) return { success: false, error: "Selecciona un atributo" };
+
+  const supabase = await createClient();
+
+  // Para boolean, select y text: reemplazar el valor existente del atributo en cada producto.
+  // Para multi_select_add: NO reemplaza; añade las opciones que falten sin tocar las ya marcadas.
+  if (payload.kind !== "multi_select_add") {
+    await supabase
+      .from("product_attribute_values")
+      .delete()
+      .eq("attribute_id", attributeId)
+      .in("product_id", productIds);
+
+    const rows: Array<{
+      product_id: string;
+      attribute_id: string;
+      option_id: string | null;
+      text_value: string | null;
+    }> = [];
+
+    for (const pid of productIds) {
+      if (payload.kind === "boolean_true") {
+        rows.push({
+          product_id: pid,
+          attribute_id: attributeId,
+          option_id: null,
+          text_value: null,
+        });
+      } else if (payload.kind === "select") {
+        rows.push({
+          product_id: pid,
+          attribute_id: attributeId,
+          option_id: payload.option_id,
+          text_value: null,
+        });
+      } else if (payload.kind === "text") {
+        if (!payload.text_value.trim()) continue;
+        rows.push({
+          product_id: pid,
+          attribute_id: attributeId,
+          option_id: null,
+          text_value: payload.text_value.trim(),
+        });
+      }
+    }
+
+    if (rows.length > 0) {
+      const { error } = await supabase.from("product_attribute_values").insert(rows);
+      if (error) return { success: false, error: error.message };
+    }
+
+    revalidatePath("/admin/productos");
+    return { success: true, affected: productIds.length };
+  }
+
+  // multi_select_add: agregar opciones faltantes producto por producto (sin duplicar)
+  if (payload.option_ids.length === 0) {
+    return { success: false, error: "Selecciona al menos una opción" };
+  }
+
+  const { data: existing } = await supabase
+    .from("product_attribute_values")
+    .select("product_id, option_id")
+    .eq("attribute_id", attributeId)
+    .in("product_id", productIds)
+    .in("option_id", payload.option_ids);
+
+  const existingSet = new Set(
+    (existing ?? []).map(
+      (r: { product_id: string; option_id: string | null }) =>
+        `${r.product_id}::${r.option_id ?? ""}`,
+    ),
+  );
+
+  const rows: Array<{
+    product_id: string;
+    attribute_id: string;
+    option_id: string;
+    text_value: null;
+  }> = [];
+
+  for (const pid of productIds) {
+    for (const oid of payload.option_ids) {
+      const key = `${pid}::${oid}`;
+      if (!existingSet.has(key)) {
+        rows.push({
+          product_id: pid,
+          attribute_id: attributeId,
+          option_id: oid,
+          text_value: null,
+        });
+      }
+    }
+  }
+
+  if (rows.length === 0) {
+    revalidatePath("/admin/productos");
+    return { success: true, affected: 0 };
+  }
+
+  const { error } = await supabase.from("product_attribute_values").insert(rows);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/admin/productos");
+  return { success: true, affected: rows.length };
+}
+
+export async function bulkRemoveAttribute(
+  productIds: string[],
+  attributeId: string,
+): Promise<ActionResult> {
+  await requireRole(["owner", "admin", "editor"]);
+  if (productIds.length === 0) {
+    return { success: false, error: "Sin productos seleccionados" };
+  }
+  if (!attributeId) return { success: false, error: "Selecciona un atributo" };
+
+  const supabase = await createClient();
+  const { error, count } = await supabase
+    .from("product_attribute_values")
+    .delete({ count: "exact" })
+    .eq("attribute_id", attributeId)
+    .in("product_id", productIds);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/admin/productos");
+  return { success: true, affected: count ?? 0 };
+}

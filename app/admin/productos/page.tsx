@@ -10,6 +10,8 @@ type SearchParams = {
   laboratory?: string;
   category?: string;
   presentation_type?: string;
+  collection?: string;
+  attribute_option?: string; // formato: "attributeId:optionId" o "attributeId:any" (presencia)
   missing?: string; // "invima" | "images" | "category" | "tax"
   page?: string;
 };
@@ -26,7 +28,45 @@ export default async function ProductosPage({
   const page = Math.max(1, parseInt(params.page ?? "1") || 1);
   const offset = (page - 1) * PAGE_SIZE;
 
-  // Query base
+  // Pre-filter: ids restringidos por colección y/o atributo (subqueries)
+  // Acumulador: empezamos sin restricción; cada filtro relacional intersecta el set.
+  let restrictIds: Set<string> | null = null;
+
+  function intersect(newIds: string[]) {
+    if (restrictIds === null) {
+      restrictIds = new Set(newIds);
+    } else {
+      const incoming = new Set(newIds);
+      restrictIds = new Set([...restrictIds].filter((id) => incoming.has(id)));
+    }
+  }
+
+  if (params.collection && params.collection !== "all") {
+    const { data: pcs } = await supabase
+      .from("product_collections")
+      .select("product_id")
+      .eq("collection_id", params.collection);
+    intersect((pcs ?? []).map((r: { product_id: string }) => r.product_id));
+  }
+
+  if (params.attribute_option && params.attribute_option.includes(":")) {
+    const [attrId, optionId] = params.attribute_option.split(":");
+    let q = supabase
+      .from("product_attribute_values")
+      .select("product_id")
+      .eq("attribute_id", attrId);
+    if (optionId !== "any") q = q.eq("option_id", optionId);
+    const { data: pavs } = await q;
+    intersect(
+      Array.from(new Set((pavs ?? []).map((r: { product_id: string }) => r.product_id))),
+    );
+  }
+
+  // Si los filtros relacionales dan 0 resultados, no hace falta pegarle a products
+  const hasRelationalFilter = restrictIds !== null;
+  const restrictArray: string[] = restrictIds !== null ? Array.from(restrictIds as Set<string>) : [];
+  const noMatches = hasRelationalFilter && restrictArray.length === 0;
+
   let query = supabase
     .from("products")
     .select(
@@ -39,6 +79,10 @@ export default async function ProductosPage({
        primary_image:product_images!product_id(url, is_primary)`,
       { count: "exact" },
     );
+
+  if (hasRelationalFilter) {
+    query = query.in("id", restrictArray);
+  }
 
   if (params.q) {
     query = query.or(
@@ -69,23 +113,12 @@ export default async function ProductosPage({
     .order("name", { ascending: true })
     .range(offset, offset + PAGE_SIZE - 1);
 
-  const { data: productsRaw, count } = await query;
+  const { data: productsRaw, count } = noMatches
+    ? { data: [] as unknown[], count: 0 }
+    : await query;
 
-  // Filtro post-query para "missing images" (el query no soporta easy not exists)
-  let filtered = productsRaw ?? [];
-  if (params.missing === "images") {
-    const ids = filtered.map((p: { id: string }) => p.id);
-    if (ids.length > 0) {
-      const { data: withImages } = await supabase
-        .from("product_images")
-        .select("product_id")
-        .in("product_id", ids);
-      const withImagesSet = new Set((withImages ?? []).map((r: { product_id: string }) => r.product_id));
-      filtered = filtered.filter((p: { id: string }) => !withImagesSet.has(p.id));
-    }
-  }
-
-  const products: ProductRow[] = filtered.map((p: {
+  // Filtro post-query para "missing images"
+  let filtered = (productsRaw ?? []) as Array<{
     id: string;
     name: string;
     slug: string;
@@ -109,11 +142,31 @@ export default async function ProductosPage({
     category: { name: string } | { name: string }[] | null;
     tax_rate: { name: string; rate_percent: number } | { name: string; rate_percent: number }[] | null;
     primary_image: Array<{ url: string; is_primary: boolean }> | null;
-  }) => {
+  }>;
+
+  if (params.missing === "images") {
+    const ids = filtered.map((p) => p.id);
+    if (ids.length > 0) {
+      const { data: withImages } = await supabase
+        .from("product_images")
+        .select("product_id")
+        .in("product_id", ids);
+      const withImagesSet = new Set(
+        (withImages ?? []).map((r: { product_id: string }) => r.product_id),
+      );
+      filtered = filtered.filter((p) => !withImagesSet.has(p.id));
+    }
+  }
+
+  const products: ProductRow[] = filtered.map((p) => {
     const lab = Array.isArray(p.laboratory) ? p.laboratory[0] : p.laboratory;
     const cat = Array.isArray(p.category) ? p.category[0] : p.category;
     const tax = Array.isArray(p.tax_rate) ? p.tax_rate[0] : p.tax_rate;
-    const images = Array.isArray(p.primary_image) ? p.primary_image : p.primary_image ? [p.primary_image] : [];
+    const images = Array.isArray(p.primary_image)
+      ? p.primary_image
+      : p.primary_image
+        ? [p.primary_image]
+        : [];
     const primary = images.find((i) => i.is_primary) ?? images[0];
 
     return {
@@ -145,29 +198,74 @@ export default async function ProductosPage({
     };
   });
 
-  // Filter options para los dropdowns
-  const [{ data: labs }, { data: cats }, { data: taxes }] = await Promise.all([
+  // Filter options para los dropdowns: cargas paralelas
+  const [
+    { data: labs },
+    { data: cats },
+    { data: taxes },
+    { data: collections },
+    { data: attributes },
+  ] = await Promise.all([
     supabase.from("laboratories").select("id, name").eq("is_active", true).order("name"),
     supabase.from("categories").select("id, name").eq("is_active", true).order("sort_order"),
-    supabase.from("tax_rates").select("id, name, rate_percent").eq("is_active", true).order("sort_order"),
+    supabase
+      .from("tax_rates")
+      .select("id, name, rate_percent")
+      .eq("is_active", true)
+      .order("sort_order"),
+    supabase
+      .from("collections")
+      .select("id, name")
+      .eq("is_active", true)
+      .order("sort_order")
+      .order("name"),
+    supabase
+      .from("product_attributes")
+      .select("id, name, attribute_type, is_filterable, options:product_attribute_options(id, value, sort_order)")
+      .eq("is_active", true)
+      .order("sort_order")
+      .order("name"),
   ]);
+
+  // Normalizar atributos (Supabase devuelve nested option array sin order garantizado)
+  type AttrRaw = {
+    id: string;
+    name: string;
+    attribute_type: string;
+    is_filterable: boolean;
+    options: Array<{ id: string; value: string; sort_order: number | null }>;
+  };
+
+  const attributesNormalized = (attributes ?? []).map((a) => {
+    const raw = a as unknown as AttrRaw;
+    const opts = Array.isArray(raw.options) ? [...raw.options] : [];
+    opts.sort((x, y) => (x.sort_order ?? 99) - (y.sort_order ?? 99));
+    return {
+      id: raw.id,
+      name: raw.name,
+      attribute_type: raw.attribute_type,
+      is_filterable: raw.is_filterable,
+      options: opts.map((o) => ({ id: o.id, value: o.value })),
+    };
+  });
 
   const filterOptions: FilterOptions = {
     laboratories: labs ?? [],
     categories: cats ?? [],
     tax_rates: taxes ?? [],
+    collections: collections ?? [],
+    attributes: attributesNormalized,
   };
 
-  // Conteos por estado para los tabs
-  const { data: statusCounts } = await supabase
-    .from("products")
-    .select("status");
+  // Conteos por estado para los tabs (no afectados por restrictIds para mantener visibilidad)
+  const { data: statusCounts } = await supabase.from("products").select("status");
 
   const counts = {
     all: statusCounts?.length ?? 0,
     draft: statusCounts?.filter((s: { status: string }) => s.status === "draft").length ?? 0,
     active: statusCounts?.filter((s: { status: string }) => s.status === "active").length ?? 0,
-    archived: statusCounts?.filter((s: { status: string }) => s.status === "archived").length ?? 0,
+    archived:
+      statusCounts?.filter((s: { status: string }) => s.status === "archived").length ?? 0,
   };
 
   return (

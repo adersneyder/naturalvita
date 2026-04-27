@@ -7,6 +7,11 @@ import {
   bulkSetCategory,
   bulkSetTaxRate,
   bulkSetStatus,
+  bulkAddToCollection,
+  bulkRemoveFromCollection,
+  bulkSetAttributeValue,
+  bulkRemoveAttribute,
+  type BulkAttributePayload,
 } from "../actions";
 
 export type ProductRow = {
@@ -37,10 +42,21 @@ export type ProductRow = {
   last_synced_at: string | null;
 };
 
+export type FilterAttributeOption = { id: string; value: string };
+export type FilterAttribute = {
+  id: string;
+  name: string;
+  attribute_type: string;
+  is_filterable: boolean;
+  options: FilterAttributeOption[];
+};
+
 export type FilterOptions = {
   laboratories: { id: string; name: string }[];
   categories: { id: string; name: string }[];
   tax_rates: { id: string; name: string; rate_percent: number }[];
+  collections: { id: string; name: string }[];
+  attributes: FilterAttribute[];
 };
 
 type Props = {
@@ -53,6 +69,8 @@ type Props = {
     laboratory?: string;
     category?: string;
     presentation_type?: string;
+    collection?: string;
+    attribute_option?: string;
     missing?: string;
     page?: string;
   };
@@ -117,10 +135,28 @@ export default function ProductsList({
 
   const [view, setView] = useState<"table" | "grid">("table");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkAction, setBulkAction] = useState<"none" | "category" | "tax" | "publish" | "archive">("none");
-  const [bulkValue, setBulkValue] = useState<string>("");
+  type BulkActionKind =
+    | "none"
+    | "category"
+    | "tax"
+    | "publish"
+    | "archive"
+    | "collection_add"
+    | "collection_remove"
+    | "attribute_set"
+    | "attribute_remove";
+  const [bulkAction, setBulkAction] = useState<BulkActionKind>("none");
+  const [bulkValue, setBulkValue] = useState<string>(""); // primer selector (id de colección o atributo)
+  const [bulkSecondary, setBulkSecondary] = useState<string>(""); // opción del atributo
+  const [bulkMultiOptions, setBulkMultiOptions] = useState<Set<string>>(new Set()); // multi_select
+  const [bulkText, setBulkText] = useState<string>(""); // text attribute
   const [error, setError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState(currentParams.q ?? "");
+
+  const selectedAttribute = useMemo(
+    () => filterOptions.attributes.find((a) => a.id === bulkValue) ?? null,
+    [filterOptions.attributes, bulkValue],
+  );
 
   const allOnPageSelected = useMemo(
     () => products.length > 0 && products.every((p) => selected.has(p.id)),
@@ -168,6 +204,9 @@ export default function ProductsList({
     setSelected(new Set());
     setBulkAction("none");
     setBulkValue("");
+    setBulkSecondary("");
+    setBulkMultiOptions(new Set());
+    setBulkText("");
   }
 
   function executeBulk() {
@@ -189,6 +228,55 @@ export default function ProductsList({
         result = await bulkSetStatus(ids, "active");
       } else if (bulkAction === "archive") {
         result = await bulkSetStatus(ids, "archived");
+      } else if (bulkAction === "collection_add") {
+        if (!bulkValue) {
+          setError("Selecciona una colección");
+          return;
+        }
+        result = await bulkAddToCollection(ids, bulkValue);
+      } else if (bulkAction === "collection_remove") {
+        if (!bulkValue) {
+          setError("Selecciona una colección");
+          return;
+        }
+        result = await bulkRemoveFromCollection(ids, bulkValue);
+      } else if (bulkAction === "attribute_set") {
+        if (!bulkValue || !selectedAttribute) {
+          setError("Selecciona un atributo");
+          return;
+        }
+        let payload: BulkAttributePayload;
+        if (selectedAttribute.attribute_type === "boolean") {
+          payload = { kind: "boolean_true" };
+        } else if (selectedAttribute.attribute_type === "select") {
+          if (!bulkSecondary) {
+            setError("Selecciona una opción");
+            return;
+          }
+          payload = { kind: "select", option_id: bulkSecondary };
+        } else if (selectedAttribute.attribute_type === "multi_select") {
+          if (bulkMultiOptions.size === 0) {
+            setError("Selecciona al menos una opción");
+            return;
+          }
+          payload = { kind: "multi_select_add", option_ids: Array.from(bulkMultiOptions) };
+        } else if (selectedAttribute.attribute_type === "text") {
+          if (!bulkText.trim()) {
+            setError("Ingresa un valor");
+            return;
+          }
+          payload = { kind: "text", text_value: bulkText };
+        } else {
+          setError("Tipo de atributo no soportado en bulk");
+          return;
+        }
+        result = await bulkSetAttributeValue(ids, bulkValue, payload);
+      } else if (bulkAction === "attribute_remove") {
+        if (!bulkValue) {
+          setError("Selecciona un atributo");
+          return;
+        }
+        result = await bulkRemoveAttribute(ids, bulkValue);
       } else {
         return;
       }
@@ -313,6 +401,52 @@ export default function ProductsList({
           ))}
         </select>
 
+        {filterOptions.collections.length > 0 && (
+          <select
+            value={currentParams.collection ?? "all"}
+            onChange={(e) => setParam("collection", e.target.value)}
+            className="text-xs px-3 py-2 rounded-lg border border-[rgba(47,98,56,0.15)] bg-white"
+          >
+            <option value="all">Todas las colecciones</option>
+            {filterOptions.collections.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {filterOptions.attributes.filter((a) => a.is_filterable).length > 0 && (
+          <select
+            value={currentParams.attribute_option ?? "all"}
+            onChange={(e) => setParam("attribute_option", e.target.value)}
+            className="text-xs px-3 py-2 rounded-lg border border-[rgba(47,98,56,0.15)] bg-white max-w-[220px]"
+          >
+            <option value="all">Filtrar por atributo</option>
+            {filterOptions.attributes
+              .filter((a) => a.is_filterable)
+              .map((attr) => {
+                if (attr.attribute_type === "boolean") {
+                  return (
+                    <option key={attr.id} value={`${attr.id}:any`}>
+                      {attr.name} (sí)
+                    </option>
+                  );
+                }
+                if (attr.options.length === 0) return null;
+                return (
+                  <optgroup key={attr.id} label={attr.name}>
+                    {attr.options.map((opt) => (
+                      <option key={opt.id} value={`${attr.id}:${opt.id}`}>
+                        {opt.value}
+                      </option>
+                    ))}
+                  </optgroup>
+                );
+              })}
+          </select>
+        )}
+
         <select
           value={currentParams.missing ?? ""}
           onChange={(e) => setParam("missing", e.target.value || null)}
@@ -328,6 +462,8 @@ export default function ProductsList({
           currentParams.laboratory ||
           currentParams.category ||
           currentParams.presentation_type ||
+          currentParams.collection ||
+          currentParams.attribute_option ||
           currentParams.missing) && (
           <button
             onClick={() => router.push("/admin/productos")}
@@ -347,17 +483,30 @@ export default function ProductsList({
           <select
             value={bulkAction}
             onChange={(e) => {
-              setBulkAction(e.target.value as typeof bulkAction);
+              setBulkAction(e.target.value as BulkActionKind);
               setBulkValue("");
+              setBulkSecondary("");
+              setBulkMultiOptions(new Set());
+              setBulkText("");
               setError(null);
             }}
             className="text-xs px-3 py-1.5 rounded-lg border border-[rgba(47,98,56,0.2)] bg-white"
           >
             <option value="none">Acción masiva...</option>
-            <option value="category">Asignar categoría</option>
-            <option value="tax">Asignar tarifa IVA</option>
-            <option value="publish">Publicar al catálogo</option>
-            <option value="archive">Archivar</option>
+            <optgroup label="Catálogo">
+              <option value="category">Asignar categoría</option>
+              <option value="tax">Asignar tarifa IVA</option>
+              <option value="publish">Publicar al catálogo</option>
+              <option value="archive">Archivar</option>
+            </optgroup>
+            <optgroup label="Colecciones">
+              <option value="collection_add">Añadir a colección</option>
+              <option value="collection_remove">Quitar de colección</option>
+            </optgroup>
+            <optgroup label="Atributos">
+              <option value="attribute_set">Asignar valor de atributo</option>
+              <option value="attribute_remove">Quitar atributo</option>
+            </optgroup>
           </select>
 
           {bulkAction === "category" && (
@@ -389,10 +538,112 @@ export default function ProductsList({
             </select>
           )}
 
+          {(bulkAction === "collection_add" || bulkAction === "collection_remove") && (
+            <select
+              value={bulkValue}
+              onChange={(e) => setBulkValue(e.target.value)}
+              className="text-xs px-3 py-1.5 rounded-lg border border-[rgba(47,98,56,0.2)] bg-white"
+            >
+              <option value="">Selecciona colección</option>
+              {filterOptions.collections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {(bulkAction === "attribute_set" || bulkAction === "attribute_remove") && (
+            <select
+              value={bulkValue}
+              onChange={(e) => {
+                setBulkValue(e.target.value);
+                setBulkSecondary("");
+                setBulkMultiOptions(new Set());
+                setBulkText("");
+              }}
+              className="text-xs px-3 py-1.5 rounded-lg border border-[rgba(47,98,56,0.2)] bg-white"
+            >
+              <option value="">Selecciona atributo</option>
+              {filterOptions.attributes.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {bulkAction === "attribute_set" && selectedAttribute && (
+            <>
+              {selectedAttribute.attribute_type === "boolean" && (
+                <span className="text-[11px] text-[var(--color-earth-700)] italic">
+                  Marcará como verdadero
+                </span>
+              )}
+              {selectedAttribute.attribute_type === "select" && (
+                <select
+                  value={bulkSecondary}
+                  onChange={(e) => setBulkSecondary(e.target.value)}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-[rgba(47,98,56,0.2)] bg-white"
+                >
+                  <option value="">Selecciona opción</option>
+                  {selectedAttribute.options.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.value}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {selectedAttribute.attribute_type === "multi_select" && (
+                <div className="flex flex-wrap gap-1 max-w-md">
+                  {selectedAttribute.options.map((opt) => {
+                    const checked = bulkMultiOptions.has(opt.id);
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          setBulkMultiOptions((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(opt.id)) next.delete(opt.id);
+                            else next.add(opt.id);
+                            return next;
+                          })
+                        }
+                        className={`text-[11px] px-2 py-1 rounded-md border ${
+                          checked
+                            ? "bg-[var(--color-leaf-700)] text-white border-[var(--color-leaf-700)]"
+                            : "bg-white text-[var(--color-leaf-900)] border-[rgba(47,98,56,0.2)]"
+                        }`}
+                      >
+                        {opt.value}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {selectedAttribute.attribute_type === "text" && (
+                <input
+                  type="text"
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  placeholder="Valor"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-[rgba(47,98,56,0.2)] bg-white"
+                />
+              )}
+            </>
+          )}
+
           {bulkAction !== "none" && (
             <button
               onClick={executeBulk}
-              disabled={isPending || (bulkAction === "tax" && !bulkValue)}
+              disabled={
+                isPending ||
+                (bulkAction === "tax" && !bulkValue) ||
+                (bulkAction === "collection_add" && !bulkValue) ||
+                (bulkAction === "collection_remove" && !bulkValue) ||
+                ((bulkAction === "attribute_set" || bulkAction === "attribute_remove") && !bulkValue)
+              }
               className="text-xs font-medium bg-[var(--color-leaf-700)] text-white px-3 py-1.5 rounded-lg disabled:opacity-50"
             >
               {isPending ? "Aplicando..." : "Aplicar"}
