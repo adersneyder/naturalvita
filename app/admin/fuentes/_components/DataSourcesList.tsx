@@ -43,6 +43,24 @@ type SyncState =
       skipped: number;
       failed: number;
     }
+  | {
+      mode: "redownloading";
+      sourceId: string;
+      page: number;
+      processed: number;
+      succeeded: number;
+      failed: number;
+      skipped: number;
+      lastBatchErrors: Array<{ name: string; error: string }>;
+    }
+  | {
+      mode: "redownloaded";
+      sourceId: string;
+      processed: number;
+      succeeded: number;
+      failed: number;
+      skipped: number;
+    }
   | { mode: "error"; sourceId: string; message: string };
 
 const TIME_BETWEEN_BATCHES_MS = 500;
@@ -205,6 +223,105 @@ export default function DataSourcesList({
     cancelledRef.current = true;
   }
 
+  async function redownloadImages(source: DataSourceRow) {
+    if (source.type !== "scraper") return;
+    if (
+      !confirm(
+        `Re-descargar imágenes faltantes de "${source.laboratory_name}"?\n\nEsto recorrerá el catálogo completo y solo descargará imágenes para productos que no las tengan. Puede tardar varios minutos.`,
+      )
+    ) {
+      return;
+    }
+
+    cancelledRef.current = false;
+    setSync({
+      mode: "redownloading",
+      sourceId: source.id,
+      page: 0,
+      processed: 0,
+      succeeded: 0,
+      failed: 0,
+      skipped: 0,
+      lastBatchErrors: [],
+    });
+
+    let page = 1;
+    let totals = { processed: 0, succeeded: 0, failed: 0, skipped: 0 };
+
+    while (true) {
+      if (cancelledRef.current) {
+        setSync({
+          mode: "error",
+          sourceId: source.id,
+          message: "Re-descarga cancelada",
+        });
+        return;
+      }
+
+      try {
+        const resp = await fetch("/api/products/redownload-images", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            data_source_id: source.id,
+            page,
+            only_missing: true,
+          }),
+        });
+        const data = await resp.json();
+
+        if (!resp.ok || data.error) {
+          setSync({
+            mode: "error",
+            sourceId: source.id,
+            message: data.error ?? "Error procesando lote",
+          });
+          return;
+        }
+
+        totals = {
+          processed: totals.processed + data.batch.processed,
+          succeeded: totals.succeeded + data.batch.succeeded,
+          failed: totals.failed + data.batch.failed,
+          skipped: totals.skipped + data.batch.skipped,
+        };
+
+        setSync({
+          mode: "redownloading",
+          sourceId: source.id,
+          page,
+          processed: totals.processed,
+          succeeded: totals.succeeded,
+          failed: totals.failed,
+          skipped: totals.skipped,
+          lastBatchErrors: data.batch.errors ?? [],
+        });
+
+        if (!data.has_more) {
+          setSync({
+            mode: "redownloaded",
+            sourceId: source.id,
+            processed: totals.processed,
+            succeeded: totals.succeeded,
+            failed: totals.failed,
+            skipped: totals.skipped,
+          });
+          return;
+        }
+
+        page++;
+        await new Promise((r) => setTimeout(r, TIME_BETWEEN_BATCHES_MS));
+      } catch (error) {
+        setSync({
+          mode: "error",
+          sourceId: source.id,
+          message: error instanceof Error ? error.message : "Error desconocido",
+        });
+        return;
+      }
+    }
+  }
+
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setCreateError(null);
@@ -291,11 +408,12 @@ export default function DataSourcesList({
               sync.mode === "running" && sync.sourceId === source.id;
             const isThisStarting =
               sync.mode === "starting" && sync.sourceId === source.id;
-            const isThisCompleted =
-              sync.mode === "completed" && sync.sourceId === source.id;
-            const isThisError = sync.mode === "error" && sync.sourceId === source.id;
+            const isThisRedownloading =
+              sync.mode === "redownloading" && sync.sourceId === source.id;
             const isAnyOtherRunning =
-              (sync.mode === "running" || sync.mode === "starting") &&
+              (sync.mode === "running" ||
+                sync.mode === "starting" ||
+                sync.mode === "redownloading") &&
               sync.sourceId !== source.id;
 
             return (
@@ -353,6 +471,7 @@ export default function DataSourcesList({
                           !source.is_active ||
                           isThisStarting ||
                           isThisSyncing ||
+                          isThisRedownloading ||
                           isAnyOtherRunning
                         }
                         className="text-xs font-medium text-white bg-[var(--color-leaf-700)] hover:bg-[var(--color-leaf-900)] px-3 py-1.5 rounded-md disabled:opacity-40 disabled:cursor-not-allowed w-full"
@@ -369,12 +488,29 @@ export default function DataSourcesList({
                           !source.is_active ||
                           isThisStarting ||
                           isThisSyncing ||
+                          isThisRedownloading ||
                           isAnyOtherRunning
                         }
                         className="text-[11px] text-[var(--color-leaf-700)] hover:text-[var(--color-leaf-900)] disabled:opacity-40"
                       >
                         Probar conexión
                       </button>
+                      {canManage && (
+                        <button
+                          onClick={() => redownloadImages(source)}
+                          disabled={
+                            !source.is_active ||
+                            isThisStarting ||
+                            isThisSyncing ||
+                            isThisRedownloading ||
+                            isAnyOtherRunning
+                          }
+                          className="text-[11px] text-[var(--color-earth-700)] hover:text-[var(--color-leaf-900)] disabled:opacity-40"
+                          title="Descarga las imágenes de productos que no las tienen"
+                        >
+                          {isThisRedownloading ? "Re-descargando..." : "Re-descargar imágenes"}
+                        </button>
+                      )}
                     </>
                   )}
                   {source.type === "csv_import" && (
@@ -519,6 +655,107 @@ export default function DataSourcesList({
                 Productos
               </a>
               .
+            </p>
+            <button
+              onClick={() => {
+                setSync({ mode: "idle" });
+                window.location.reload();
+              }}
+              className="w-full px-4 py-2 text-sm font-medium bg-[var(--color-leaf-700)] text-white rounded-lg hover:bg-[var(--color-leaf-900)]"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de progreso re-descarga */}
+      {sync.mode === "redownloading" && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-6">
+            <h2 className="font-serif text-lg font-medium text-[var(--color-leaf-900)] m-0 mb-2">
+              Re-descargando imágenes…
+            </h2>
+            <p className="text-xs text-[var(--color-earth-700)] mb-4 m-0">
+              Página {sync.page} · {sync.processed} producto{sync.processed === 1 ? "" : "s"} revisado{sync.processed === 1 ? "" : "s"}
+            </p>
+
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <div className="text-center p-2 bg-[#DBF0DD] rounded-lg">
+                <p className="text-[10px] text-[#173404] m-0">Con imágenes</p>
+                <p className="font-serif text-xl text-[#173404] m-0 font-medium">
+                  {sync.succeeded}
+                </p>
+              </div>
+              <div className="text-center p-2 bg-[#F0E9DB] rounded-lg">
+                <p className="text-[10px] text-[var(--color-earth-700)] m-0">Saltados</p>
+                <p className="font-serif text-xl text-[var(--color-earth-700)] m-0 font-medium">
+                  {sync.skipped}
+                </p>
+              </div>
+              <div className="text-center p-2 bg-red-50 rounded-lg">
+                <p className="text-[10px] text-red-700 m-0">Fallidos</p>
+                <p className="font-serif text-xl text-red-700 m-0 font-medium">{sync.failed}</p>
+              </div>
+            </div>
+
+            {sync.lastBatchErrors.length > 0 && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg max-h-32 overflow-y-auto">
+                <p className="text-xs text-red-700 font-medium mb-1">Errores en último lote:</p>
+                {sync.lastBatchErrors.map((err, i) => (
+                  <p key={i} className="text-[10px] text-red-600 m-0 font-mono truncate">
+                    {err.name}: {err.error}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={cancelSync}
+              className="w-full px-4 py-2 text-sm font-medium border border-red-300 text-red-700 rounded-lg hover:bg-red-50"
+            >
+              Cancelar re-descarga
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Resultado re-descarga */}
+      {sync.mode === "redownloaded" && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-6">
+            <div className="text-center mb-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-leaf-100)] text-[var(--color-leaf-700)] mb-3 text-xl">
+                ✓
+              </div>
+              <h2 className="font-serif text-lg font-medium text-[var(--color-leaf-900)] m-0">
+                Re-descarga completa
+              </h2>
+              <p className="text-xs text-[var(--color-earth-700)] mt-2 m-0">
+                {sync.processed} producto{sync.processed === 1 ? "" : "s"} revisado
+                {sync.processed === 1 ? "" : "s"}
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <div className="text-center p-3 bg-[#DBF0DD] rounded-lg">
+                <p className="text-xs text-[#173404] m-0 mb-1">Con imágenes</p>
+                <p className="font-serif text-2xl text-[#173404] m-0 font-medium">
+                  {sync.succeeded}
+                </p>
+              </div>
+              <div className="text-center p-3 bg-[#F0E9DB] rounded-lg">
+                <p className="text-xs text-[var(--color-earth-700)] m-0 mb-1">Saltados</p>
+                <p className="font-serif text-2xl text-[var(--color-earth-700)] m-0 font-medium">
+                  {sync.skipped}
+                </p>
+              </div>
+              <div className="text-center p-3 bg-red-50 rounded-lg">
+                <p className="text-xs text-red-700 m-0 mb-1">Fallidos</p>
+                <p className="font-serif text-2xl text-red-700 m-0 font-medium">{sync.failed}</p>
+              </div>
+            </div>
+            <p className="text-[11px] text-[var(--color-earth-500)] text-center mb-4 m-0">
+              Los productos saltados ya tenían imágenes o no se encontraron en la fuente.
             </p>
             <button
               onClick={() => {

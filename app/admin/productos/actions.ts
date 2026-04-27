@@ -40,6 +40,14 @@ export async function updateProduct(
     ? tagsRaw.split(",").map((t) => t.trim()).filter(Boolean)
     : [];
 
+  // Construir label legible para presentation
+  const presentationLabel = await buildPresentationLabel(
+    supabase,
+    presentationType,
+    contentValue,
+    contentUnit,
+  );
+
   const updateData: Record<string, unknown> = {
     name,
     short_description: String(formData.get("short_description") ?? "").trim() || null,
@@ -51,7 +59,7 @@ export async function updateProduct(
     presentation_type: presentationType,
     content_value: contentValue,
     content_unit: contentUnit,
-    presentation: buildPresentationLabel(presentationType, contentValue, contentUnit),
+    presentation: presentationLabel,
     sku: String(formData.get("sku") ?? "").trim() || null,
     price_cop: priceCop,
     compare_at_price_cop: compareAt,
@@ -69,33 +77,111 @@ export async function updateProduct(
   const { error } = await supabase.from("products").update(updateData).eq("id", productId);
   if (error) return { success: false, error: error.message };
 
+  // Sincronizar colecciones (reemplazar set completo)
+  const collectionIdsRaw = String(formData.get("collection_ids_json") ?? "[]");
+  let collectionIds: string[] = [];
+  try {
+    const parsed = JSON.parse(collectionIdsRaw);
+    if (Array.isArray(parsed)) collectionIds = parsed.filter((x) => typeof x === "string");
+  } catch {
+    collectionIds = [];
+  }
+
+  await supabase.from("product_collections").delete().eq("product_id", productId);
+  if (collectionIds.length > 0) {
+    const rows = collectionIds.map((cid) => ({
+      product_id: productId,
+      collection_id: cid,
+    }));
+    const { error: colErr } = await supabase.from("product_collections").insert(rows);
+    if (colErr) return { success: false, error: `Error en colecciones: ${colErr.message}` };
+  }
+
+  // Sincronizar atributos (reemplazar set completo)
+  const attrJsonRaw = String(formData.get("attribute_values_json") ?? "[]");
+  type AttrPayload = {
+    attribute_id: string;
+    option_ids: string[];
+    text_value: string | null;
+  };
+  let attrPayload: AttrPayload[] = [];
+  try {
+    const parsed = JSON.parse(attrJsonRaw);
+    if (Array.isArray(parsed)) attrPayload = parsed;
+  } catch {
+    attrPayload = [];
+  }
+
+  await supabase.from("product_attribute_values").delete().eq("product_id", productId);
+
+  const attrRows: Array<{
+    product_id: string;
+    attribute_id: string;
+    option_id: string | null;
+    text_value: string | null;
+  }> = [];
+  for (const item of attrPayload) {
+    if (!item.attribute_id) continue;
+    if (item.option_ids && item.option_ids.length > 0) {
+      for (const optId of item.option_ids) {
+        attrRows.push({
+          product_id: productId,
+          attribute_id: item.attribute_id,
+          option_id: optId,
+          text_value: null,
+        });
+      }
+    } else if (item.text_value) {
+      attrRows.push({
+        product_id: productId,
+        attribute_id: item.attribute_id,
+        option_id: null,
+        text_value: item.text_value,
+      });
+    } else {
+      // Boolean: una fila sin option ni text indica "true"
+      attrRows.push({
+        product_id: productId,
+        attribute_id: item.attribute_id,
+        option_id: null,
+        text_value: null,
+      });
+    }
+  }
+
+  if (attrRows.length > 0) {
+    const { error: attrErr } = await supabase
+      .from("product_attribute_values")
+      .insert(attrRows);
+    if (attrErr) return { success: false, error: `Error en atributos: ${attrErr.message}` };
+  }
+
   revalidatePath("/admin/productos");
   revalidatePath(`/admin/productos/${productId}`);
   return { success: true };
 }
 
-function buildPresentationLabel(
+async function buildPresentationLabel(
+  supabase: Awaited<ReturnType<typeof createClient>>,
   type: string | null,
   value: number | null,
   unit: string | null,
-): string | null {
+): Promise<string | null> {
   if (!type || !value || !unit) return null;
   const rounded = Math.round(value * 100) / 100;
-  const unitLabel = unit === "units" ? "u" : unit;
-  const typeLabels: Record<string, string> = {
-    powder: "Polvo",
-    granulated: "Granulado",
-    drops: "Gotas",
-    syrup: "Jarabe",
-    suspension: "Suspensión",
-    tablets: "Tabletas",
-    capsules: "Cápsulas",
-    softgels: "Softgels",
-    sublingual: "Sublingual",
-    other: "",
-  };
-  const typeLabel = typeLabels[type] ?? "";
-  return typeLabel ? `${typeLabel} · ${rounded}${unitLabel}` : `${rounded}${unitLabel}`;
+
+  // Buscar nombre del tipo de presentación y símbolo de la unidad desde DB
+  const [{ data: presType }, { data: contentUnit }] = await Promise.all([
+    supabase.from("presentation_types").select("name").eq("code", type).maybeSingle(),
+    supabase.from("content_units").select("symbol").eq("code", unit).maybeSingle(),
+  ]);
+
+  const typeLabel: string = presType?.name ?? "";
+  const unitSymbol: string = contentUnit?.symbol ?? unit;
+
+  return typeLabel
+    ? `${typeLabel} · ${rounded}${unitSymbol}`
+    : `${rounded}${unitSymbol}`;
 }
 
 // =====================================================
@@ -109,7 +195,6 @@ export async function setProductStatus(
   await requireRole(["owner", "admin", "editor"]);
   const supabase = await createClient();
 
-  // Validar antes de publicar a 'active'
   if (status === "active") {
     const { data: product } = await supabase
       .from("products")
@@ -191,7 +276,6 @@ export async function bulkSetStatus(
 
   const supabase = await createClient();
 
-  // Si vamos a activar, validar que los productos cumplan requisitos
   if (status === "active") {
     const { data: invalids } = await supabase
       .from("products")
@@ -233,8 +317,8 @@ export async function deleteProductImage(imageId: string): Promise<ActionResult>
 
   if (!img) return { success: false, error: "Imagen no encontrada" };
 
-  // Intentar borrar del storage también (si la URL es de nuestro bucket)
-  const storagePrefix = process.env.NEXT_PUBLIC_SUPABASE_URL + "/storage/v1/object/public/product-images/";
+  const storagePrefix =
+    process.env.NEXT_PUBLIC_SUPABASE_URL + "/storage/v1/object/public/product-images/";
   if (img.url.startsWith(storagePrefix)) {
     const path = img.url.substring(storagePrefix.length);
     await supabase.storage.from("product-images").remove([path]);
@@ -254,13 +338,11 @@ export async function setMainImage(
   await requireRole(["owner", "admin", "editor"]);
   const supabase = await createClient();
 
-  // Quitar marca de principal a las otras
   await supabase
     .from("product_images")
     .update({ is_primary: false })
     .eq("product_id", productId);
 
-  // Marcar la nueva
   const { error } = await supabase
     .from("product_images")
     .update({ is_primary: true })

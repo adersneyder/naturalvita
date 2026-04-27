@@ -19,7 +19,6 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Catálogo",
     items: [
       { label: "Productos", href: "/admin/productos" },
-      { label: "Laboratorios", href: "/admin/laboratorios" },
       { label: "Fuentes de datos", href: "/admin/fuentes" },
       { label: "Categorías", href: "/admin/categorias" },
       { label: "Inventario", href: "/admin/inventario" },

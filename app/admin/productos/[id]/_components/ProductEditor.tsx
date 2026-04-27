@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -58,32 +58,52 @@ export type ProductDetail = {
   last_synced_at: string | null;
   scraped_at: string | null;
   images: ProductImage[];
+  collection_ids: string[];
+  attribute_values: Array<{
+    attribute_id: string;
+    option_id: string | null;
+    text_value: string | null;
+  }>;
+};
+
+export type PresentationTypeOption = {
+  id: string;
+  code: string;
+  name: string;
+  default_unit: string;
+  unit_family: string;
+};
+
+export type ContentUnitOption = {
+  id: string;
+  code: string;
+  name: string;
+  symbol: string;
+  unit_family: string;
+};
+
+export type CollectionOption = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+export type AttributeOption = {
+  id: string;
+  name: string;
+  slug: string;
+  attribute_type: string; // boolean | select | multi_select | text
+  options: Array<{ id: string; value: string; slug: string }>;
 };
 
 export type EditorOptions = {
   categories: { id: string; name: string }[];
   tax_rates: { id: string; name: string; rate_percent: number; tax_type: string }[];
   laboratories: { id: string; name: string }[];
-};
-
-const PRESENTATIONS = [
-  { value: "powder", label: "Polvo", unit: "g" as const },
-  { value: "granulated", label: "Granulado", unit: "g" as const },
-  { value: "drops", label: "Gotas", unit: "ml" as const },
-  { value: "syrup", label: "Jarabe", unit: "ml" as const },
-  { value: "suspension", label: "Suspensión", unit: "ml" as const },
-  { value: "tablets", label: "Tabletas", unit: "units" as const },
-  { value: "capsules", label: "Cápsulas", unit: "units" as const },
-  { value: "softgels", label: "Softgels", unit: "units" as const },
-  { value: "sublingual", label: "Sublingual", unit: "units" as const },
-  { value: "other", label: "Otro", unit: "other" as const },
-];
-
-const UNIT_LABELS: Record<string, string> = {
-  g: "gramos",
-  ml: "mililitros",
-  units: "unidades",
-  other: "otro",
+  presentation_types: PresentationTypeOption[];
+  content_units: ContentUnitOption[];
+  collections: CollectionOption[];
+  attributes: AttributeOption[];
 };
 
 function formatCOP(value: number | null): string {
@@ -117,24 +137,124 @@ export default function ProductEditor({
     product.presentation_type ?? "",
   );
 
-  const selectedPresentation = PRESENTATIONS.find((p) => p.value === presentationType);
-  const expectedUnit = selectedPresentation?.unit ?? null;
+  const selectedPresentation = useMemo(
+    () => options.presentation_types.find((p) => p.code === presentationType),
+    [options.presentation_types, presentationType],
+  );
+  const expectedUnitFamily = selectedPresentation?.unit_family ?? null;
+  const compatibleUnits = useMemo(() => {
+    if (!expectedUnitFamily) return options.content_units;
+    return options.content_units.filter((u) => u.unit_family === expectedUnitFamily);
+  }, [options.content_units, expectedUnitFamily]);
 
-  // Calcular precio público estimado (con IVA)
+  // Precio público estimado
   const [previewPrice, setPreviewPrice] = useState(product.price_cop);
   const [previewTaxId, setPreviewTaxId] = useState(product.tax_rate_id ?? "");
   const previewTax = options.tax_rates.find((t) => t.id === previewTaxId);
   const ivaPercent = previewTax?.rate_percent ?? 0;
   const isIncluded = previewTax?.tax_type === "included";
-  const priceWithTax = isIncluded
-    ? Math.round(previewPrice * (1 + ivaPercent / 100))
-    : previewPrice;
+
+  // Como el precio que el admin captura ES el precio final al cliente
+  // (ya incluye IVA si la categoría es gravada), discriminamos hacia atrás
+  // para mostrar la base imponible y el IVA discriminado.
+  const ivaAmount = isIncluded && previewPrice > 0
+    ? Math.round(previewPrice - previewPrice / (1 + ivaPercent / 100))
+    : 0;
+  const baseAmount = previewPrice - ivaAmount;
+
+  // Colecciones seleccionadas
+  const [selectedCollections, setSelectedCollections] = useState<Set<string>>(
+    () => new Set(product.collection_ids),
+  );
+
+  function toggleCollection(id: string) {
+    setSelectedCollections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Atributos: estructura {attribute_id: {boolean: bool} | {option_id: string} | {option_ids: string[]} | {text: string}}
+  type AttrValue =
+    | { type: "boolean"; checked: boolean }
+    | { type: "select"; option_id: string | null }
+    | { type: "multi_select"; option_ids: Set<string> }
+    | { type: "text"; text: string };
+
+  const initialAttrState = useMemo(() => {
+    const m = new Map<string, AttrValue>();
+    for (const attr of options.attributes) {
+      const existing = product.attribute_values.filter((v) => v.attribute_id === attr.id);
+      if (attr.attribute_type === "boolean") {
+        m.set(attr.id, { type: "boolean", checked: existing.length > 0 });
+      } else if (attr.attribute_type === "select") {
+        m.set(attr.id, { type: "select", option_id: existing[0]?.option_id ?? null });
+      } else if (attr.attribute_type === "multi_select") {
+        m.set(attr.id, {
+          type: "multi_select",
+          option_ids: new Set(
+            existing.map((e) => e.option_id).filter((x): x is string => !!x),
+          ),
+        });
+      } else {
+        m.set(attr.id, { type: "text", text: existing[0]?.text_value ?? "" });
+      }
+    }
+    return m;
+  }, [options.attributes, product.attribute_values]);
+
+  const [attrValues, setAttrValues] = useState<Map<string, AttrValue>>(initialAttrState);
+
+  function setAttr(id: string, value: AttrValue) {
+    setAttrValues((prev) => {
+      const next = new Map(prev);
+      next.set(id, value);
+      return next;
+    });
+  }
+
+  // Serializar atributos al payload final
+  function serializeAttributes(): string {
+    const out: Array<{
+      attribute_id: string;
+      option_ids: string[];
+      text_value: string | null;
+    }> = [];
+    for (const [attrId, val] of attrValues.entries()) {
+      if (val.type === "boolean") {
+        if (val.checked) out.push({ attribute_id: attrId, option_ids: [], text_value: null });
+      } else if (val.type === "select") {
+        if (val.option_id) {
+          out.push({ attribute_id: attrId, option_ids: [val.option_id], text_value: null });
+        }
+      } else if (val.type === "multi_select") {
+        if (val.option_ids.size > 0) {
+          out.push({
+            attribute_id: attrId,
+            option_ids: Array.from(val.option_ids),
+            text_value: null,
+          });
+        }
+      } else if (val.type === "text") {
+        if (val.text.trim()) {
+          out.push({ attribute_id: attrId, option_ids: [], text_value: val.text.trim() });
+        }
+      }
+    }
+    return JSON.stringify(out);
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
     const formData = new FormData(e.currentTarget);
+
+    // Inyectar colecciones y atributos serializados
+    formData.set("collection_ids_json", JSON.stringify(Array.from(selectedCollections)));
+    formData.set("attribute_values_json", serializeAttributes());
 
     startTransition(async () => {
       const result = await updateProduct(product.id, formData);
@@ -313,22 +433,24 @@ export default function ProductEditor({
                   onChange={(e) => setPresentationType(e.target.value)}
                 >
                   <option value="">— Sin definir —</option>
-                  {PRESENTATIONS.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
+                  {options.presentation_types.map((p) => (
+                    <option key={p.id} value={p.code}>
+                      {p.name}
                     </option>
                   ))}
                 </Select>
+                <p className="text-[10px] text-[var(--color-earth-500)] mt-1 m-0">
+                  ¿Falta uno?{" "}
+                  <Link
+                    href="/admin/configuracion/presentaciones"
+                    className="text-[var(--color-leaf-700)] underline"
+                  >
+                    Editar tipos
+                  </Link>
+                </p>
               </div>
               <div>
-                <Label>
-                  Cantidad{" "}
-                  {expectedUnit && (
-                    <span className="text-[var(--color-earth-500)] font-normal">
-                      ({UNIT_LABELS[expectedUnit]})
-                    </span>
-                  )}
-                </Label>
+                <Label>Cantidad y unidad</Label>
                 <div className="flex gap-2">
                   <Input
                     name="content_value"
@@ -341,20 +463,20 @@ export default function ProductEditor({
                   />
                   <Select
                     name="content_unit"
-                    defaultValue={product.content_unit ?? expectedUnit ?? ""}
-                    className="max-w-[80px]"
+                    defaultValue={
+                      product.content_unit ?? selectedPresentation?.default_unit ?? ""
+                    }
+                    className="max-w-[100px]"
                     disabled={!presentationType}
                   >
-                    {expectedUnit ? (
-                      <option value={expectedUnit}>{expectedUnit}</option>
+                    {compatibleUnits.length === 0 ? (
+                      <option value="">—</option>
                     ) : (
-                      <>
-                        <option value="">—</option>
-                        <option value="g">g</option>
-                        <option value="ml">ml</option>
-                        <option value="units">u</option>
-                        <option value="other">otro</option>
-                      </>
+                      compatibleUnits.map((u) => (
+                        <option key={u.id} value={u.code}>
+                          {u.symbol}
+                        </option>
+                      ))
                     )}
                   </Select>
                 </div>
@@ -404,7 +526,7 @@ export default function ProductEditor({
             <SectionTitle>Imágenes ({product.images.length})</SectionTitle>
             {product.images.length === 0 ? (
               <p className="text-sm text-[var(--color-earth-700)] italic m-0 py-4 text-center">
-                Sin imágenes · próximamente: subir desde el editor
+                Sin imágenes · usa el botón &ldquo;Re-descargar imágenes&rdquo; en Fuentes de datos
               </p>
             ) : (
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2">
@@ -417,7 +539,12 @@ export default function ProductEditor({
                         : "border-transparent"
                     }`}
                   >
-                    <img src={img.url} alt={img.alt_text ?? ""} className="w-full h-full object-cover" />
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.url}
+                      alt={img.alt_text ?? ""}
+                      className="w-full h-full object-cover"
+                    />
                     {img.is_primary && (
                       <span className="absolute top-1 left-1 text-[9px] bg-[var(--color-leaf-700)] text-white px-1.5 py-0.5 rounded font-medium">
                         Principal
@@ -511,7 +638,7 @@ export default function ProductEditor({
 
           <Card>
             <SectionTitle>Precio</SectionTitle>
-            <Label>Precio de venta * (sin IVA si lab es responsable)</Label>
+            <Label>Precio de venta * (final al cliente, IVA incluido)</Label>
             <Input
               name="price_cop"
               type="number"
@@ -540,15 +667,29 @@ export default function ProductEditor({
 
             {previewTax && previewPrice > 0 && (
               <div className="mt-3 p-2 bg-[var(--color-leaf-50)] rounded">
-                <p className="text-[10px] text-[var(--color-earth-700)] m-0">Precio público estimado:</p>
-                <p className="font-serif text-base font-medium text-[var(--color-leaf-900)] m-0">
-                  {formatCOP(priceWithTax)}
-                  {isIncluded && (
-                    <span className="text-[10px] font-sans font-normal text-[var(--color-earth-700)]">
-                      {" "}(incluye {ivaPercent}% IVA)
-                    </span>
-                  )}
+                <p className="text-[10px] text-[var(--color-earth-700)] m-0">
+                  Precio público al cliente:
                 </p>
+                <p className="font-serif text-base font-medium text-[var(--color-leaf-900)] m-0">
+                  {formatCOP(previewPrice)}
+                </p>
+                {isIncluded && ivaPercent > 0 && (
+                  <div className="mt-1.5 text-[10px] text-[var(--color-earth-700)] space-y-0.5">
+                    <p className="m-0 flex justify-between">
+                      <span>Base imponible:</span>
+                      <span className="font-mono">{formatCOP(baseAmount)}</span>
+                    </p>
+                    <p className="m-0 flex justify-between">
+                      <span>IVA {ivaPercent}%:</span>
+                      <span className="font-mono">{formatCOP(ivaAmount)}</span>
+                    </p>
+                  </div>
+                )}
+                {!isIncluded && previewTax && (
+                  <p className="text-[10px] text-[var(--color-earth-700)] mt-1 m-0">
+                    Sin IVA discriminado ({previewTax.name})
+                  </p>
+                )}
               </div>
             )}
           </Card>
@@ -556,12 +697,7 @@ export default function ProductEditor({
           <Card>
             <SectionTitle>Inventario</SectionTitle>
             <Label>Stock disponible</Label>
-            <Input
-              name="stock"
-              type="number"
-              min="0"
-              defaultValue={product.stock}
-            />
+            <Input name="stock" type="number" min="0" defaultValue={product.stock} />
             <label className="flex items-center gap-2 text-xs text-[var(--color-leaf-900)] cursor-pointer mt-2">
               <input
                 type="checkbox"
@@ -583,7 +719,7 @@ export default function ProductEditor({
               className="bg-[var(--color-earth-50)]"
             />
 
-            <Label className="mt-3">Categoría</Label>
+            <Label className="mt-3">Categoría (taxonomía única, define IVA)</Label>
             <Select name="category_id" defaultValue={product.category_id ?? ""}>
               <option value="">— Sin categoría —</option>
               {options.categories.map((c) => (
@@ -608,13 +744,153 @@ export default function ProductEditor({
               ))}
             </Select>
 
-            <Label className="mt-3">Tags (separados por coma)</Label>
+            <Label className="mt-3">Tags internos (operación, separados por coma)</Label>
             <Input
               name="tags"
               defaultValue={product.tags.join(", ")}
-              placeholder="vegano, sin gluten, natural"
+              placeholder="promo-marzo, stock-critico"
             />
+            <p className="text-[10px] text-[var(--color-earth-500)] mt-1 m-0">
+              Para uso interno · no se muestran al cliente
+            </p>
           </Card>
+
+          {options.collections.length > 0 && (
+            <Card>
+              <SectionTitle>Colecciones (marketing y SEO)</SectionTitle>
+              <p className="text-[10px] text-[var(--color-earth-500)] mt-0 m-0 mb-2">
+                Agrupaciones temáticas. Un producto puede estar en varias.
+              </p>
+              <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                {options.collections.map((col) => (
+                  <label
+                    key={col.id}
+                    className="flex items-center gap-2 text-xs text-[var(--color-leaf-900)] cursor-pointer hover:bg-[var(--color-earth-50)] px-1.5 py-1 rounded"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCollections.has(col.id)}
+                      onChange={() => toggleCollection(col.id)}
+                      className="w-3.5 h-3.5"
+                    />
+                    <span>{col.name}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-[10px] text-[var(--color-earth-500)] mt-2 m-0">
+                <Link
+                  href="/admin/configuracion/colecciones"
+                  className="text-[var(--color-leaf-700)] underline"
+                >
+                  Gestionar colecciones
+                </Link>
+              </p>
+            </Card>
+          )}
+
+          {options.attributes.length > 0 && (
+            <Card>
+              <SectionTitle>Atributos (filtros del catálogo)</SectionTitle>
+              <p className="text-[10px] text-[var(--color-earth-500)] mt-0 m-0 mb-2">
+                Características objetivas para que el cliente filtre.
+              </p>
+              <div className="space-y-2.5">
+                {options.attributes.map((attr) => {
+                  const val = attrValues.get(attr.id);
+                  if (!val) return null;
+                  if (val.type === "boolean") {
+                    return (
+                      <label
+                        key={attr.id}
+                        className="flex items-center gap-2 text-xs text-[var(--color-leaf-900)] cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={val.checked}
+                          onChange={(e) =>
+                            setAttr(attr.id, { type: "boolean", checked: e.target.checked })
+                          }
+                          className="w-3.5 h-3.5"
+                        />
+                        <span>{attr.name}</span>
+                      </label>
+                    );
+                  }
+                  if (val.type === "select") {
+                    return (
+                      <div key={attr.id}>
+                        <Label>{attr.name}</Label>
+                        <Select
+                          value={val.option_id ?? ""}
+                          onChange={(e) =>
+                            setAttr(attr.id, {
+                              type: "select",
+                              option_id: e.target.value || null,
+                            })
+                          }
+                        >
+                          <option value="">— Sin asignar —</option>
+                          {attr.options.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {opt.value}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    );
+                  }
+                  if (val.type === "multi_select") {
+                    return (
+                      <div key={attr.id}>
+                        <Label>{attr.name}</Label>
+                        <div className="space-y-1">
+                          {attr.options.map((opt) => (
+                            <label
+                              key={opt.id}
+                              className="flex items-center gap-2 text-xs text-[var(--color-leaf-900)] cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={val.option_ids.has(opt.id)}
+                                onChange={(e) => {
+                                  const next = new Set(val.option_ids);
+                                  if (e.target.checked) next.add(opt.id);
+                                  else next.delete(opt.id);
+                                  setAttr(attr.id, { type: "multi_select", option_ids: next });
+                                }}
+                                className="w-3.5 h-3.5"
+                              />
+                              <span>{opt.value}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  // text
+                  return (
+                    <div key={attr.id}>
+                      <Label>{attr.name}</Label>
+                      <Input
+                        value={val.text}
+                        onChange={(e) =>
+                          setAttr(attr.id, { type: "text", text: e.target.value })
+                        }
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-[var(--color-earth-500)] mt-3 m-0">
+                <Link
+                  href="/admin/configuracion/atributos"
+                  className="text-[var(--color-leaf-700)] underline"
+                >
+                  Gestionar atributos
+                </Link>
+              </p>
+            </Card>
+          )}
 
           {product.source_url && (
             <Card>
@@ -660,15 +936,15 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 function Label({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <label className={`block text-[11px] font-medium text-[var(--color-earth-700)] mb-1 ${className}`}>
+    <label
+      className={`block text-[11px] font-medium text-[var(--color-earth-700)] mb-1 ${className}`}
+    >
       {children}
     </label>
   );
 }
 
-function Input(
-  props: React.InputHTMLAttributes<HTMLInputElement>,
-) {
+function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
@@ -677,9 +953,7 @@ function Input(
   );
 }
 
-function Textarea(
-  props: React.TextareaHTMLAttributes<HTMLTextAreaElement>,
-) {
+function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
       {...props}
@@ -688,9 +962,7 @@ function Textarea(
   );
 }
 
-function Select(
-  props: React.SelectHTMLAttributes<HTMLSelectElement>,
-) {
+function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
       {...props}
