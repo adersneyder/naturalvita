@@ -63,7 +63,7 @@ type SyncState =
     }
   | { mode: "error"; sourceId: string; message: string };
 
-const TIME_BETWEEN_BATCHES_MS = 500;
+const TIME_BETWEEN_BATCHES_MS = 200;
 
 export default function DataSourcesList({
   sources,
@@ -78,6 +78,7 @@ export default function DataSourcesList({
 
   const [sync, setSync] = useState<SyncState>({ mode: "idle" });
   const cancelledRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Si cargamos la página y hay un job ya corriendo en otra pestaña, ofrecer retomarlo
   useEffect(() => {
@@ -111,6 +112,7 @@ export default function DataSourcesList({
 
     setSync({ mode: "starting", sourceId: source.id });
     cancelledRef.current = false;
+    abortRef.current = new AbortController();
 
     try {
       const startResp = await fetch("/api/scrape", {
@@ -120,6 +122,7 @@ export default function DataSourcesList({
           action: "start",
           data_source_id: source.id,
         }),
+        signal: abortRef.current.signal,
       });
 
       const startData = await startResp.json();
@@ -148,22 +151,38 @@ export default function DataSourcesList({
       // Loop de lotes
       await processLoop(jobId, source.id);
     } catch (error) {
+      // Si fue aborto explícito del usuario, cancelar el job en backend y mostrar mensaje neutral
+      if (error instanceof Error && error.name === "AbortError") {
+        setSync({
+          mode: "error",
+          sourceId: source.id,
+          message: "Sincronización cancelada por el usuario",
+        });
+        return;
+      }
       setSync({
         mode: "error",
         sourceId: source.id,
         message: error instanceof Error ? error.message : "Error desconocido",
       });
+    } finally {
+      abortRef.current = null;
     }
   }
 
   async function processLoop(jobId: string, sourceId: string) {
     while (true) {
       if (cancelledRef.current) {
-        await fetch("/api/scrape", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "cancel", job_id: jobId }),
-        });
+        // Best-effort: avisar al backend que cancele el job. No bloqueamos en este fetch.
+        try {
+          await fetch("/api/scrape", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "cancel", job_id: jobId }),
+          });
+        } catch {
+          // ignorar; el front ya decidió cancelar
+        }
         setSync({
           mode: "error",
           sourceId,
@@ -176,6 +195,7 @@ export default function DataSourcesList({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "process", job_id: jobId }),
+        signal: abortRef.current?.signal,
       });
 
       const data = await resp.json();
@@ -221,6 +241,8 @@ export default function DataSourcesList({
 
   function cancelSync() {
     cancelledRef.current = true;
+    // Aborta el fetch en vuelo si lo hay; el catch en startSync/redownloadImages mostrará el mensaje
+    abortRef.current?.abort();
   }
 
   async function redownloadImages(source: DataSourceRow) {
@@ -234,6 +256,7 @@ export default function DataSourcesList({
     }
 
     cancelledRef.current = false;
+    abortRef.current = new AbortController();
     setSync({
       mode: "redownloading",
       sourceId: source.id,
@@ -248,17 +271,17 @@ export default function DataSourcesList({
     let page = 1;
     let totals = { processed: 0, succeeded: 0, failed: 0, skipped: 0 };
 
-    while (true) {
-      if (cancelledRef.current) {
-        setSync({
-          mode: "error",
-          sourceId: source.id,
-          message: "Re-descarga cancelada",
-        });
-        return;
-      }
+    try {
+      while (true) {
+        if (cancelledRef.current) {
+          setSync({
+            mode: "error",
+            sourceId: source.id,
+            message: "Re-descarga cancelada",
+          });
+          return;
+        }
 
-      try {
         const resp = await fetch("/api/products/redownload-images", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -267,6 +290,7 @@ export default function DataSourcesList({
             page,
             only_missing: true,
           }),
+          signal: abortRef.current.signal,
         });
         const data = await resp.json();
 
@@ -311,14 +335,23 @@ export default function DataSourcesList({
 
         page++;
         await new Promise((r) => setTimeout(r, TIME_BETWEEN_BATCHES_MS));
-      } catch (error) {
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
         setSync({
           mode: "error",
           sourceId: source.id,
-          message: error instanceof Error ? error.message : "Error desconocido",
+          message: "Re-descarga cancelada por el usuario",
         });
         return;
       }
+      setSync({
+        mode: "error",
+        sourceId: source.id,
+        message: error instanceof Error ? error.message : "Error desconocido",
+      });
+    } finally {
+      abortRef.current = null;
     }
   }
 

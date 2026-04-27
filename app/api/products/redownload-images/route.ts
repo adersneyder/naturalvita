@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
   const onlyMissing = body.only_missing !== false;
   const page = body.page && body.page > 0 ? body.page : 1;
-  const batchSize = 10; // 10 productos × ~3 imágenes × ~2s = ~60s en peor caso
+  const batchSize = 1; // un producto por llamada para feedback granular y evitar timeout
 
   const supabase = await createClient();
 

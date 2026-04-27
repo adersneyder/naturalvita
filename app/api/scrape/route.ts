@@ -112,7 +112,7 @@ async function startJob(
       data_source_id: body.data_source_id,
       triggered_by: userId,
       status: "running",
-      batch_size: body.batch_size ?? 20,
+      batch_size: body.batch_size ?? 1,
       products_found: testResult.total_products ?? 0,
     })
     .select()
