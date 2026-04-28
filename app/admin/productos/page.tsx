@@ -107,6 +107,7 @@ export default async function ProductosPage({
   }
   if (params.missing === "invima") query = query.is("invima_number", null);
   if (params.missing === "category") query = query.is("category_id", null);
+  if (params.missing === "image_error") query = query.not("last_image_error", "is", null);
 
   query = query
     .order("status", { ascending: true })

@@ -114,11 +114,12 @@ export async function POST(request: NextRequest) {
     }
 
     let imagesAdded = 0;
+    const imageErrors: string[] = [];
     const toProcess = scrapedProduct.images.slice(0, 5);
 
     for (let i = 0; i < toProcess.length; i++) {
       const img = toProcess[i];
-      const publicUrl = await downloadAndUploadImage(
+      const result = await downloadAndUploadImage(
         supabase,
         img.url,
         lab.slug,
@@ -126,17 +127,28 @@ export async function POST(request: NextRequest) {
         i,
       );
 
-      if (publicUrl) {
+      if (result.url) {
         await supabase.from("product_images").insert({
           product_id: existing.id,
-          url: publicUrl,
+          url: result.url,
           alt_text: img.alt,
           sort_order: i,
-          is_primary: i === 0,
+          is_primary: imagesAdded === 0,
         });
         imagesAdded++;
+      } else if (result.error) {
+        imageErrors.push(`#${i}: ${result.error}`);
       }
     }
+
+    const now = new Date().toISOString();
+    await supabase
+      .from("products")
+      .update({
+        last_image_error: imagesAdded > 0 ? null : imageErrors.join(" | ").slice(0, 500),
+        last_image_attempt_at: now,
+      })
+      .eq("id", existing.id);
 
     if (imagesAdded > 0) {
       succeeded++;
@@ -144,7 +156,7 @@ export async function POST(request: NextRequest) {
       failed++;
       errors.push({
         name: scrapedProduct.name,
-        error: "No se pudo descargar ninguna imagen",
+        error: imageErrors[0] ?? "No se pudo descargar ninguna imagen",
       });
     }
   }

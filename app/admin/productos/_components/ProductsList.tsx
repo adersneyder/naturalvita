@@ -455,6 +455,7 @@ export default function ProductsList({
           <option value="">Filtros rápidos</option>
           <option value="invima">Sin INVIMA</option>
           <option value="images">Sin imágenes</option>
+          <option value="image_error">Con error de imagen</option>
           <option value="category">Sin categoría</option>
         </select>
 

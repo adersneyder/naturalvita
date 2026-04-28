@@ -34,6 +34,7 @@ type SyncState =
       failed: number;
       total: number | null;
       lastBatchErrors: Array<{ name: string; error: string }>;
+      isResumed?: boolean;
     }
   | {
       mode: "completed";
@@ -80,14 +81,16 @@ export default function DataSourcesList({
   const cancelledRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Si cargamos la página y hay un job ya corriendo en otra pestaña, ofrecer retomarlo
+  // Si cargamos la página y hay un job ya corriendo en otra pestaña o sesión, retomarlo automáticamente.
+  // CRÍTICO: además de mostrar el modal, hay que arrancar el processLoop, sino la UI queda estática.
   useEffect(() => {
     const orphan = sources.find((s) => s.running_job);
     if (orphan && orphan.running_job && sync.mode === "idle") {
+      const jobId = orphan.running_job.id;
       setSync({
         mode: "running",
         sourceId: orphan.id,
-        jobId: orphan.running_job.id,
+        jobId,
         processed: orphan.running_job.last_offset,
         created: 0,
         updated: 0,
@@ -95,6 +98,24 @@ export default function DataSourcesList({
         failed: 0,
         total: null,
         lastBatchErrors: [],
+        isResumed: true,
+      });
+      cancelledRef.current = false;
+      abortRef.current = new AbortController();
+      processLoop(jobId, orphan.id).catch((error) => {
+        if (error instanceof Error && error.name === "AbortError") {
+          setSync({
+            mode: "error",
+            sourceId: orphan.id,
+            message: "Sincronización cancelada por el usuario",
+          });
+          return;
+        }
+        setSync({
+          mode: "error",
+          sourceId: orphan.id,
+          message: error instanceof Error ? error.message : "Error desconocido",
+        });
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -239,10 +260,32 @@ export default function DataSourcesList({
     }
   }
 
-  function cancelSync() {
+  async function cancelSync() {
     cancelledRef.current = true;
     // Aborta el fetch en vuelo si lo hay; el catch en startSync/redownloadImages mostrará el mensaje
     abortRef.current?.abort();
+
+    // Caso "orphan": el modal está montado pero no hay loop activo (la página se recargó
+    // mientras un job seguía marcado como running en BD). Cancelar el job y cerrar el modal.
+    const isOrphan =
+      (sync.mode === "running" && !abortRef.current) ||
+      (sync.mode === "redownloading" && !abortRef.current);
+
+    if (isOrphan && sync.mode === "running" && sync.jobId) {
+      try {
+        await fetch("/api/scrape", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "cancel", job_id: sync.jobId }),
+        });
+      } catch {
+        // ignorar; el front igual cierra el modal
+      }
+      setSync({ mode: "idle" });
+    } else if (isOrphan) {
+      // Re-descarga huérfana: simplemente cerrar el modal (no hay job persistido para re-descarga)
+      setSync({ mode: "idle" });
+    }
   }
 
   async function redownloadImages(source: DataSourceRow) {
@@ -578,7 +621,9 @@ export default function DataSourcesList({
             {sync.mode === "running" ? (
               <>
                 <p className="text-xs text-[var(--color-earth-700)] mb-4">
-                  Procesando productos en lotes de 20. No cierres esta ventana.
+                  {sync.isResumed
+                    ? "Retomando un job de sincronización abierto en otra sesión. Procesando producto por producto."
+                    : "Procesando producto por producto. Puedes dejar esta ventana abierta o cancelar en cualquier momento."}
                 </p>
 
                 <div className="bg-[var(--color-earth-50)] rounded-lg p-4 mb-4">

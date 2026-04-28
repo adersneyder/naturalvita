@@ -26,6 +26,21 @@ export default async function FuentesPage() {
     countByDs.set(p.data_source_id, (countByDs.get(p.data_source_id) ?? 0) + 1);
   });
 
+  // Cleanup: jobs en running/pending sin progreso en los últimos 5 minutos se consideran muertos.
+  // Causas típicas: cliente cerró pestaña, timeout de Vercel, deploy en medio del job, error de red.
+  // Sin este cleanup la UI muestra un modal estático perpetuo al volver a la pestaña.
+  // Usamos COALESCE(last_progress_at, started_at) para cubrir jobs que nunca avanzaron.
+  const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  await supabase
+    .from("scraping_jobs")
+    .update({
+      status: "failed",
+      completed_at: new Date().toISOString(),
+      error_message: "Job expirado por inactividad (>5 min sin progreso)",
+    })
+    .in("status", ["pending", "running"])
+    .or(`last_progress_at.lt.${fiveMinutesAgo},and(last_progress_at.is.null,started_at.lt.${fiveMinutesAgo})`);
+
   // Job en running por data source (si hay alguno)
   const { data: runningJobs } = await supabase
     .from("scraping_jobs")

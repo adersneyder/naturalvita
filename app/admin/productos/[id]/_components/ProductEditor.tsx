@@ -57,6 +57,8 @@ export type ProductDetail = {
   source_url: string | null;
   last_synced_at: string | null;
   scraped_at: string | null;
+  last_image_error: string | null;
+  last_image_attempt_at: string | null;
   images: ProductImage[];
   collection_ids: string[];
   attribute_values: Array<{
@@ -524,6 +526,21 @@ export default function ProductEditor({
 
           <Card>
             <SectionTitle>Imágenes ({product.images.length})</SectionTitle>
+            {product.last_image_error && (
+              <div className="mb-3 p-3 bg-[#FCEBEB] border border-[rgba(121,31,31,0.2)] rounded-lg">
+                <p className="text-[11px] font-medium text-[#791F1F] m-0 mb-1">
+                  Último error al descargar imágenes
+                </p>
+                <p className="text-[11px] text-[#791F1F] m-0 font-mono break-all">
+                  {product.last_image_error}
+                </p>
+                {product.last_image_attempt_at && (
+                  <p className="text-[10px] text-[var(--color-earth-700)] m-0 mt-1">
+                    Intento: {new Date(product.last_image_attempt_at).toLocaleString("es-CO")}
+                  </p>
+                )}
+              </div>
+            )}
             {product.images.length === 0 ? (
               <p className="text-sm text-[var(--color-earth-700)] italic m-0 py-4 text-center">
                 Sin imágenes · usa el botón &ldquo;Re-descargar imágenes&rdquo; en Fuentes de datos

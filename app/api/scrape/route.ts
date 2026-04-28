@@ -444,17 +444,30 @@ async function syncProductImages(
   laboratorySlug: string,
   externalId: string,
 ) {
-  if (images.length === 0) return;
+  const now = new Date().toISOString();
 
-  // Borrar imagenes previas de este producto en BD (las del storage quedan, se sobrescriben con upsert)
+  if (images.length === 0) {
+    await supabase
+      .from("products")
+      .update({
+        last_image_error: "El laboratorio no devolvió imágenes para este producto",
+        last_image_attempt_at: now,
+      })
+      .eq("id", productId);
+    return;
+  }
+
+  // Borrar imagenes previas de este producto en BD
   await supabase.from("product_images").delete().eq("product_id", productId);
 
   // Procesar máximo 5 imágenes por producto
   const toProcess = images.slice(0, 5);
+  const errors: string[] = [];
+  let succeeded = 0;
 
   for (let i = 0; i < toProcess.length; i++) {
     const img = toProcess[i];
-    const publicUrl = await downloadAndUploadImage(
+    const result = await downloadAndUploadImage(
       supabase,
       img.url,
       laboratorySlug,
@@ -462,16 +475,27 @@ async function syncProductImages(
       i,
     );
 
-    if (publicUrl) {
+    if (result.url) {
       await supabase.from("product_images").insert({
         product_id: productId,
-        url: publicUrl,
+        url: result.url,
         alt_text: img.alt,
         sort_order: i,
-        is_primary: i === 0,
+        is_primary: succeeded === 0,
       });
+      succeeded++;
+    } else if (result.error) {
+      errors.push(`#${i}: ${result.error}`);
     }
   }
+
+  await supabase
+    .from("products")
+    .update({
+      last_image_error: succeeded > 0 ? null : errors.join(" | ").slice(0, 500),
+      last_image_attempt_at: now,
+    })
+    .eq("id", productId);
 }
 
 function slugify(text: string): string {

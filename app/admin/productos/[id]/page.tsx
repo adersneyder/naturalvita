@@ -28,6 +28,7 @@ export default async function ProductEditorPage({
        laboratory_id, category_id, tax_rate_id, tags,
        meta_title, meta_description,
        source_url, last_synced_at, scraped_at,
+       last_image_error, last_image_attempt_at,
        laboratory:laboratories!laboratory_id(name, slug),
        category:categories!category_id(name),
        tax_rate:tax_rates!tax_rate_id(name, rate_percent),
@@ -108,6 +109,8 @@ export default async function ProductEditorPage({
     source_url: product.source_url,
     last_synced_at: product.last_synced_at,
     scraped_at: product.scraped_at,
+    last_image_error: product.last_image_error ?? null,
+    last_image_attempt_at: product.last_image_attempt_at ?? null,
     images: images.map(
       (img: {
         id: string;
