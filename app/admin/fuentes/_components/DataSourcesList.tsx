@@ -66,6 +66,45 @@ type SyncState =
 
 const TIME_BETWEEN_BATCHES_MS = 200;
 
+/**
+ * Parsea la respuesta de un endpoint del API como JSON, devolviendo siempre
+ * un objeto utilizable aunque el servidor haya muerto sin enviar cuerpo.
+ *
+ * Casos cubiertos:
+ * - Respuesta vacía (timeout interno, función Vercel killed sin tiempo de responder)
+ * - Respuesta HTML (página de error genérica de Vercel/Next ante 500)
+ * - Cuerpo JSON malformado
+ *
+ * Cuando el body no se puede parsear, sintetiza un { error } basado en el status HTTP.
+ */
+async function safeJson(
+  response: Response,
+): Promise<{ ok: boolean; data: { error?: string; [k: string]: unknown } }> {
+  const text = await response.text();
+  if (!text) {
+    return {
+      ok: response.ok,
+      data: {
+        error: response.ok
+          ? "El servidor devolvió una respuesta vacía"
+          : `HTTP ${response.status}: el servidor cerró la conexión sin responder. Suele ser timeout o variable de entorno faltante (revisa SUPABASE_SERVICE_ROLE_KEY en Vercel).`,
+      },
+    };
+  }
+  try {
+    const data = JSON.parse(text);
+    return { ok: response.ok, data };
+  } catch {
+    // Probablemente HTML (página de error de Vercel)
+    return {
+      ok: false,
+      data: {
+        error: `HTTP ${response.status}: respuesta no es JSON. Primeras 200 chars: ${text.slice(0, 200)}`,
+      },
+    };
+  }
+}
+
 export default function DataSourcesList({
   sources,
   canManage,
@@ -146,15 +185,19 @@ export default function DataSourcesList({
         signal: abortRef.current.signal,
       });
 
-      const startData = await startResp.json();
+      const { ok, data: startData } = await safeJson(startResp);
 
-      if (!startResp.ok) {
-        setSync({ mode: "error", sourceId: source.id, message: startData.error ?? "Error iniciando" });
+      if (!ok) {
+        setSync({
+          mode: "error",
+          sourceId: source.id,
+          message: (startData.error as string) ?? "Error iniciando sincronización",
+        });
         return;
       }
 
       const jobId = startData.job_id as string;
-      const total = startData.estimated_total as number | null;
+      const total = (startData.estimated_total as number | null) ?? null;
 
       setSync({
         mode: "running",
@@ -219,27 +262,36 @@ export default function DataSourcesList({
         signal: abortRef.current?.signal,
       });
 
-      const data = await resp.json();
+      const { ok, data } = await safeJson(resp);
 
-      if (!resp.ok || data.error) {
+      if (!ok || data.error) {
         setSync({
           mode: "error",
           sourceId,
-          message: data.error ?? "Error procesando lote",
+          message: (data.error as string) ?? "Error procesando lote",
         });
         return;
       }
+
+      const progress = data.progress as { total_processed: number };
+      const totals = data.totals as {
+        created: number;
+        updated: number;
+        skipped: number;
+        failed: number;
+      };
+      const batch = data.batch as { errors?: Array<{ name: string; error: string }> };
 
       setSync((prev) => {
         if (prev.mode !== "running" || prev.jobId !== jobId) return prev;
         return {
           ...prev,
-          processed: data.progress.total_processed,
-          created: data.totals.created,
-          updated: data.totals.updated,
-          skipped: data.totals.skipped,
-          failed: data.totals.failed,
-          lastBatchErrors: data.batch.errors ?? [],
+          processed: progress.total_processed,
+          created: totals.created,
+          updated: totals.updated,
+          skipped: totals.skipped,
+          failed: totals.failed,
+          lastBatchErrors: batch.errors ?? [],
         };
       });
 
@@ -247,10 +299,10 @@ export default function DataSourcesList({
         setSync({
           mode: "completed",
           sourceId,
-          created: data.totals.created,
-          updated: data.totals.updated,
-          skipped: data.totals.skipped,
-          failed: data.totals.failed,
+          created: totals.created,
+          updated: totals.updated,
+          skipped: totals.skipped,
+          failed: totals.failed,
         });
         return;
       }
@@ -335,22 +387,30 @@ export default function DataSourcesList({
           }),
           signal: abortRef.current.signal,
         });
-        const data = await resp.json();
+        const { ok, data } = await safeJson(resp);
 
-        if (!resp.ok || data.error) {
+        if (!ok || data.error) {
           setSync({
             mode: "error",
             sourceId: source.id,
-            message: data.error ?? "Error procesando lote",
+            message: (data.error as string) ?? "Error procesando lote",
           });
           return;
         }
 
+        const batch = data.batch as {
+          processed: number;
+          succeeded: number;
+          failed: number;
+          skipped: number;
+          errors?: Array<{ name: string; error: string }>;
+        };
+
         totals = {
-          processed: totals.processed + data.batch.processed,
-          succeeded: totals.succeeded + data.batch.succeeded,
-          failed: totals.failed + data.batch.failed,
-          skipped: totals.skipped + data.batch.skipped,
+          processed: totals.processed + batch.processed,
+          succeeded: totals.succeeded + batch.succeeded,
+          failed: totals.failed + batch.failed,
+          skipped: totals.skipped + batch.skipped,
         };
 
         setSync({
@@ -361,7 +421,7 @@ export default function DataSourcesList({
           succeeded: totals.succeeded,
           failed: totals.failed,
           skipped: totals.skipped,
-          lastBatchErrors: data.batch.errors ?? [],
+          lastBatchErrors: batch.errors ?? [],
         });
 
         if (!data.has_more) {

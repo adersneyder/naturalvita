@@ -27,28 +27,41 @@ type CancelRequest = {
 type RequestBody = StartRequest | ProcessRequest | CancelRequest;
 
 export async function POST(request: NextRequest) {
-  // Auth
-  const adminUser = await getAdminUser();
-  if (!["owner", "admin", "editor"].includes(adminUser.role)) {
-    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+  try {
+    // Auth
+    const adminUser = await getAdminUser();
+    if (!["owner", "admin", "editor"].includes(adminUser.role)) {
+      return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+    }
+
+    const body = (await request.json()) as RequestBody;
+    const supabase = await createClient();
+
+    if (body.action === "start") {
+      return await startJob(supabase, body, adminUser.id);
+    }
+
+    if (body.action === "process") {
+      return await processBatch(supabase, body.job_id);
+    }
+
+    if (body.action === "cancel") {
+      return await cancelJob(supabase, body.job_id);
+    }
+
+    return NextResponse.json({ error: "Acción inválida" }, { status: 400 });
+  } catch (error) {
+    // Cualquier excepción no controlada (ej. SUPABASE_SERVICE_ROLE_KEY ausente,
+    // timeout interno, fallo de red al laboratorio, error de Supabase) se
+    // serializa como JSON para que el frontend pueda mostrar el mensaje.
+    const message =
+      error instanceof Error ? error.message : "Error interno del servidor";
+    console.error("[/api/scrape] Error no controlado:", error);
+    return NextResponse.json(
+      { error: `Falló la sincronización: ${message}` },
+      { status: 500 },
+    );
   }
-
-  const body = (await request.json()) as RequestBody;
-  const supabase = await createClient();
-
-  if (body.action === "start") {
-    return await startJob(supabase, body, adminUser.id);
-  }
-
-  if (body.action === "process") {
-    return await processBatch(supabase, body.job_id);
-  }
-
-  if (body.action === "cancel") {
-    return await cancelJob(supabase, body.job_id);
-  }
-
-  return NextResponse.json({ error: "Acción inválida" }, { status: 400 });
 }
 
 async function startJob(

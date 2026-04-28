@@ -14,16 +14,30 @@ type RequestBody = {
 };
 
 export async function POST(request: NextRequest) {
-  const adminUser = await getAdminUser();
-  if (!["owner", "admin"].includes(adminUser.role)) {
-    return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
-  }
+  try {
+    const adminUser = await getAdminUser();
+    if (!["owner", "admin"].includes(adminUser.role)) {
+      return NextResponse.json({ error: "Sin permisos" }, { status: 403 });
+    }
 
-  const body = (await request.json()) as RequestBody;
-  if (!body.data_source_id) {
-    return NextResponse.json({ error: "data_source_id requerido" }, { status: 400 });
-  }
+    const body = (await request.json()) as RequestBody;
+    if (!body.data_source_id) {
+      return NextResponse.json({ error: "data_source_id requerido" }, { status: 400 });
+    }
 
+    return await processRedownload(body);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Error interno del servidor";
+    console.error("[/api/products/redownload-images] Error no controlado:", error);
+    return NextResponse.json(
+      { error: `Falló la re-descarga: ${message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function processRedownload(body: RequestBody) {
   const onlyMissing = body.only_missing !== false;
   const page = body.page && body.page > 0 ? body.page : 1;
   const batchSize = 1; // un producto por llamada para feedback granular y evitar timeout
