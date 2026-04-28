@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getAdminUser } from "@/lib/admin-auth";
 import { getScraper } from "@/lib/scrapers";
 import { downloadAndUploadImage } from "@/lib/scrapers/image-downloader";
@@ -197,6 +198,9 @@ async function processBatch(
     return NextResponse.json({ status: "failed", error: message }, { status: 500 });
   }
 
+  // Cliente con service_role solo para Storage (bypass RLS en uploads)
+  const storageClient = createAdminClient();
+
   // Procesar cada producto del lote
   let created = 0;
   let updated = 0;
@@ -208,6 +212,7 @@ async function processBatch(
     try {
       const result = await upsertProduct(
         supabase,
+        storageClient,
         product,
         ds.id,
         lab.id,
@@ -306,6 +311,7 @@ async function cancelJob(
  */
 async function upsertProduct(
   supabase: Awaited<ReturnType<typeof createClient>>,
+  storageClient: ReturnType<typeof createAdminClient>,
   product: ScrapedProduct,
   dataSourceId: string,
   laboratoryId: string,
@@ -398,7 +404,7 @@ async function upsertProduct(
     if (updateError) throw new Error(updateError.message);
 
     productId = existing.id;
-    await syncProductImages(supabase, productId, product.images, laboratorySlug, product.external_id);
+    await syncProductImages(supabase, storageClient, productId, product.images, laboratorySlug, product.external_id);
 
     return "updated";
   }
@@ -420,7 +426,7 @@ async function upsertProduct(
   }
 
   productId = created.id;
-  await syncProductImages(supabase, productId, product.images, laboratorySlug, product.external_id);
+  await syncProductImages(supabase, storageClient, productId, product.images, laboratorySlug, product.external_id);
 
   return "created";
 }
@@ -439,6 +445,7 @@ function buildPresentationSuffix(product: ScrapedProduct): string {
 
 async function syncProductImages(
   supabase: Awaited<ReturnType<typeof createClient>>,
+  storageClient: ReturnType<typeof createAdminClient>,
   productId: string,
   images: ScrapedProduct["images"],
   laboratorySlug: string,
@@ -468,7 +475,7 @@ async function syncProductImages(
   for (let i = 0; i < toProcess.length; i++) {
     const img = toProcess[i];
     const result = await downloadAndUploadImage(
-      supabase,
+      storageClient,
       img.url,
       laboratorySlug,
       externalId,

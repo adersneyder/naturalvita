@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { getAdminUser } from "@/lib/admin-auth";
 import { getScraper } from "@/lib/scrapers";
 import { downloadAndUploadImage } from "@/lib/scrapers/image-downloader";
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
   const batchSize = 1; // un producto por llamada para feedback granular y evitar timeout
 
   const supabase = await createClient();
+  const storageClient = createAdminClient();
 
   const { data: source, error: sourceError } = await supabase
     .from("data_sources")
@@ -120,7 +122,7 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < toProcess.length; i++) {
       const img = toProcess[i];
       const result = await downloadAndUploadImage(
-        supabase,
+        storageClient,
         img.url,
         lab.slug,
         scrapedProduct.external_id,
