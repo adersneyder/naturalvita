@@ -120,6 +120,102 @@ export async function toggleDataSource(
   return { success: true };
 }
 
+/**
+ * Actualiza una fuente de datos existente. NO permite cambiar laboratory_id
+ * porque eso rompería la integridad referencial con productos ya importados.
+ * Si el usuario necesita reasignar a otro laboratorio, debe crear una fuente nueva.
+ */
+export async function updateDataSource(
+  id: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  await requireRole(["owner", "admin"]);
+
+  const name = String(formData.get("name") ?? "").trim();
+  const baseUrl = String(formData.get("base_url") ?? "").trim();
+  const catalogUrl = String(formData.get("catalog_url") ?? "").trim() || null;
+  const scraperStrategy = String(formData.get("scraper_strategy") ?? "").trim() || null;
+  const isActive = formData.get("is_active") !== "false";
+
+  if (!name) return { success: false, error: "Nombre de la fuente es obligatorio" };
+
+  const supabase = await createClient();
+
+  // Verificar tipo actual: si es scraper, base_url es obligatorio
+  const { data: existing } = await supabase
+    .from("data_sources")
+    .select("type")
+    .eq("id", id)
+    .single();
+
+  if (!existing) return { success: false, error: "Fuente no encontrada" };
+
+  if (existing.type === "scraper" && !baseUrl) {
+    return { success: false, error: "URL base es obligatoria para scrapers" };
+  }
+
+  const { error } = await supabase
+    .from("data_sources")
+    .update({
+      name,
+      base_url: baseUrl || null,
+      catalog_url: catalogUrl,
+      scraper_strategy: existing.type === "scraper" ? scraperStrategy : null,
+      is_active: isActive,
+    })
+    .eq("id", id);
+
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/admin/fuentes");
+  return { success: true };
+}
+
+/**
+ * Elimina una fuente de datos. Solo permite si NO tiene productos asociados
+ * (la integridad referencial impediría el delete y se perdería historial).
+ * Si tiene productos, instruye al usuario a archivar en su lugar.
+ */
+export async function deleteDataSource(id: string): Promise<ActionResult> {
+  await requireRole(["owner", "admin"]);
+  const supabase = await createClient();
+
+  const { count: productsCount } = await supabase
+    .from("products")
+    .select("*", { count: "exact", head: true })
+    .eq("data_source_id", id);
+
+  if ((productsCount ?? 0) > 0) {
+    return {
+      success: false,
+      error: `No se puede eliminar: ${productsCount} producto(s) asociado(s). Archiva la fuente en su lugar (queda inactiva pero conserva el histórico).`,
+    };
+  }
+
+  // Verificar que no haya jobs activos
+  const { count: activeJobs } = await supabase
+    .from("scraping_jobs")
+    .select("*", { count: "exact", head: true })
+    .eq("data_source_id", id)
+    .in("status", ["pending", "running"]);
+
+  if ((activeJobs ?? 0) > 0) {
+    return {
+      success: false,
+      error: "Hay un job de sincronización en curso. Espera a que termine o cancélalo antes de eliminar.",
+    };
+  }
+
+  // Borrar jobs históricos (no tienen valor sin la fuente) y luego la fuente
+  await supabase.from("scraping_jobs").delete().eq("data_source_id", id);
+
+  const { error } = await supabase.from("data_sources").delete().eq("id", id);
+  if (error) return { success: false, error: error.message };
+
+  revalidatePath("/admin/fuentes");
+  return { success: true };
+}
+
 function slugify(text: string): string {
   return text
     .toLowerCase()

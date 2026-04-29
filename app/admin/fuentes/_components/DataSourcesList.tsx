@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useRef, useEffect } from "react";
-import { createDataSource, toggleDataSource, testDataSourceConnection } from "../actions";
+import { createDataSource, toggleDataSource, testDataSourceConnection, updateDataSource, deleteDataSource } from "../actions";
 
 export type DataSourceRow = {
   id: string;
@@ -112,7 +112,11 @@ export default function DataSourcesList({
   sources: DataSourceRow[];
   canManage: boolean;
 }) {
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  type SourceModal =
+    | { mode: "closed" }
+    | { mode: "create" }
+    | { mode: "edit"; source: DataSourceRow };
+  const [sourceModal, setSourceModal] = useState<SourceModal>({ mode: "closed" });
   const [createError, setCreateError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -458,17 +462,36 @@ export default function DataSourcesList({
     }
   }
 
-  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSourceSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setCreateError(null);
     const formData = new FormData(e.currentTarget);
     startTransition(async () => {
-      const result = await createDataSource(formData);
+      const result =
+        sourceModal.mode === "edit"
+          ? await updateDataSource(sourceModal.source.id, formData)
+          : await createDataSource(formData);
       if (!result.success) {
         setCreateError(result.error ?? "Error desconocido");
         return;
       }
-      setShowCreateModal(false);
+      setSourceModal({ mode: "closed" });
+    });
+  }
+
+  function handleDelete(source: DataSourceRow) {
+    if (
+      !confirm(
+        `¿Eliminar la fuente "${source.name}"?\n\nSi tiene productos asociados se bloqueará la eliminación; en ese caso archívala desde el botón de pausa.`,
+      )
+    ) {
+      return;
+    }
+    startTransition(async () => {
+      const result = await deleteDataSource(source.id);
+      if (!result.success) {
+        alert(result.error ?? "Error al eliminar");
+      }
     });
   }
 
@@ -517,7 +540,7 @@ export default function DataSourcesList({
           <button
             onClick={() => {
               setCreateError(null);
-              setShowCreateModal(true);
+              setSourceModal({ mode: "create" });
             }}
             className="bg-[var(--color-leaf-700)] text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-[var(--color-leaf-900)] transition-colors"
           >
@@ -661,6 +684,27 @@ export default function DataSourcesList({
                       className="text-[11px] text-[var(--color-earth-700)] hover:text-[var(--color-earth-900)]"
                     >
                       {source.is_active ? "Desactivar" : "Activar"}
+                    </button>
+                  )}
+                  {canManage && (
+                    <button
+                      onClick={() => {
+                        setCreateError(null);
+                        setSourceModal({ mode: "edit", source });
+                      }}
+                      disabled={isPending}
+                      className="text-[11px] text-[var(--color-leaf-700)] hover:text-[var(--color-leaf-900)]"
+                    >
+                      Editar
+                    </button>
+                  )}
+                  {canManage && (
+                    <button
+                      onClick={() => handleDelete(source)}
+                      disabled={isPending}
+                      className="text-[11px] text-red-700 hover:text-red-900"
+                    >
+                      Eliminar
                     </button>
                   )}
                 </div>
@@ -931,30 +975,48 @@ export default function DataSourcesList({
         </div>
       )}
 
-      {/* Modal de crear fuente */}
-      {showCreateModal && (
+      {/* Modal de crear/editar fuente */}
+      {sourceModal.mode !== "closed" && (
         <div
           className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowCreateModal(false)}
+          onClick={() => setSourceModal({ mode: "closed" })}
         >
           <div
             className="bg-white rounded-xl w-full max-w-md p-6"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="font-serif text-lg font-medium text-[var(--color-leaf-900)] m-0 mb-4">
-              Nueva fuente de datos
+              {sourceModal.mode === "create"
+                ? "Nueva fuente de datos"
+                : `Editar fuente · ${sourceModal.source.name}`}
             </h2>
-            <form onSubmit={handleCreate}>
-              <label className="block text-xs font-medium text-[var(--color-earth-700)] mb-1">
-                Nombre del laboratorio *
-              </label>
-              <input
-                name="laboratory_name"
-                required
-                placeholder="ej. Laboratorios Funat"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-[rgba(47,98,56,0.2)] mb-3"
-                autoFocus
-              />
+            <form onSubmit={handleSourceSubmit}>
+              {sourceModal.mode === "create" && (
+                <>
+                  <label className="block text-xs font-medium text-[var(--color-earth-700)] mb-1">
+                    Nombre del laboratorio *
+                  </label>
+                  <input
+                    name="laboratory_name"
+                    required
+                    placeholder="ej. Laboratorios Funat"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-[rgba(47,98,56,0.2)] mb-3"
+                    autoFocus
+                  />
+                </>
+              )}
+
+              {sourceModal.mode === "edit" && (
+                <div className="mb-3 p-2 bg-[var(--color-earth-50)] rounded-lg">
+                  <p className="text-[10px] text-[var(--color-earth-700)] m-0">Laboratorio</p>
+                  <p className="text-xs font-medium text-[var(--color-leaf-900)] m-0">
+                    {sourceModal.source.laboratory_name}
+                  </p>
+                  <p className="text-[10px] text-[var(--color-earth-500)] m-0 mt-1 italic">
+                    El laboratorio no se puede cambiar. Si necesitas reasignar, crea una fuente nueva.
+                  </p>
+                </div>
+              )}
 
               <label className="block text-xs font-medium text-[var(--color-earth-700)] mb-1">
                 Nombre de la fuente *
@@ -963,29 +1025,45 @@ export default function DataSourcesList({
                 name="name"
                 required
                 placeholder="ej. Funat · Scraper"
+                defaultValue={sourceModal.mode === "edit" ? sourceModal.source.name : ""}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-[rgba(47,98,56,0.2)] mb-3"
+                autoFocus={sourceModal.mode === "edit"}
               />
 
-              <label className="block text-xs font-medium text-[var(--color-earth-700)] mb-1">
-                Tipo de fuente *
-              </label>
-              <select
-                name="type"
-                required
-                className="w-full px-3 py-2 text-sm rounded-lg border border-[rgba(47,98,56,0.2)] mb-3 bg-white"
-                defaultValue="scraper"
-              >
-                <option value="scraper">Scraper automático</option>
-                <option value="csv_import">Importación CSV (manual)</option>
-              </select>
+              {sourceModal.mode === "create" && (
+                <>
+                  <label className="block text-xs font-medium text-[var(--color-earth-700)] mb-1">
+                    Tipo de fuente *
+                  </label>
+                  <select
+                    name="type"
+                    required
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-[rgba(47,98,56,0.2)] mb-3 bg-white"
+                    defaultValue="scraper"
+                  >
+                    <option value="scraper">Scraper automático</option>
+                    <option value="csv_import">Importación CSV (manual)</option>
+                  </select>
+                </>
+              )}
+
+              {sourceModal.mode === "edit" && (
+                <div className="mb-3 p-2 bg-[var(--color-earth-50)] rounded-lg">
+                  <p className="text-[10px] text-[var(--color-earth-700)] m-0">Tipo</p>
+                  <p className="text-xs font-medium text-[var(--color-leaf-900)] m-0">
+                    {sourceModal.source.type === "scraper" ? "Scraper automático" : "Importación CSV"}
+                  </p>
+                </div>
+              )}
 
               <label className="block text-xs font-medium text-[var(--color-earth-700)] mb-1">
-                URL base del sitio
+                URL base del sitio {(sourceModal.mode === "create" || sourceModal.source.type === "scraper") ? "*" : ""}
               </label>
               <input
                 name="base_url"
                 type="url"
                 placeholder="https://ejemplo.com"
+                defaultValue={sourceModal.mode === "edit" ? (sourceModal.source.base_url ?? "") : ""}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-[rgba(47,98,56,0.2)] mb-3"
               />
 
@@ -996,22 +1074,45 @@ export default function DataSourcesList({
                 name="catalog_url"
                 type="url"
                 placeholder="https://tienda.ejemplo.com"
+                defaultValue={sourceModal.mode === "edit" ? (sourceModal.source.catalog_url ?? "") : ""}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-[rgba(47,98,56,0.2)] mb-3"
               />
 
-              <label className="block text-xs font-medium text-[var(--color-earth-700)] mb-1">
-                Estrategia de scraping
-              </label>
-              <select
-                name="scraper_strategy"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-[rgba(47,98,56,0.2)] mb-3 bg-white"
-                defaultValue="woocommerce"
-              >
-                <option value="woocommerce">WooCommerce (Store API)</option>
-              </select>
-              <p className="text-[10px] text-[var(--color-earth-500)] -mt-2 mb-3">
-                Otras plataformas (Shopify, Magento) próximamente
-              </p>
+              {(sourceModal.mode === "create" ||
+                sourceModal.source.type === "scraper") && (
+                <>
+                  <label className="block text-xs font-medium text-[var(--color-earth-700)] mb-1">
+                    Estrategia de scraping
+                  </label>
+                  <select
+                    name="scraper_strategy"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-[rgba(47,98,56,0.2)] mb-3 bg-white"
+                    defaultValue={
+                      sourceModal.mode === "edit"
+                        ? (sourceModal.source.scraper_strategy ?? "woocommerce")
+                        : "woocommerce"
+                    }
+                  >
+                    <option value="woocommerce">WooCommerce (Store API)</option>
+                  </select>
+                  <p className="text-[10px] text-[var(--color-earth-500)] -mt-2 mb-3">
+                    Otras plataformas (Shopify, Magento) próximamente
+                  </p>
+                </>
+              )}
+
+              {sourceModal.mode === "edit" && (
+                <label className="flex items-center gap-2 mb-3 text-xs text-[var(--color-leaf-900)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    name="is_active"
+                    value="true"
+                    defaultChecked={sourceModal.source.is_active}
+                    className="w-3.5 h-3.5"
+                  />
+                  Activa (sus productos pueden sincronizarse)
+                </label>
+              )}
 
               {createError && (
                 <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
@@ -1022,7 +1123,7 @@ export default function DataSourcesList({
               <div className="flex gap-2 justify-end mt-5">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => setSourceModal({ mode: "closed" })}
                   className="px-4 py-2 text-sm text-[var(--color-earth-700)] hover:bg-[var(--color-earth-100)] rounded-lg"
                   disabled={isPending}
                 >
@@ -1033,7 +1134,13 @@ export default function DataSourcesList({
                   disabled={isPending}
                   className="px-4 py-2 text-sm font-medium bg-[var(--color-leaf-700)] text-white rounded-lg hover:bg-[var(--color-leaf-900)] disabled:opacity-50"
                 >
-                  {isPending ? "Creando..." : "Crear fuente"}
+                  {isPending
+                    ? sourceModal.mode === "edit"
+                      ? "Guardando..."
+                      : "Creando..."
+                    : sourceModal.mode === "edit"
+                      ? "Guardar cambios"
+                      : "Crear fuente"}
                 </button>
               </div>
             </form>
