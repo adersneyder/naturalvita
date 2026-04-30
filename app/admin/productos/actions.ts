@@ -48,13 +48,15 @@ export async function updateProduct(
     contentUnit,
   );
 
+  // Construir updateData sin tocar los campos editoriales gestionados por AiContentSection.
+  // Esos campos (short_description, full_description, composition_use, dosage, warnings) los
+  // gestiona el endpoint /api/products/generate-ai-content, NO el form principal del editor.
+  // Solo persistimos los campos que SÍ están en el formulario actual.
   const updateData: Record<string, unknown> = {
     name,
-    short_description: String(formData.get("short_description") ?? "").trim() || null,
     description: String(formData.get("description") ?? "").trim() || null,
     ingredients: String(formData.get("ingredients") ?? "").trim() || null,
     usage_instructions: String(formData.get("usage_instructions") ?? "").trim() || null,
-    warnings: String(formData.get("warnings") ?? "").trim() || null,
     invima_number: String(formData.get("invima_number") ?? "").trim() || null,
     presentation_type: presentationType,
     content_value: contentValue,

@@ -72,7 +72,7 @@ export default async function ProductosPage({
     .select(
       `id, name, slug, sku, status, needs_review, price_cop, source_price_cop, stock,
        invima_number, presentation, presentation_type, content_value, content_unit,
-       laboratory_id, category_id, tax_rate_id, is_featured, last_synced_at,
+       laboratory_id, category_id, tax_rate_id, is_featured, last_synced_at, ai_metadata,
        laboratory:laboratories!laboratory_id(name, slug),
        category:categories!category_id(name),
        tax_rate:tax_rates!tax_rate_id(name, rate_percent),
@@ -139,6 +139,7 @@ export default async function ProductosPage({
     tax_rate_id: string | null;
     is_featured: boolean;
     last_synced_at: string | null;
+    ai_metadata: Record<string, unknown> | null;
     laboratory: { name: string; slug: string } | { name: string; slug: string }[] | null;
     category: { name: string } | { name: string }[] | null;
     tax_rate: { name: string; rate_percent: number } | { name: string; rate_percent: number }[] | null;
@@ -196,6 +197,7 @@ export default async function ProductosPage({
       primary_image_url: primary?.url ?? null,
       image_count: images.length,
       last_synced_at: p.last_synced_at,
+      ai_metadata: p.ai_metadata,
     };
   });
 

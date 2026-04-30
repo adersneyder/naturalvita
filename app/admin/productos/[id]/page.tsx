@@ -22,6 +22,7 @@ export default async function ProductEditorPage({
     .select(
       `id, name, slug, sku, status, needs_review, is_featured,
        short_description, description, ingredients, usage_instructions, warnings,
+       full_description, composition_use, dosage, ai_metadata,
        price_cop, compare_at_price_cop, source_price_cop, source_price_updated_at,
        cost_cop, stock, track_stock,
        invima_number, presentation, presentation_type, content_value, content_unit, weight_grams,
@@ -83,6 +84,10 @@ export default async function ProductEditorPage({
     ingredients: product.ingredients,
     usage_instructions: product.usage_instructions,
     warnings: product.warnings,
+    full_description: product.full_description ?? null,
+    composition_use: product.composition_use ?? null,
+    dosage: product.dosage ?? null,
+    ai_metadata: product.ai_metadata ?? null,
     price_cop: product.price_cop,
     compare_at_price_cop: product.compare_at_price_cop,
     source_price_cop: product.source_price_cop,

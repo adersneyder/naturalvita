@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useTransition, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -40,6 +40,7 @@ export type ProductRow = {
   primary_image_url: string | null;
   image_count: number;
   last_synced_at: string | null;
+  ai_metadata: Record<string, unknown> | null;
 };
 
 export type FilterAttributeOption = { id: string; value: string };
@@ -144,7 +145,9 @@ export default function ProductsList({
     | "collection_add"
     | "collection_remove"
     | "attribute_set"
-    | "attribute_remove";
+    | "attribute_remove"
+    | "ai_generate_missing"
+    | "ai_regenerate_all";
   const [bulkAction, setBulkAction] = useState<BulkActionKind>("none");
   const [bulkValue, setBulkValue] = useState<string>(""); // primer selector (id de colección o atributo)
   const [bulkSecondary, setBulkSecondary] = useState<string>(""); // opción del atributo
@@ -152,6 +155,35 @@ export default function ProductsList({
   const [bulkText, setBulkText] = useState<string>(""); // text attribute
   const [error, setError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState(currentParams.q ?? "");
+
+  // Estado del bulk de generación con IA: el flujo es producto a producto
+  // con barra de progreso porque cada llamada toma 10-30s y supera el budget
+  // de Vercel si se procesan en serie en una sola request.
+  type AiBulkState =
+    | { mode: "idle" }
+    | {
+        mode: "running";
+        regenerate: boolean;
+        total: number;
+        processed: number;
+        succeeded: number;
+        regulatory_failed: number;
+        failed: number;
+        cost_usd: number;
+        currentProductName: string;
+        lastErrors: Array<{ name: string; error: string }>;
+      }
+    | {
+        mode: "done";
+        total: number;
+        succeeded: number;
+        regulatory_failed: number;
+        failed: number;
+        cost_usd: number;
+      };
+  const [aiBulk, setAiBulk] = useState<AiBulkState>({ mode: "idle" });
+  const aiCancelledRef = useRef(false);
+  const aiAbortRef = useRef<AbortController | null>(null);
 
   const selectedAttribute = useMemo(
     () => filterOptions.attributes.find((a) => a.id === bulkValue) ?? null,
@@ -209,10 +241,169 @@ export default function ProductsList({
     setBulkText("");
   }
 
+  /**
+   * Ejecuta generación masiva de fichas con IA producto por producto.
+   *
+   * No procesamos en paralelo a propósito:
+   * 1) Rate limit del API de Anthropic
+   * 2) Cada llamada vive en su propia función Vercel con budget de 60s
+   * 3) Una llamada por producto da feedback granular al usuario y cancelación instantánea
+   *
+   * El endpoint /api/products/generate-ai-content acepta apply_immediately=true
+   * para guardar de inmediato si el resultado pasa la validación regulatoria.
+   * Si falla regulatorio, queda como log pendiente de revisión manual.
+   */
+  async function runAiBulk(productIds: string[], regenerate: boolean) {
+    aiCancelledRef.current = false;
+    aiAbortRef.current = new AbortController();
+
+    let succeeded = 0;
+    let regulatory_failed = 0;
+    let failed = 0;
+    let cost_usd = 0;
+    const lastErrors: Array<{ name: string; error: string }> = [];
+
+    setAiBulk({
+      mode: "running",
+      regenerate,
+      total: productIds.length,
+      processed: 0,
+      succeeded: 0,
+      regulatory_failed: 0,
+      failed: 0,
+      cost_usd: 0,
+      currentProductName: "",
+      lastErrors: [],
+    });
+
+    for (let i = 0; i < productIds.length; i++) {
+      if (aiCancelledRef.current) break;
+
+      const productId = productIds[i];
+      const product = products.find((p) => p.id === productId);
+      const productName = product?.name ?? `Producto ${productId.slice(0, 8)}`;
+
+      setAiBulk((prev) =>
+        prev.mode === "running"
+          ? { ...prev, currentProductName: productName, processed: i }
+          : prev,
+      );
+
+      try {
+        const resp = await fetch("/api/products/generate-ai-content", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "generate",
+            product_id: productId,
+            apply_immediately: true,
+          }),
+          signal: aiAbortRef.current.signal,
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok || data.error) {
+          failed++;
+          lastErrors.push({
+            name: productName,
+            error: data.error ?? `HTTP ${resp.status}`,
+          });
+        } else {
+          cost_usd += data.estimated_cost_usd ?? 0;
+
+          if (data.status === "success" && data.applied) {
+            succeeded++;
+          } else if (data.status === "regulatory_failed") {
+            regulatory_failed++;
+            lastErrors.push({
+              name: productName,
+              error: `Términos prohibidos: ${data.regulatory?.issues?.join(", ") ?? "—"}`,
+            });
+          } else {
+            failed++;
+            lastErrors.push({
+              name: productName,
+              error: data.error_message ?? data.status,
+            });
+          }
+        }
+
+        setAiBulk((prev) =>
+          prev.mode === "running"
+            ? {
+                ...prev,
+                processed: i + 1,
+                succeeded,
+                regulatory_failed,
+                failed,
+                cost_usd,
+                lastErrors: lastErrors.slice(-3),
+              }
+            : prev,
+        );
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") break;
+        failed++;
+        lastErrors.push({
+          name: productName,
+          error: err instanceof Error ? err.message : "Error de red",
+        });
+      }
+
+      // Pausa pequeña entre llamadas para no saturar el API
+      if (i < productIds.length - 1) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    }
+
+    aiAbortRef.current = null;
+    setAiBulk({
+      mode: "done",
+      total: productIds.length,
+      succeeded,
+      regulatory_failed,
+      failed,
+      cost_usd,
+    });
+  }
+
+  function cancelAiBulk() {
+    aiCancelledRef.current = true;
+    aiAbortRef.current?.abort();
+  }
+
   function executeBulk() {
     if (bulkAction === "none") return;
     const ids = Array.from(selected);
     setError(null);
+
+    // Acciones IA: bypaseamos startTransition porque tenemos UI de progreso propia
+    if (bulkAction === "ai_generate_missing" || bulkAction === "ai_regenerate_all") {
+      const regenerate = bulkAction === "ai_regenerate_all";
+      // Filtrar productos que ya tienen ficha si el modo es "solo faltantes"
+      const targetIds = regenerate
+        ? ids
+        : ids.filter((id) => {
+            const p = products.find((x) => x.id === id);
+            return !p?.ai_metadata; // sin ai_metadata significa que aún no se generó
+          });
+
+      if (targetIds.length === 0) {
+        setError("No hay productos que cumplan el filtro (todos ya tienen ficha generada).");
+        return;
+      }
+
+      const confirmText = regenerate
+        ? `Regenerar fichas IA para ${targetIds.length} producto${targetIds.length === 1 ? "" : "s"}?\n\nSe sobreescribirán las fichas actuales. Costo estimado: ~$${(targetIds.length * 0.025).toFixed(2)} USD.`
+        : `Generar fichas IA para ${targetIds.length} producto${targetIds.length === 1 ? "" : "s"} sin ficha?\n\nCosto estimado: ~$${(targetIds.length * 0.025).toFixed(2)} USD.`;
+
+      if (!confirm(confirmText)) return;
+
+      runAiBulk(targetIds, regenerate);
+      clearSelection();
+      return;
+    }
 
     startTransition(async () => {
       let result;
@@ -508,6 +699,10 @@ export default function ProductsList({
               <option value="attribute_set">Asignar valor de atributo</option>
               <option value="attribute_remove">Quitar atributo</option>
             </optgroup>
+            <optgroup label="Contenido editorial">
+              <option value="ai_generate_missing">Generar fichas faltantes con IA</option>
+              <option value="ai_regenerate_all">Regenerar todas las fichas con IA</option>
+            </optgroup>
           </select>
 
           {bulkAction === "category" && (
@@ -635,6 +830,19 @@ export default function ProductsList({
             </>
           )}
 
+          {(bulkAction === "ai_generate_missing" || bulkAction === "ai_regenerate_all") && (
+            <span className="text-[10px] text-[var(--color-earth-700)] italic">
+              {(() => {
+                const ids = Array.from(selected);
+                const targetCount =
+                  bulkAction === "ai_regenerate_all"
+                    ? ids.length
+                    : ids.filter((id) => !products.find((x) => x.id === id)?.ai_metadata).length;
+                return `Procesará ${targetCount} producto${targetCount === 1 ? "" : "s"} · ~$${(targetCount * 0.025).toFixed(2)} USD`;
+              })()}
+            </span>
+          )}
+
           {bulkAction !== "none" && (
             <button
               onClick={executeBulk}
@@ -707,6 +915,127 @@ export default function ProductsList({
               className="text-xs px-3 py-1.5 rounded-lg border border-[rgba(47,98,56,0.15)] bg-white disabled:opacity-40"
             >
               Siguiente →
+            </button>
+          </div>
+        </div>
+      )}
+      {/* Modal de progreso del bulk IA */}
+      {aiBulk.mode === "running" && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-6">
+            <h2 className="font-serif text-lg font-medium text-[var(--color-leaf-900)] m-0 mb-2">
+              Generando fichas con IA
+            </h2>
+            <p className="text-xs text-[var(--color-earth-700)] m-0 mb-1">
+              Procesando {aiBulk.processed} de {aiBulk.total}
+            </p>
+            <p className="text-[10px] text-[var(--color-earth-500)] mb-3 m-0 truncate">
+              Actual: {aiBulk.currentProductName || "—"}
+            </p>
+
+            <div className="w-full bg-[var(--color-earth-100)] rounded-full h-2 overflow-hidden mb-4">
+              <div
+                className="bg-[var(--color-leaf-700)] h-2 transition-all"
+                style={{
+                  width: `${aiBulk.total > 0 ? (aiBulk.processed / aiBulk.total) * 100 : 0}%`,
+                }}
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="text-center p-2 bg-[#DBF0DD] rounded-lg">
+                <p className="text-[10px] text-[#173404] m-0">Aplicadas</p>
+                <p className="font-serif text-xl text-[#173404] m-0 font-medium">
+                  {aiBulk.succeeded}
+                </p>
+              </div>
+              <div className="text-center p-2 bg-[#FAEEDA] rounded-lg">
+                <p className="text-[10px] text-[#854F0B] m-0">Revisar</p>
+                <p className="font-serif text-xl text-[#854F0B] m-0 font-medium">
+                  {aiBulk.regulatory_failed}
+                </p>
+              </div>
+              <div className="text-center p-2 bg-red-50 rounded-lg">
+                <p className="text-[10px] text-red-700 m-0">Fallidas</p>
+                <p className="font-serif text-xl text-red-700 m-0 font-medium">{aiBulk.failed}</p>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-[var(--color-earth-500)] text-center m-0 mb-3">
+              Costo acumulado: ${aiBulk.cost_usd.toFixed(4)} USD
+            </p>
+
+            {aiBulk.lastErrors.length > 0 && (
+              <div className="mb-3 p-2 bg-[#FAEEDA] border border-[rgba(133,79,11,0.2)] rounded text-[10px] text-[#854F0B] max-h-20 overflow-y-auto">
+                <p className="font-medium m-0 mb-1">Últimos eventos:</p>
+                {aiBulk.lastErrors.map((e, i) => (
+                  <p key={i} className="m-0 truncate">
+                    <span className="font-mono">{e.name}:</span> {e.error}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={cancelAiBulk}
+              className="w-full px-4 py-2 text-sm font-medium border border-red-300 text-red-700 rounded-lg hover:bg-red-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Resultado final del bulk IA */}
+      {aiBulk.mode === "done" && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-md p-6">
+            <div className="text-center mb-4">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-leaf-100)] text-[var(--color-leaf-700)] mb-3 text-xl">
+                ✓
+              </div>
+              <h2 className="font-serif text-lg font-medium text-[var(--color-leaf-900)] m-0">
+                Generación completada
+              </h2>
+              <p className="text-xs text-[var(--color-earth-700)] mt-1 m-0">
+                Costo total: ${aiBulk.cost_usd.toFixed(4)} USD
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              <div className="text-center p-3 bg-[#DBF0DD] rounded-lg">
+                <p className="text-xs text-[#173404] m-0 mb-1">Aplicadas</p>
+                <p className="font-serif text-2xl text-[#173404] m-0 font-medium">
+                  {aiBulk.succeeded}
+                </p>
+              </div>
+              <div className="text-center p-3 bg-[#FAEEDA] rounded-lg">
+                <p className="text-xs text-[#854F0B] m-0 mb-1">A revisar</p>
+                <p className="font-serif text-2xl text-[#854F0B] m-0 font-medium">
+                  {aiBulk.regulatory_failed}
+                </p>
+              </div>
+              <div className="text-center p-3 bg-red-50 rounded-lg">
+                <p className="text-xs text-red-700 m-0 mb-1">Fallidas</p>
+                <p className="font-serif text-2xl text-red-700 m-0 font-medium">{aiBulk.failed}</p>
+              </div>
+            </div>
+
+            {aiBulk.regulatory_failed > 0 && (
+              <p className="text-[10px] text-[#854F0B] text-center m-0 mb-3">
+                Las fichas marcadas como &ldquo;A revisar&rdquo; quedaron en el log de generación.
+                Edita esos productos individualmente para revisar y aprobar manualmente.
+              </p>
+            )}
+
+            <button
+              onClick={() => {
+                setAiBulk({ mode: "idle" });
+                router.refresh();
+              }}
+              className="w-full px-4 py-2 text-sm font-medium bg-[var(--color-leaf-700)] text-white rounded-lg hover:bg-[var(--color-leaf-900)]"
+            >
+              Cerrar y refrescar
             </button>
           </div>
         </div>

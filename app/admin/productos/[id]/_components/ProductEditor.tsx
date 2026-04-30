@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useMemo } from "react";
+import AiContentSection from "./AiContentSection";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -31,6 +32,18 @@ export type ProductDetail = {
   ingredients: string | null;
   usage_instructions: string | null;
   warnings: string | null;
+  full_description: string | null;
+  composition_use: string | null;
+  dosage: string | null;
+  ai_metadata: {
+    generated_at?: string;
+    model?: string;
+    template_id?: string;
+    template_version?: string;
+    regulatory_check_passed?: boolean;
+    manual_edits_count?: number;
+    last_edit_at?: string | null;
+  } | null;
   price_cop: number;
   compare_at_price_cop: number | null;
   source_price_cop: number | null;
@@ -404,23 +417,48 @@ export default function ProductEditor({
             </div>
           </Card>
 
+          <AiContentSection
+            productId={product.id}
+            current={{
+              short_description: product.short_description ?? "",
+              full_description: product.full_description ?? "",
+              composition_use: product.composition_use ?? "",
+              dosage: product.dosage ?? "",
+              warnings: product.warnings ?? "",
+              ai_metadata: product.ai_metadata,
+            }}
+          />
+
           <Card>
-            <SectionTitle>Descripción</SectionTitle>
-            <Label>Descripción corta · se muestra en tarjetas del catálogo</Label>
-            <Textarea
-              name="short_description"
-              defaultValue={product.short_description ?? ""}
-              rows={2}
-              maxLength={300}
-              placeholder="Una frase atractiva para mostrar en el catálogo"
-            />
-            <Label className="mt-3">Descripción completa</Label>
-            <Textarea
-              name="description"
-              defaultValue={product.description ?? ""}
-              rows={6}
-              placeholder="Descripción detallada del producto..."
-            />
+            <SectionTitle>Datos crudos del scraper</SectionTitle>
+            <p className="text-[11px] text-[var(--color-earth-700)] m-0 mb-2">
+              Información original tal como vino del laboratorio. No se muestra al cliente, sirve
+              de fuente para la generación con IA.
+            </p>
+            <details>
+              <summary className="text-[11px] text-[var(--color-leaf-700)] cursor-pointer mb-2">
+                Ver descripción y otros campos del scraper
+              </summary>
+              <Label className="mt-2">Descripción cruda (del laboratorio)</Label>
+              <Textarea
+                name="description"
+                defaultValue={product.description ?? ""}
+                rows={6}
+                placeholder="Texto sin procesar tal como llegó del scraper"
+              />
+              <Label className="mt-3">Ingredientes (del laboratorio)</Label>
+              <Textarea
+                name="ingredients"
+                defaultValue={product.ingredients ?? ""}
+                rows={3}
+              />
+              <Label className="mt-3">Modo de uso (del laboratorio)</Label>
+              <Textarea
+                name="usage_instructions"
+                defaultValue={product.usage_instructions ?? ""}
+                rows={3}
+              />
+            </details>
           </Card>
 
           <Card>
@@ -497,31 +535,6 @@ export default function ProductEditor({
                 ⚠ Sin INVIMA · obligatorio para productos de salud en Colombia
               </p>
             )}
-          </Card>
-
-          <Card>
-            <SectionTitle>Composición y uso</SectionTitle>
-            <Label>Composición / Ingredientes</Label>
-            <Textarea
-              name="ingredients"
-              defaultValue={product.ingredients ?? ""}
-              rows={4}
-              placeholder="Lista de ingredientes activos y su concentración..."
-            />
-            <Label className="mt-3">Modo de uso / Posología</Label>
-            <Textarea
-              name="usage_instructions"
-              defaultValue={product.usage_instructions ?? ""}
-              rows={3}
-              placeholder="Cómo se debe consumir, frecuencia, dosis..."
-            />
-            <Label className="mt-3">Advertencias y contraindicaciones</Label>
-            <Textarea
-              name="warnings"
-              defaultValue={product.warnings ?? ""}
-              rows={3}
-              placeholder="Quién no debe consumirlo, efectos secundarios posibles..."
-            />
           </Card>
 
           <Card>
