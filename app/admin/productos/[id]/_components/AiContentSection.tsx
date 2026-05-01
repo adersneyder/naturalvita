@@ -61,16 +61,21 @@ export default function AiContentSection({ productId, current }: Props) {
   const [draft, setDraft] = useState<AiGeneratedFields | null>(null);
   const [metadata, setMetadata] = useState<{ template_id: string; model: string; cost: number; tokens: { input: number; output: number } } | null>(null);
   const [regulatoryIssues, setRegulatoryIssues] = useState<GenerateResponse["regulatory"] | null>(null);
+  const [structuralIssue, setStructuralIssue] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
 
-  const hasGenerated = !!current.short_description;
+  // La detección de "ficha ya generada" se basa en ai_metadata (poblado solo por
+  // applyContentToProduct), NO en short_description: esta columna viene del scraper
+  // original para muchos productos y daría falso positivo.
+  const hasGenerated = !!current.ai_metadata?.generated_at;
   const isStale = hasGenerated && current.ai_metadata?.template_version !== "v1";
 
   function generate() {
     setError(null);
     setDraft(null);
     setRegulatoryIssues(null);
+    setStructuralIssue(null);
 
     startTransition(async () => {
       try {
@@ -82,25 +87,15 @@ export default function AiContentSection({ productId, current }: Props) {
 
         const data: GenerateResponse = await resp.json();
 
-        if (data.status === "api_error" || data.status === "parse_error") {
+        // api_error: el API de Anthropic falló. Sin draft posible.
+        if (data.status === "api_error") {
           setError(data.error_message ?? "Error generando contenido");
           return;
         }
 
-        if (data.status === "regulatory_failed") {
-          setRegulatoryIssues(data.regulatory);
-          // No bloqueamos: dejamos al admin revisar el draft y editar antes de aplicar
-          if (data.output_parsed) setDraft(data.output_parsed);
-          setMetadata({
-            template_id: data.template_id,
-            model: data.model,
-            cost: data.estimated_cost_usd,
-            tokens: { input: data.input_tokens, output: data.output_tokens },
-          });
-          return;
-        }
-
-        // status === "success"
+        // En cualquier otro caso (success, regulatory_failed, parse_error)
+        // queremos guardar el draft si la IA logró producir algo parseable.
+        // El admin verá los warnings y decidirá si aplicarlo o regenerar.
         if (data.output_parsed) {
           setDraft(data.output_parsed);
           setMetadata({
@@ -109,6 +104,15 @@ export default function AiContentSection({ productId, current }: Props) {
             cost: data.estimated_cost_usd,
             tokens: { input: data.input_tokens, output: data.output_tokens },
           });
+        }
+
+        if (data.status === "parse_error") {
+          // Mostramos como aviso informativo, no como error rojo
+          setStructuralIssue(data.error_message);
+        }
+
+        if (data.status === "regulatory_failed") {
+          setRegulatoryIssues(data.regulatory);
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Error de red");
@@ -198,6 +202,21 @@ export default function AiContentSection({ productId, current }: Props) {
         </div>
       )}
 
+      {structuralIssue && (
+        <div className="mb-3 p-3 bg-[#E6F1FB] border border-[rgba(12,68,124,0.3)] rounded-lg">
+          <p className="text-xs font-medium text-[#0C447C] m-0 mb-1">
+            Aviso estructural
+          </p>
+          <p className="text-[10px] text-[#0C447C] m-0">
+            {structuralIssue}
+          </p>
+          <p className="text-[10px] text-[#0C447C] m-0 mt-1">
+            El contenido se muestra abajo. Puedes editarlo manualmente para ajustar longitud y
+            aprobarlo, o regenerar para obtener una nueva propuesta.
+          </p>
+        </div>
+      )}
+
       {regulatoryIssues && !regulatoryIssues.passed && (
         <div className="mb-3 p-3 bg-[#FAEEDA] border border-[rgba(133,79,11,0.3)] rounded-lg">
           <p className="text-xs font-medium text-[#854F0B] m-0 mb-1">
@@ -273,6 +292,7 @@ export default function AiContentSection({ productId, current }: Props) {
               onClick={() => {
                 setDraft(null);
                 setRegulatoryIssues(null);
+                setStructuralIssue(null);
                 setMetadata(null);
               }}
               disabled={isPending}

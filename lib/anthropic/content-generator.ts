@@ -210,43 +210,57 @@ export async function generateContentForProduct(
     }
     logFields.output_parsed = parsed;
 
-    // 8. Validar estructura (longitudes, conteos)
+    // 8 y 9. Validar estructura y compliance regulatorio.
+    // Diseño: ningún path lanza. El admin recibe el draft incluso si hay problemas
+    // y decide qué hacer (aprobar tal cual con riesgo, editar y aprobar, descartar).
+    let regulatory: ReturnType<typeof validateRegulatoryCompliance> | null = null;
     const struct = validateStructure(parsed);
+    const structuralWarnings: string[] = struct.warnings;
+
+    const disclaimer = getDisclaimerForTemplate(templateId);
+    regulatory = validateRegulatoryCompliance(templateId, parsed, [disclaimer]);
+
+    // Determinar status: parse_error tiene precedencia (problema más fundamental),
+    // luego regulatory_failed, luego success.
     if (!struct.ok) {
       logFields.status = "parse_error";
-      logFields.error_message = `Validación estructural falló: ${struct.issues.join(" · ")}`;
-      throw new Error(logFields.error_message);
-    }
-
-    // 9. Validar compliance regulatorio (con disclaimer exento)
-    const disclaimer = getDisclaimerForTemplate(templateId);
-    const regulatory = validateRegulatoryCompliance(templateId, parsed, [disclaimer]);
-    if (!regulatory.passed) {
+      const note = structuralWarnings.length > 0
+        ? ` · advertencias: ${structuralWarnings.join(" · ")}`
+        : "";
+      logFields.error_message = `Estructura: ${struct.errors.join(" · ")}${note}`;
+    } else if (!regulatory.passed) {
       logFields.status = "regulatory_failed";
       logFields.regulatory_issues = regulatory.issues;
-      logFields.error_message = `Términos prohibidos detectados: ${regulatory.issues.join(", ")}`;
-      // No lanzamos: queremos persistir el log para auditoría
+      logFields.error_message = `Términos prohibidos: ${regulatory.issues.join(", ")}`;
     } else {
       logFields.status = "success";
+      if (structuralWarnings.length > 0) {
+        logFields.error_message = `Advertencias: ${structuralWarnings.join(" · ")}`;
+      }
     }
 
     logFields.duration_ms = Date.now() - startTime;
 
     // 10. Persistir log
-    await supabase.from("ai_generation_log").insert({
+    const { error: logInsertError } = await supabase.from("ai_generation_log").insert({
       product_id: productId,
       triggered_by: triggeredBy,
       ...logFields,
       applied_to_product: false,
     });
+    if (logInsertError) {
+      console.error("[content-generator] Failed to insert log (success path):", logInsertError.message);
+    }
 
+    // Devolvemos el draft SIEMPRE que se haya parseado, aunque tenga issues.
+    // El cliente (UI) decide qué hacer con un parse_error o regulatory_failed.
     return {
       status: logFields.status,
       template_id: templateId,
       model: ACTIVE_MODEL,
       output_raw: logFields.output_raw,
-      output_parsed: logFields.status === "success" ? parsed : null,
-      regulatory: logFields.status === "regulatory_failed" ? regulatory : null,
+      output_parsed: parsed,
+      regulatory: !regulatory.passed ? regulatory : null,
       input_tokens: logFields.input_tokens,
       output_tokens: logFields.output_tokens,
       estimated_cost_usd: logFields.estimated_cost_usd,
@@ -260,16 +274,21 @@ export async function generateContentForProduct(
         error instanceof Error ? error.message : "Error desconocido";
     }
 
-    // Persistir log incluso ante error, para tener histórico completo
-    await supabase
-      .from("ai_generation_log")
-      .insert({
+    // Persistir log incluso ante error, para tener histórico completo.
+    // Si el insert mismo falla (ej. RLS), lo loggeamos para diagnóstico.
+    try {
+      const { error: logError } = await supabase.from("ai_generation_log").insert({
         product_id: productId,
         triggered_by: triggeredBy,
         ...logFields,
         applied_to_product: false,
-      })
-      .then(() => null, () => null); // tolerante a fallo de log
+      });
+      if (logError) {
+        console.error("[content-generator] Failed to insert log:", logError.message);
+      }
+    } catch (logErr) {
+      console.error("[content-generator] Exception inserting log:", logErr);
+    }
 
     return {
       status: logFields.status,

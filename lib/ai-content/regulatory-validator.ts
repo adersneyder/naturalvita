@@ -216,36 +216,87 @@ function escapeRegex(s: string): string {
 }
 
 /**
- * Validaciones estructurales del output que NO son regulatorias pero que también deben pasar.
- * Si alguna falla, marcamos como parse_error en el log.
+ * Validaciones estructurales del output.
+ *
+ * Distinguimos:
+ * - **errors**: bloquean la aplicación al producto. Solo cuando el campo está vacío
+ *   o groseramente fuera de rango (indicador de IA confundida).
+ * - **warnings**: informativos. La ficha es aceptable pero podría afinarse.
+ *
+ * Rangos objetivo (priorizando experiencia de compra y conversión, no SEO máximo):
+ *   short_description : 140-160 chars  (límite duro: 60 / 165)
+ *   full_description  : 75-95 palabras (límite duro: 60 / 130, 1 párrafo)
+ *   composition_use   : 40-60 palabras (límite duro: 25 / 100)
+ *   dosage            : 15-30 palabras (límite duro: 8 / 60)
+ *   warnings          : 40-55 palabras (límite duro: 25 / 100)
  */
 export function validateStructure(output: AiContentFields): {
   ok: boolean;
-  issues: string[];
+  errors: string[];
+  warnings: string[];
 } {
-  const issues: string[] = [];
+  const errors: string[] = [];
+  const warnings: string[] = [];
 
-  if (!output.short_description || output.short_description.trim().length < 100) {
-    issues.push("short_description muy corta (<100 chars)");
-  }
-  if (output.short_description && output.short_description.length > 165) {
-    issues.push(`short_description muy larga (${output.short_description.length} chars, máx 165)`);
+  // short_description: meta description de Google (sin cambio)
+  const shortLen = (output.short_description ?? "").trim().length;
+  if (shortLen === 0) {
+    errors.push("short_description vacía");
+  } else if (shortLen < 60) {
+    errors.push(`short_description demasiado corta (${shortLen} chars)`);
+  } else if (shortLen < 140) {
+    warnings.push(`short_description corta (${shortLen} chars, ideal 140-160)`);
+  } else if (shortLen > 165) {
+    warnings.push(`short_description larga (${shortLen} chars, ideal 140-160)`);
   }
 
+  // full_description: cuerpo conciso de 1 párrafo
   const fullWords = (output.full_description ?? "").split(/\s+/).filter(Boolean).length;
-  if (fullWords < 130 || fullWords > 220) {
-    issues.push(`full_description fuera de rango (${fullWords} palabras, esperado 150-180)`);
+  if (fullWords === 0) {
+    errors.push("full_description vacía");
+  } else if (fullWords < 60) {
+    errors.push(`full_description demasiado corta (${fullWords} palabras)`);
+  } else if (fullWords > 130) {
+    errors.push(`full_description demasiado larga (${fullWords} palabras)`);
+  } else if (fullWords < 75 || fullWords > 95) {
+    warnings.push(`full_description fuera de rango ideal (${fullWords} palabras, ideal 75-95)`);
   }
 
-  if (!output.composition_use || output.composition_use.trim().length < 50) {
-    issues.push("composition_use muy corta o vacía");
-  }
-  if (!output.dosage || output.dosage.trim().length < 20) {
-    issues.push("dosage muy corta o vacía");
-  }
-  if (!output.warnings || output.warnings.trim().length < 100) {
-    issues.push("warnings muy corta o vacía");
+  // composition_use: lista compacta + 1 frase de uso
+  const compoWords = (output.composition_use ?? "").split(/\s+/).filter(Boolean).length;
+  if (compoWords === 0) {
+    errors.push("composition_use vacía");
+  } else if (compoWords < 25) {
+    errors.push(`composition_use demasiado corta (${compoWords} palabras)`);
+  } else if (compoWords > 100) {
+    errors.push(`composition_use demasiado larga (${compoWords} palabras)`);
+  } else if (compoWords < 40 || compoWords > 60) {
+    warnings.push(`composition_use fuera de rango ideal (${compoWords} palabras, ideal 40-60)`);
   }
 
-  return { ok: issues.length === 0, issues };
+  // dosage: 2 líneas
+  const dosageWords = (output.dosage ?? "").split(/\s+/).filter(Boolean).length;
+  if (dosageWords === 0) {
+    errors.push("dosage vacía");
+  } else if (dosageWords < 8) {
+    errors.push(`dosage demasiado corta (${dosageWords} palabras)`);
+  } else if (dosageWords > 60) {
+    errors.push(`dosage demasiado larga (${dosageWords} palabras)`);
+  } else if (dosageWords < 15 || dosageWords > 30) {
+    warnings.push(`dosage fuera de rango ideal (${dosageWords} palabras, ideal 15-30)`);
+  }
+
+  // warnings: estructura fija + 1 línea generada
+  const warnWords = (output.warnings ?? "").split(/\s+/).filter(Boolean).length;
+  if (warnWords === 0) {
+    errors.push("warnings vacía");
+  } else if (warnWords < 25) {
+    errors.push(`warnings demasiado corta (${warnWords} palabras, ¿incluye disclaimer?)`);
+  } else if (warnWords > 100) {
+    warnings.push(`warnings larga (${warnWords} palabras, ideal 40-55)`);
+  } else if (warnWords < 40 || warnWords > 55) {
+    warnings.push(`warnings fuera de rango ideal (${warnWords} palabras, ideal 40-55)`);
+  }
+
+  return { ok: errors.length === 0, errors, warnings };
 }
