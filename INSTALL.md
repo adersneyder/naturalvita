@@ -1,235 +1,190 @@
-# NaturalVita · Hito 1.7 Sesión B · Checkout (formulario + DIVIPOLA + persistencia)
+# NaturalVita · Patch · Galería de producto + Tabs de información
 
-Esta sesión arma el formulario completo de checkout: contacto, dirección
-con catálogo DIVIPOLA, validación con Zod, server actions que persisten
-en `customers` y `addresses`, paso de revisión, sidebar con resumen.
+Dos mejoras de UX a la ficha de producto. No es un hito nuevo: refina lo
+que ya existe en Hito 1.6 Sesión A.
 
-El botón "Confirmar y pagar" queda visible pero **deshabilitado** porque
-Bold se integra en Sesión C. Esto permite hacer QA del flujo completo
-hasta el punto del pago sin riesgo de checkout incompleto en producción.
-
-Build limpio: 31 rutas, 0 errores TS. Ruta nueva: `/checkout` (22.3 kB).
+Build limpio: 31 rutas, 0 errores TS. `/producto/[slug]` pasa de 2.13 kB
+a 6.3 kB (galería interactiva + tabs).
 
 ---
 
-## 0. Estado previo asumido
-
-- Sesión A del Hito 1.7 aplicada y desplegada (preview verde).
-- `lib/legal/company-info.ts` ya con datos reales de Everlife (o con
-  placeholders, no bloquea el checkout, solo se ve mal en footer).
-- Bulks IA siguen corriendo en paralelo en `/admin/productos`.
-
----
-
-## 1. Estructura del ZIP
-
-Antes de subir, verifica que la descompresión preservó esta estructura:
+## Estructura del ZIP
 
 ```
-nv-hito-1.7-sesion-b/
+nv-fix-producto-galeria-tabs/
 ├── INSTALL.md
-├── package.json                                        ← MODIFICADO
-├── app/
-│   └── (public)/
-│       └── checkout/
-│           ├── page.tsx                                ← NUEVO
-│           ├── _CheckoutClient.tsx                     ← NUEVO
-│           ├── _OrderSummarySidebar.tsx                ← NUEVO
-│           └── actions.ts                              ← NUEVO
-└── lib/
-    └── checkout/
-        ├── schemas.ts                                  ← NUEVO
-        └── divipola-data.ts                            ← NUEVO
-```
-
-Nota: la carpeta `(public)` con paréntesis es un route group de Next.
-Es importante que GitHub respete los paréntesis en la ruta.
-
----
-
-## 2. Subir a GitHub
-
-Sigue tu flujo manual habitual. Sugerencia para evitar archivos perdidos:
-
-1. **Sube `package.json` primero** desde la raíz del repo (es solo el archivo
-   modificado). En el commit pon "deps: add zod 3.23.8".
-2. Crea (o navega a) la carpeta `app/(public)/checkout/` y sube los 4
-   archivos del checkout.
-3. Crea (o navega a) la carpeta `lib/checkout/` y sube los 2 archivos.
-
-Después de subir, abre `app/(public)/checkout/` en GitHub web y cuenta:
-debe haber 4 archivos. Igual con `lib/checkout/`: 2 archivos.
-
----
-
-## 3. Vercel: instalar nueva dependencia
-
-`zod` es la única dep nueva. Vercel detecta el cambio en `package.json`
-durante el build automático y la instala. No hay que tocar nada en el
-panel de Vercel.
-
-Si en local quieres probar antes:
-
-```bash
-npm install
-npm run build
-```
-
-Espera ver en el build:
-
-```
-├ ƒ /checkout                            22.3 kB         133 kB
+└── app/
+    └── (public)/
+        └── producto/
+            └── [slug]/
+                ├── page.tsx              ← MODIFICADO
+                ├── _ProductGallery.tsx   ← NUEVO
+                └── _ProductInfoTabs.tsx  ← NUEVO
 ```
 
 ---
 
-## 4. Cómo funciona el flujo
+## 1 · Galería de producto (`_ProductGallery.tsx`)
 
-### Auth gate
-La página `/checkout` es server component que llama `requireCustomer()`.
-Si no hay sesión, redirige a `/iniciar-sesion?next=%2Fcheckout`. Después
-del magic link, vuelve directo al checkout.
+### Antes
+- Imagen principal renderizada como `<Image>` estática.
+- Thumbnails como `<div>` no clickeables (puro decorativo).
+- Sin zoom, sin lightbox.
 
-### Carrito vacío
-Detectado en cliente (porque el carrito vive en `localStorage`). Si está
-vacío, redirige a `/carrito` automáticamente desde `useEffect`.
+### Ahora
+**Thumbnails clickeables** a la izquierda de la imagen principal en desktop
+(columna vertical, 80px), debajo en mobile (scroll horizontal). El thumb
+activo tiene borde iris.
 
-### Sección 1 — Contacto
-El email viene fijo desde la sesión. El cliente edita nombre, teléfono,
-tipo y número de documento, y opt-in marketing. Al guardar, los datos
-persisten en `customers` vía server action.
+**Hover-pan zoom en desktop**. Al pasar el mouse sobre la imagen principal,
+se hace zoom 2× siguiendo la posición del cursor (transform-origin
+dinámico). Detectamos `pointer: fine` para no activarlo en touch (donde
+no aporta y bloquea el tap). Cursor cambia a `cursor-zoom-in` y aparece un
+icono discreto arriba a la derecha.
 
-Si el cliente ya tenía datos guardados (de un checkout anterior), el form
-viene precargado y la sección aparece como "completada" desde el inicio.
+**Lightbox a pantalla completa** al hacer click/tap o presionar Enter
+sobre la imagen principal:
+- Fondo negro 90% opacity
+- Imagen escalada al máximo dentro del viewport
+- Botón cerrar arriba a la derecha
+- Flechas izquierda/derecha en desktop para navegar
+- **Teclado**: ← → para navegar, Esc para cerrar
+- **Touch**: swipe horizontal para navegar (threshold 50px)
+- **Pinch zoom nativo del navegador** habilitado (touch-pinch-zoom CSS)
+- Contador "3 / 7" arriba al centro
+- Thumbnails inferiores también clickeables
+- Bloquea scroll del body mientras está abierto
 
-### Sección 2 — Dirección
-- Si el cliente NO tiene direcciones guardadas: solo muestra formulario
-  para nueva dirección. La primera dirección se marca `is_default=true`
-  automáticamente.
-- Si SÍ tiene: muestra tabs "Direcciones guardadas" / "Nueva dirección".
-  En guardadas, radio button para elegir; en nueva, formulario.
+Sin librerías externas. ~300 LOC vs 30+ KB típicos de yet-another-image-gallery.
 
-El formulario incluye departamento (select con los 32 departamentos),
-ciudad (select dinámico de municipios principales del departamento, con
-opción "Otro municipio…" que abre input libre), dirección, detalles,
-código postal opcional y etiqueta opcional.
+### Decisiones técnicas
 
-### Sección 3 — Revisar y pagar
-Aparece bloqueada (visible pero `pointer-events-none` y opacity 60%)
-hasta que las dos secciones anteriores estén completas. Cuando se
-desbloquea, muestra resumen del carrito y el botón "Confirmar y pagar"
-**deshabilitado** con texto "Pago seguro por Bold · próximamente en esta
-sesión".
+**Por qué hover-pan en lugar de magnifier glass (lupa flotante)**: la lupa
+flotante necesita una imagen de mayor resolución que la principal para
+mostrar detalle real, y la mayoría de fotos de proveedores no tienen
+resolución suficiente. El hover-pan zoomea el mismo asset, garantizando
+que siempre funciona aunque la imagen sea mediana. Cuando los proveedores
+manden fotos de 2000px+, podemos sumar magnifier glass como variante
+opcional.
 
-Esto es deliberado: Sesión B termina aquí. Sesión C activa el botón.
-
-### Sidebar derecho — Resumen
-Sticky en desktop, debajo del form en mobile. Lista los items con thumb
-y cantidad, subtotal, "envío calculado al confirmar", total estimado.
-
----
-
-## 5. Probar en local
-
-```bash
-npm run dev
-```
-
-Flujo de QA:
-
-1. **Sin sesión**: ve a `/checkout` → debe redirigir a
-   `/iniciar-sesion?next=%2Fcheckout`. Login con magic link → vuelve a
-   `/checkout`.
-2. **Carrito vacío**: con sesión y carrito vacío, `/checkout` debe
-   redirigir a `/carrito`.
-3. **Carrito con items, primer checkout**:
-   - Ve a `/tienda`, agrega 2-3 productos
-   - Ve a `/checkout`
-   - Sección 1 (Contacto): llena nombre, teléfono móvil de 10 dígitos
-     (probar también con 7 fijos y con +57), tipo doc, número doc.
-     Click "Guardar y continuar". Debe aparecer check verde.
-   - Sección 2 (Dirección): llena los campos. Probar selección de
-     departamento → ciudad cambia. Probar "Otro municipio". Click
-     "Guardar dirección". Debe pasar a modo "Direcciones guardadas"
-     mostrando la dirección recién creada.
-   - Sección 3 (Revisar): debe estar visible y habilitada visualmente.
-     Verifica que el botón "Confirmar y pagar" está deshabilitado y
-     dice "próximamente".
-4. **Carrito con items, checkout subsecuente** (segunda compra):
-   - Refresca la página. Datos de contacto y dirección ya vienen
-     llenos. Tabs "Direcciones guardadas" pre-seleccionada.
-5. **Validaciones Zod**:
-   - Probar teléfono "123" → error "El teléfono debe tener al menos 7 dígitos"
-   - Probar nombre "A" → error "Ingresa tu nombre completo"
-   - Probar dirección con menos de 5 caracteres → error
-   - Probar código postal con 3 dígitos → error
-6. **Persistencia BD**:
-   - Después de guardar datos, verificar en Supabase Dashboard →
-     `customers` y `addresses` que las filas se crearon/actualizaron
-     correctamente con tu `id` de auth user.
+**Por qué pinch nativo en lugar de implementar zoom touch propio**: el
+navegador maneja pinch-to-zoom nativamente bien con `touch-action:
+pinch-zoom`. Reimplementarlo con touch listeners propios es propenso a
+bugs y conflictos con el swipe horizontal. La solución nativa es la
+correcta aquí.
 
 ---
 
-## 6. Despliegue
+## 2 · Información detallada (`_ProductInfoTabs.tsx`)
 
-```bash
-# Tu flujo manual via GitHub web
-```
+### Antes
+Cinco bloques en cascada vertical (Descripción, Composición, Modo de uso,
+Advertencias, Contraindicaciones). En productos con composición larga +
+advertencias largas, la página se volvía un muro de texto que empuja los
+productos relacionados muy abajo.
 
-En el preview de Vercel, repetir los pasos 1-5 contra el preview URL.
-Verificar especialmente:
-- El magic link ahora redirige bien a `/checkout` (no a `/admin`).
-- Las server actions responden (Network tab: petición POST a la página).
-- Los datos persisten al refresh.
+### Ahora
+
+**Desktop (md+): tabs horizontales**. Tab "Descripción" activo por
+defecto. Click en otro tab cambia el contenido. Subrayado iris bajo el
+tab activo. Patrón usado por Sephora, La Roche Posay, Natura, Loreal —
+es lo que el comprador de cosmética y suplementos espera ver.
+
+**Mobile: accordion stack**. Descripción abierta por defecto, las demás
+colapsadas con chevron. Tabs en mobile son frágiles (ancho insuficiente
+para etiquetas largas, scroll horizontal molesto), accordion es el
+patrón estándar.
+
+**Tabs con accesibilidad ARIA completa**: `role=tablist`, `role=tab`,
+`role=tabpanel`, navegación por flechas ← → entre tabs, `aria-selected`,
+`aria-controls`. Lectores de pantalla anuncian el cambio.
+
+**Secciones vacías se omiten**. Si un producto no tiene "Modo de uso", no
+aparece el tab; si no tiene ninguno de los cuatro campos, no se renderiza
+el bloque entero.
+
+### Por qué tabs y no dos columnas (rationale)
+
+Los productos NaturalVita tienen información muy variable en longitud
+según la categoría:
+- Vitamina C: composición de 3 líneas, advertencias de 8.
+- Fitoterapéutico: composición de 15 ingredientes, modo de uso de 2 líneas.
+- Suplemento deportivo: descripción larga, modo de uso tabular.
+
+Una grilla 2x2 con distribución rígida dejaría columnas desbalanceadas en
+la mayoría de productos: una columna con espacio en blanco abajo, otra
+con scroll. Los tabs resuelven esto sin compromisos: cada tab ocupa el
+espacio que necesita.
+
+Adicionalmente, **los tabs ponen lo que vende arriba**: imagen + nombre +
+precio + descripción corta + CTA quedan en la mitad superior visible sin
+scroll, sin compitir contra cinco bloques de información regulatoria. El
+comprador lee composición o advertencias solo si tiene una restricción
+específica (alergia, embarazo, dieta) y los encuentra con un click.
+
+### Notas sobre el campo "Contraindicaciones"
+
+En el schema actual, `composition_use` mezcla composición e ingredientes,
+y las contraindicaciones aparecen embebidas dentro de `warnings`. Mantengo
+ese mapeo porque cambiarlo requiere migración de BD y reescritura del
+admin. Si el negocio necesita separar contraindicaciones como campo
+propio, lo abrimos como Hito aparte.
 
 ---
 
-## 7. Lo que cierra
+## 3 · Cambios en `page.tsx`
 
-Esta sesión deja:
-- ✅ Auth gate de checkout funcional
-- ✅ Form completo de contacto y dirección con validación Zod
-- ✅ Catálogo DIVIPOLA con 32 departamentos y 350+ municipios principales
-- ✅ Persistencia en `customers` y `addresses` con RLS
-- ✅ Soporte para múltiples direcciones guardadas con default
-- ✅ Resumen del pedido en sidebar sticky
-- ✅ Sección de revisión preparada para Bold
+- Importa `ProductGallery` y `ProductInfoTabs`.
+- Reemplaza el bloque de galería estática por `<ProductGallery>`.
+- Reemplaza el bloque de cinco secciones verticales por `<ProductInfoTabs>`.
+- Limpia imports no usados (`Image`, `MarkdownRenderer` ya no se usan
+  directamente en este archivo — viven dentro de los componentes nuevos).
 
-**No deja:**
-- ❌ Cálculo de envío por departamento (Sesión C)
-- ❌ Integración Bold (Sesión C)
-- ❌ Webhook de confirmación de pago (Sesión C)
-- ❌ Email transaccional (Sesión C)
-- ❌ Página `/pedido/[order_number]` post-pago (Sesión D)
+Hay un import remanente: `RelatedProducts` y todo lo demás permanece igual.
 
 ---
 
-## 8. Decisiones técnicas relevantes
+## Cómo aplicar
 
-**Single-page, no multi-step**. La conversión en mobile es mejor cuando
-el usuario ve todo el flujo de un vistazo en lugar de saltar entre 3
-páginas. Las secciones se desbloquean visualmente para guiar el orden.
+Sube los 3 archivos respetando la estructura. `page.tsx` reemplaza al
+existente; los dos `_*.tsx` son nuevos.
 
-**DIVIPOLA con municipios principales, no completo**. ~350 municipios
-cubren ~90% de pedidos reales. Los demás casos los maneja el input
-libre "Otro municipio". Cuando crezca el volumen y haya patrones reales
-de pedidos a municipios pequeños, se reemplaza `divipola-data.ts` por el
-dataset DANE completo sin tocar el resto.
+Verifica en GitHub que la carpeta `app/(public)/producto/[slug]/` tiene
+ahora 4 archivos:
+- `page.tsx`
+- `_RelatedProducts.tsx` (preexistente, no se toca)
+- `_ProductGallery.tsx` (nuevo)
+- `_ProductInfoTabs.tsx` (nuevo)
 
-**Zod compartido cliente/servidor**. Un solo schema en
-`lib/checkout/schemas.ts` valida en el form (al hacer click "Guardar")
-y en la server action (defensa en profundidad). Esto evita drift y es
-el patrón canónico Next 15.
+---
 
-**Botón "Confirmar y pagar" deshabilitado en lugar de oculto**. El
-usuario ve dónde irá a parar y entiende el flujo, en lugar de descubrir
-una sección nueva en Sesión C.
+## QA
 
-**`recipient_name` y `phone` de la dirección NO se asumen iguales a los
-del contacto**. Caso real: alguien compra para mandar a su mamá, o pide
-con su número y manda al número del portero. El form pre-llena pero
-permite editar.
+Ve a una ficha de producto con varias imágenes (idealmente 3-5).
 
-**Auto-onboarding ya cubre el primer login**: si el cliente entra al
-checkout sin haber pasado por `/mi-cuenta`, `requireCustomer()` crea su
-fila en `customers` automáticamente (lógica de Sesión A).
+**Galería desktop:**
+1. Pasa el mouse sobre la imagen principal → debe hacer zoom 2× siguiendo
+   el cursor.
+2. Click en una thumbnail → la imagen principal cambia.
+3. Click en la imagen principal → abre lightbox a pantalla completa.
+4. En lightbox: flechas ← → navegan, Esc cierra. Click en thumbs
+   inferiores cambia. Click fuera de la imagen cierra.
+
+**Galería mobile** (DevTools responsive o teléfono real):
+1. Las thumbnails están debajo en scroll horizontal.
+2. Tap en thumbnail cambia.
+3. Tap en imagen principal abre lightbox.
+4. En lightbox: swipe horizontal navega. Pinch hace zoom. Tap fuera cierra.
+
+**Info detallada desktop:**
+1. Bajo la sección de compra, ves cuatro tabs en línea: Descripción /
+   Composición / Modo de uso / Advertencias.
+2. "Descripción" está activo (subrayado iris) y muestra el texto.
+3. Click en "Composición" → cambia el contenido sin scroll.
+4. Si una sección no tiene contenido en BD, su tab no aparece.
+
+**Info detallada mobile:**
+1. Bajo la sección de compra, ves un encabezado "Información del producto"
+   y debajo la lista de secciones como accordion.
+2. "Descripción" está abierto.
+3. Tap en "Composición" → expande con animación de chevron.

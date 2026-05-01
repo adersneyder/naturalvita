@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import Breadcrumbs from "../../_components/Breadcrumbs";
 import PriceTag from "../../_components/PriceTag";
 import StockBadge from "../../_components/StockBadge";
 import AddToCartButtons from "../../_components/AddToCartButtons";
-import MarkdownRenderer from "../../_components/MarkdownRenderer";
 import RelatedProducts from "./_RelatedProducts";
+import ProductGallery from "./_ProductGallery";
+import ProductInfoTabs from "./_ProductInfoTabs";
 
 type Params = Promise<{ slug: string }>;
 
@@ -186,41 +186,8 @@ export default async function ProductPage({ params }: { params: Params }) {
 
         {/* HERO: imagen + info de compra */}
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-14 mt-6">
-          {/* Galería */}
-          <div className="space-y-3">
-            <div className="aspect-square bg-[var(--color-earth-50)] rounded-2xl overflow-hidden">
-              {primaryImage && (
-                <Image
-                  src={primaryImage.url}
-                  alt={primaryImage.alt_text ?? product.name}
-                  width={800}
-                  height={800}
-                  className="w-full h-full object-contain"
-                  priority
-                  unoptimized
-                />
-              )}
-            </div>
-            {product.images.length > 1 && (
-              <div className="grid grid-cols-5 gap-2">
-                {product.images.slice(0, 5).map((img, idx) => (
-                  <div
-                    key={idx}
-                    className="aspect-square bg-[var(--color-earth-50)] rounded-lg overflow-hidden"
-                  >
-                    <Image
-                      src={img.url}
-                      alt={img.alt_text ?? product.name}
-                      width={150}
-                      height={150}
-                      className="w-full h-full object-contain"
-                      unoptimized
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* Galería · client component con thumbs clickeables, hover-zoom y lightbox */}
+          <ProductGallery images={product.images} productName={product.name} />
 
           {/* Info de compra */}
           <div className="lg:py-4">
@@ -289,44 +256,13 @@ export default async function ProductPage({ params }: { params: Params }) {
           </div>
         </div>
 
-        {/* SECCIONES DE CONTENIDO EDITORIAL */}
-        <div className="mt-14 lg:mt-20 max-w-3xl space-y-10">
-          {product.full_description && (
-            <section>
-              <h2 className="font-serif text-2xl text-[var(--color-leaf-900)] mb-3 m-0">
-                Descripción
-              </h2>
-              <MarkdownRenderer text={product.full_description} size="md" />
-            </section>
-          )}
-
-          {product.composition_use && (
-            <section>
-              <h2 className="font-serif text-2xl text-[var(--color-leaf-900)] mb-3 m-0">
-                Composición
-              </h2>
-              <MarkdownRenderer text={product.composition_use} size="md" />
-            </section>
-          )}
-
-          {product.dosage && (
-            <section>
-              <h2 className="font-serif text-2xl text-[var(--color-leaf-900)] mb-3 m-0">
-                Modo de uso
-              </h2>
-              <MarkdownRenderer text={product.dosage} size="md" />
-            </section>
-          )}
-
-          {product.warnings && (
-            <section>
-              <h2 className="font-serif text-2xl text-[var(--color-leaf-900)] mb-3 m-0">
-                Advertencias
-              </h2>
-              <MarkdownRenderer text={product.warnings} size="md" />
-            </section>
-          )}
-        </div>
+        {/* INFORMACIÓN DETALLADA · tabs en desktop, accordion en mobile */}
+        <ProductInfoTabs
+          fullDescription={product.full_description}
+          compositionUse={product.composition_use}
+          dosage={product.dosage}
+          warnings={product.warnings}
+        />
 
         {/* PRODUCTOS RELACIONADOS */}
         {product.category && (
