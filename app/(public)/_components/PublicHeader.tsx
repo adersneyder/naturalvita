@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCartCount } from "@/lib/cart/use-cart";
 import { useCartDrawer } from "@/lib/cart/use-cart-drawer";
+import SearchBar from "./SearchBar";
 
 export default function PublicHeader() {
   const cartCount = useCartCount();
@@ -62,22 +63,8 @@ export default function PublicHeader() {
 
         {/* Acciones lado derecho */}
         <div className="flex items-center gap-2">
-          {/* Búsqueda · placeholder por ahora, se conecta en sesión B */}
-          <Link
-            href="/buscar"
-            className="p-2 rounded-lg text-[var(--color-earth-700)] hover:text-[var(--color-leaf-900)] hover:bg-[var(--color-earth-50)]"
-            aria-label="Buscar"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
-              <path
-                d="M21 21l-4.5-4.5"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-          </Link>
+          {/* Búsqueda · expandible en header con submit a /buscar */}
+          <SearchBar variant="header" />
 
           {/* Carrito */}
           <button

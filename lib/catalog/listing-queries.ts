@@ -200,10 +200,14 @@ export async function listProducts(
     query = query.or("track_stock.eq.false,stock.gt.0");
   }
   if (filters.q && filters.q.trim()) {
-    // Búsqueda básica con ILIKE sobre name + short_description.
-    // En Sesión C migramos a Postgres FTS con índice GIN.
-    const term = `%${filters.q.trim()}%`;
-    query = query.or(`name.ilike.${term},short_description.ilike.${term}`);
+    // Búsqueda full-text sobre `search_vector` (columna generada con pesos
+    // A=name, B=short_description, C=presentation/keywords, D=full_description).
+    // Soporta operadores web ("frase", -negar, OR explícito) gracias a
+    // `websearch_to_tsquery('spanish', ...)`.
+    query = query.textSearch("search_vector", filters.q.trim(), {
+      type: "websearch",
+      config: "spanish",
+    });
   }
 
   // Ordenamiento
@@ -519,5 +523,116 @@ export async function getPriceRange(): Promise<{ min: number; max: number }> {
   return {
     min: minRow?.price_cop ?? 0,
     max: maxRow?.price_cop ?? 1000000,
+  };
+}
+
+// ---------- Landing /tienda enriquecida ----------
+
+export type FeaturedCollection = {
+  slug: string;
+  name: string;
+  description: string | null;
+  cover_image_url: string | null;
+};
+
+export async function listFeaturedCollections(
+  limit = 4,
+): Promise<FeaturedCollection[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("collections")
+    .select("slug, name, description, cover_image_url, sort_order")
+    .eq("is_active", true)
+    .eq("is_featured", true)
+    .order("sort_order", { ascending: true })
+    .limit(limit);
+  return (data ?? []).map(({ slug, name, description, cover_image_url }) => ({
+    slug,
+    name,
+    description,
+    cover_image_url,
+  }));
+}
+
+/**
+ * Productos destacados del catálogo (is_featured=true). Para el carrusel
+ * de la landing /tienda. Usa la misma forma de PublicProductSummary para
+ * que la grilla los renderice sin código duplicado.
+ */
+export async function listFeaturedProducts(
+  limit = 8,
+): Promise<PublicProductSummary[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("products")
+    .select(
+      `id, slug, name, short_description, presentation, price_cop, compare_at_price_cop,
+       stock, track_stock, created_at,
+       category:categories!category_id(slug, name),
+       laboratory:laboratories!laboratory_id(slug, name),
+       images:product_images!product_id(url, alt_text, is_primary, sort_order)`,
+    )
+    .eq("status", "active")
+    .eq("is_featured", true)
+    .order("created_at", { ascending: false })
+    .limit(limit * 2); // pedimos margen para filtrar los sin imagen
+
+  return (data ?? [])
+    .map(rawToSummary)
+    .filter((p): p is PublicProductSummary => p !== null)
+    .slice(0, limit);
+}
+
+// ---------- Sitemap helpers ----------
+
+/**
+ * Slugs activos de cada entidad pública. Se consume desde app/sitemap.ts.
+ * Los productos sin imagen quedan fuera del sitemap (regla de negocio:
+ * sin imagen no se publica). Resto de entidades incluyen todas las activas.
+ */
+export async function listSitemapEntries(): Promise<{
+  products: Array<{ slug: string; updated_at: string }>;
+  categories: Array<{ slug: string; updated_at: string }>;
+  collections: Array<{ slug: string; updated_at: string }>;
+  laboratories: Array<{ slug: string; updated_at: string }>;
+}> {
+  const supabase = await createClient();
+
+  const [
+    { data: rawProducts },
+    { data: cats },
+    { data: cols },
+    { data: labs },
+  ] = await Promise.all([
+    supabase
+      .from("products")
+      .select("slug, updated_at, images:product_images!product_id(id)")
+      .eq("status", "active"),
+    supabase
+      .from("categories")
+      .select("slug, updated_at")
+      .eq("is_active", true),
+    supabase
+      .from("collections")
+      .select("slug, updated_at")
+      .eq("is_active", true),
+    supabase
+      .from("laboratories")
+      .select("slug, updated_at")
+      .eq("is_active", true),
+  ]);
+
+  const products = (rawProducts ?? [])
+    .filter((p) => {
+      const imgs = (p.images ?? []) as Array<unknown>;
+      return imgs.length > 0;
+    })
+    .map((p) => ({ slug: p.slug, updated_at: p.updated_at }));
+
+  return {
+    products,
+    categories: cats ?? [],
+    collections: cols ?? [],
+    laboratories: labs ?? [],
   };
 }

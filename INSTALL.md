@@ -1,110 +1,75 @@
-# NaturalVita · Hito 1.6 Sesión B + infra fusionada
+# NaturalVita · Hito 1.6 Sesión C
 
-Entrega que cierra el listado público del catálogo (rutas, ProductCard, filtros
-con URL como source-of-truth, paginación, JSON-LD) **y** la infra que faltaba
-del Hito 1.6 (analítica, rate-limit, headers OWASP, bundle analyzer, Microsoft
-Clarity opcional). Compila limpio: 21 páginas, 0 errores TS, build de 23 s en
-sandbox.
+Cierra el catálogo público con búsqueda full-text, sitemap dinámico, robots.txt
+y landing /tienda enriquecida con destacados, colecciones y categorías.
 
----
-
-## 0. Prerrequisitos
-
-- Estás en el repo `naturalvita`, rama de trabajo nueva:
-  ```bash
-  git checkout -b hito-1.6-sesion-b
-  ```
-- Versión actual del repo es la del ZIP `naturalvita-main.zip` que subiste el
-  1-mayo-2026. Si has cambiado algo después, revisa los conflictos con `git
-  status` antes de pisar archivos.
+Build limpio: 24 rutas, 0 errores TS.
 
 ---
 
-## 1. Aplicar este paquete
+## 0. Estado previo asumido
 
-Descomprime el ZIP en una carpeta `nv-hito-1.6-sesion-b/` y copia su contenido
-sobre la raíz del repo. Los archivos nuevos se crean; los existentes se
-**sobrescriben**:
+- Sesión B aplicada y desplegada (preview verde en Vercel).
+- Repo en rama de trabajo.
+- `npm install` ya ejecutado con las deps de Sesión B (no se agregan
+  dependencias nuevas en Sesión C).
+
+---
+
+## 1. Migración SQL: ya está aplicada
+
+Ya apliqué la migración `products_fulltext_search_vector` directamente en tu
+proyecto de Supabase (`qheynvhdjdnqywyaekpq`) vía MCP. Crea:
+
+- Columna generada `search_vector` (tsvector con pesos A/B/C/D para name,
+  short_description, presentation/keywords, full_description).
+- Índice GIN sobre `search_vector` (búsqueda en milisegundos incluso con
+  decenas de miles de productos).
+- Función RPC `search_products(q, page_size, page_offset)` con ranking por
+  `ts_rank` (la dejo lista por si en una iteración futura migramos a ranking
+  exacto en lugar del orden por relevancia/recientes).
+
+Ya está validada con productos reales: `vitamina c` devuelve "Collagen Plus
+Vitamin C" y "Vitamin C 500 mg" con rank 0.99+. Sin acción de tu lado.
+
+> Si necesitas re-aplicar la migración en otro entorno, el SQL completo está
+> al final de este documento en la sección **Apéndice A**.
+
+---
+
+## 2. Aplicar este paquete
+
+Desde la raíz del repo:
 
 ```bash
-cp -r nv-hito-1.6-sesion-b/. ./
+cp -r nv-hito-1.6-sesion-c/. ./
 ```
-
-Archivos que se sobrescriben (ya existían y fueron actualizados):
-- `app/layout.tsx` — agrega `Providers`, `SiteAnalytics`, `metadataBase`.
-- `next.config.ts` — headers seguridad, AVIF/WEBP, remotePatterns extendidos,
-  bundle analyzer, `poweredByHeader: false`.
-- `package.json` — añade nuevas dependencias.
-- `.env.local.example` — añade variables Clarity y Upstash.
 
 Archivos nuevos:
-- `app/providers.tsx`
-- `app/_components/SiteAnalytics.tsx`
-- `app/(public)/loading.tsx`
-- `app/(public)/_components/ProductCard.tsx`
-- `app/(public)/_components/ProductGrid.tsx`
-- `app/(public)/_components/Pagination.tsx`
-- `app/(public)/_components/FilterSidebar.tsx`
-- `app/(public)/_components/SortBar.tsx`
-- `app/(public)/tienda/page.tsx`
-- `app/(public)/categoria/[slug]/page.tsx`
-- `app/(public)/coleccion/[slug]/page.tsx`
-- `app/(public)/laboratorio/[slug]/page.tsx`
-- `lib/catalog/listing-queries.ts`
-- `lib/catalog/search-params.ts`
-- `lib/ratelimit.ts`
+- `app/sitemap.ts` — sitemap.xml dinámico con productos, categorías,
+  colecciones, laboratorios, home y /tienda.
+- `app/robots.ts` — robots.txt que bloquea /admin, /auth, /api y URLs con
+  filtros (querystring) para no inflar el crawl budget.
+- `app/(public)/buscar/page.tsx` — página de búsqueda con resultados
+  full-text y página de "tips" cuando no hay query.
+- `app/(public)/_components/SearchBar.tsx` — caja de búsqueda con dos
+  variantes (compacta para header, ancha para página).
+
+Archivos modificados (sobrescriben a Sesión B):
+- `lib/catalog/listing-queries.ts` — `q` ahora usa `textSearch` con
+  `websearch_to_tsquery('spanish', ...)` en lugar de ILIKE; suma queries
+  para landing (`listFeaturedCollections`, `listFeaturedProducts`) y para
+  el sitemap (`listSitemapEntries`).
+- `app/(public)/_components/PublicHeader.tsx` — sustituye el botón de lupa
+  inerte por `SearchBar` real (variante "header") con submit a /buscar.
+- `app/(public)/tienda/page.tsx` — sin filtros muestra hero + bloques
+  curados (categorías, colecciones destacadas, productos destacados) +
+  listado completo abajo. Con cualquier filtro/sort/q activo, salta directo
+  al listado para no hacer scroll innecesario.
 
 ---
 
-## 2. Instalar dependencias
-
-```bash
-npm install
-```
-
-Dependencias nuevas que entran en `node_modules`:
-
-| Paquete                       | Función                                          |
-|-------------------------------|--------------------------------------------------|
-| `nuqs`                        | Filtros con URL como source-of-truth             |
-| `lucide-react`                | Iconos del FilterSidebar (X, sliders, check)     |
-| `@vercel/analytics`           | Pageviews y eventos custom                       |
-| `@vercel/speed-insights`      | Core Web Vitals reales                           |
-| `@upstash/ratelimit`          | Rate limit para futuras API públicas             |
-| `@upstash/redis`              | Cliente Redis de Upstash                         |
-| `@next/bundle-analyzer` (dev) | Auditoría de bundle con `npm run analyze`        |
-
----
-
-## 3. Variables de entorno
-
-Abre `.env.local` (NO el `.example`) y agrega las dos secciones nuevas:
-
-```bash
-# Microsoft Clarity (gratis; opcional, si lo dejas vacío el script no se carga)
-NEXT_PUBLIC_CLARITY_ID=
-
-# Upstash Redis (gratis hasta 10k cmds/día)
-UPSTASH_REDIS_REST_URL=
-UPSTASH_REDIS_REST_TOKEN=
-```
-
-Cómo obtenerlas:
-- **Clarity**: <https://clarity.microsoft.com> → crear proyecto NaturalVita,
-  sitio `https://naturalvita.co`, copiar el ID que aparece en el snippet.
-- **Upstash**: <https://console.upstash.com> → Create Database → región
-  `us-east-1` o `sa-east-1` → pestaña REST → copiar URL y Token.
-
-Replica las tres variables en Vercel: **Project Settings → Environment
-Variables**, marcando Production y Preview.
-
-> Si por ahora no quieres lidiar con Clarity ni Upstash, **déjalas vacías**.
-> La app compila y funciona sin ellas; Clarity simplemente no se carga, y
-> Upstash queda dormido hasta que se exponga una API pública que lo use.
-
----
-
-## 4. Build local
+## 3. Build local
 
 ```bash
 npm run build
@@ -113,113 +78,118 @@ npm run build
 Espera ver:
 
 ```
-Route (app)
+├ ƒ /buscar                              1.74 kB         112 kB
+├ ○ /robots.txt                            141 B         102 kB
+├ ƒ /sitemap.xml                           141 B         102 kB
 ├ ƒ /tienda                                132 B         120 kB
-├ ƒ /categoria/[slug]                      132 B         120 kB
-├ ƒ /coleccion/[slug]                      131 B         120 kB
-├ ƒ /laboratorio/[slug]                    131 B         120 kB
 ```
 
-Para auditoría de bundle (opcional):
-
-```bash
-npm run analyze
-```
+24 rutas en total.
 
 ---
 
-## 5. Probar en local
+## 4. Probar en local
 
 ```bash
 npm run dev
 ```
 
-Rutas a verificar:
+Verifica las rutas nuevas y mejoradas:
 
-| URL                                      | Qué validar                                 |
-|------------------------------------------|---------------------------------------------|
-| `/tienda`                                | Grilla, sidebar, paginación, ordenamiento   |
-| `/tienda?cat=fitoterapeuticos`           | Filtro por categoría desde URL             |
-| `/tienda?lab=naturfar&instock=true`      | Combinación de filtros                     |
-| `/tienda?sort=price_desc&p=2`            | Orden + paginación                         |
-| `/categoria/fitoterapeuticos`            | Hero + filtros (sin filtro de categoría)   |
-| `/coleccion/<slug>`                      | Hero editorial con cover image             |
-| `/laboratorio/naturfar`                  | Hero con logo                               |
+| URL                                | Qué validar                                                    |
+|------------------------------------|----------------------------------------------------------------|
+| `/tienda` (sin filtros)            | Hero, bloques de categorías, colecciones destacadas, destacados, listado |
+| `/tienda?cat=fitoterapeuticos`     | Salta directo al listado (sin bloques curados)                |
+| `/buscar`                          | Página de tips con SearchBar, categorías y colecciones featured |
+| `/buscar?q=vitamina%20c`           | Resultados FTS reales con productos que matchean              |
+| `/buscar?q=algoinexistentexyz`     | Mensaje "Sin resultados" + invitación a navegar               |
+| `/sitemap.xml`                     | XML válido con todas las URLs                                 |
+| `/robots.txt`                      | Reglas de Allow/Disallow correctas                            |
 
-En mobile (DevTools 375px) prueba el botón **Filtrar** que abre el bottom
-sheet, los checkboxes, el botón **Ver N productos**, y el cierre del drawer.
+En `/buscar` prueba operadores web: `colageno -bovino` debe excluir bovino,
+`"omega 3"` busca la frase exacta. Funciona porque usamos
+`websearch_to_tsquery`.
+
+Mobile: la lupa en el header se expande a una caja de búsqueda inline al
+tocarla. El botón "Cerrar" la colapsa.
 
 ---
 
-## 6. Despliegue
+## 5. Despliegue
 
 ```bash
 git add .
-git commit -m "feat(hito-1.6/B): catalogo publico /tienda /categoria /coleccion /laboratorio + filtros nuqs + analitica + ratelimit + headers seguridad"
-git push origin hito-1.6-sesion-b
+git commit -m "feat(hito-1.6/C): busqueda FTS postgres + sitemap dinamico + robots + landing tienda enriquecida"
+git push origin hito-1.6-sesion-b   # o la rama que estés usando
 ```
 
-Vercel lanza Preview Deploy automático. Verifica:
-- Que el preview compila sin errores.
-- Que el header `Strict-Transport-Security` aparece en Network tab.
-- Que `/tienda` carga, navega y filtra en preview.
-- Si pusiste el ID de Clarity, que el script `clarity.ms/tag/...` aparece en
-  Network.
-
-Cuando esté verde, abre PR a `main`. Después del merge, despliegue automático
-a producción.
+Verifica preview de Vercel: `/sitemap.xml` y `/robots.txt` responden bien.
+Si pusiste `NEXT_PUBLIC_SITE_URL` en Vercel apuntando a `https://naturalvita.co`,
+el sitemap usará ese host. Si no, cae al default `https://naturalvita.co`
+hardcodeado.
 
 ---
 
-## 7. Pendiente bloqueante para el lanzamiento
+## 6. Lo que cierra
 
-`ai_generation_log` está en cero: las **299 fichas IA siguen sin generarse**.
-Las páginas de listado funcionan sin ellas (mostramos `name`, `presentation`,
-`short_description` cruda). Pero la página individual `/producto/[slug]` se ve
-mejor con descripción IA. Antes de lanzar al público:
+Hito 1.6 entero termina aquí en lo que es código del catálogo público:
+- ✅ Sesión A — ficha de producto + carrito localStorage + header/footer.
+- ✅ Sesión B — listados con filtros nuqs + ProductCard + paginación + analítica + ratelimit + headers.
+- ✅ Sesión C — búsqueda FTS + sitemap + robots + landing curada.
 
-1. Entra a `/admin/productos`.
-2. Selecciona todos los productos (ajusta page_size a 300 si quieres uno solo).
-3. Acción bulk → "Generar fichas faltantes con IA" → confirmar.
-4. Espera ~30 minutos. Costo aproximado $5-6 USD.
+**Pendientes para abrir Sesión D (QA + lanzamiento)**:
+- Bulk de generación IA de las 299 fichas (tu acción, ~30 min, ~$5–6 USD).
+  Sigue siendo el bloqueador. Sin esto las fichas se ven con texto crudo.
+- QA mobile real (no solo DevTools): probar en Android e iOS reales.
+- Verificar que Google Search Console recibe el sitemap (registrar el
+  dominio si no está, subir `https://naturalvita.co/sitemap.xml`).
+- Decidir umbral "Envío gratis desde X" (sugerencia: $200.000 COP).
 
----
-
-## 8. Lo que cierra y lo que sigue
-
-**Cierra Sesión B del Hito 1.6**:
-- ✅ Rutas `/tienda`, `/categoria/[slug]`, `/coleccion/[slug]`, `/laboratorio/[slug]`
-- ✅ ProductCard reutilizable, ProductGrid responsive, Pagination
-- ✅ FilterSidebar mobile + desktop con URL source-of-truth (nuqs)
-- ✅ SortBar
-- ✅ Skeletons (loading.tsx)
-- ✅ JSON-LD BreadcrumbList por página
-- ✅ Headers OWASP, AVIF/WEBP, Vercel Analytics + Speed Insights
-- ✅ Rate limiter Upstash listo (durmiente hasta hito que exponga APIs)
-
-**Sesión C** (próxima): búsqueda Postgres FTS con índice GIN, sitemap.xml
-dinámico, robots.txt, canonical strategy, landing /tienda enriquecida con
-destacados y colecciones featured.
-
-**Sesión D**: QA mobile completo, primer despliegue público sin checkout,
-banner de cookies (Habeas Data ley 1581) si activas GA4.
-
-**Hito 1.7**: carrito persistente con sesión, checkout Bold, Resend SMTP,
-política de envíos, factura electrónica.
+**Hito 1.7** queda bien definido para entrar después: carrito persistente
+con sesión, checkout Bold con 3DS/PSE/Nequi, Resend SMTP para confirmaciones,
+política de envíos, banner Habeas Data, footer legal NIT + INVIMA + dirección.
 
 ---
 
-## 9. Notas técnicas para mantenimiento
+## Apéndice A: SQL aplicado en Supabase
 
-- `nuqs` requiere `<NuqsAdapter>` en root. Está en `app/providers.tsx`.
-- `FilterSidebar` es un Client Component. Las páginas de listado son Server
-  Components que usan `loadCatalogSearchParams` (parser de nuqs/server) para
-  leer `searchParams` de forma tipada en el servidor.
-- Cuando se agreguen filtros nuevos: extender `lib/catalog/search-params.ts`,
-  el tipo `CatalogFilters` en `listing-queries.ts`, y el FilterSidebar.
-- La query principal `listProducts` filtra por `status='active'` (canónico).
-  No usar `is_active` en queries nuevas; el schema lo marca como derivado.
-- Productos sin imagen primaria nunca aparecen en listados (regla de negocio
-  consolidada). Sin excepciones.
-- Para añadir Algolia/MeiliSearch en el futuro, sustituir el bloque de
-  búsqueda ILIKE en `listProducts` por una llamada al cliente externo.
+Solo para referencia. **Ya está aplicado en producción**, no lo corras de
+nuevo a menos que estés clonando el entorno.
+
+```sql
+ALTER TABLE public.products
+  ADD COLUMN IF NOT EXISTS search_vector tsvector
+  GENERATED ALWAYS AS (
+    setweight(to_tsvector('spanish', coalesce(name, '')), 'A') ||
+    setweight(to_tsvector('spanish', coalesce(short_description, '')), 'B') ||
+    setweight(to_tsvector('spanish', coalesce(presentation, '')), 'C') ||
+    setweight(to_tsvector('spanish', coalesce(search_keywords, '')), 'C') ||
+    setweight(to_tsvector('spanish', coalesce(full_description, '')), 'D')
+  ) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_products_search_vector
+  ON public.products USING GIN (search_vector);
+
+CREATE OR REPLACE FUNCTION public.search_products(
+  q text,
+  page_size int DEFAULT 24,
+  page_offset int DEFAULT 0
+)
+RETURNS TABLE (id uuid, rank real)
+LANGUAGE sql STABLE SECURITY INVOKER
+SET search_path = public
+AS $$
+  SELECT
+    p.id,
+    ts_rank(p.search_vector, websearch_to_tsquery('spanish', q)) AS rank
+  FROM public.products p
+  WHERE
+    p.status = 'active'
+    AND p.search_vector @@ websearch_to_tsquery('spanish', q)
+  ORDER BY rank DESC, p.created_at DESC
+  LIMIT page_size
+  OFFSET page_offset;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.search_products(text, int, int) TO anon, authenticated;
+```
