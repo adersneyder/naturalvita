@@ -3,28 +3,33 @@
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import Script from "next/script";
+import { useConsent } from "@/lib/cart/use-consent";
 
 /**
  * Bundle único de analítica para el site público.
  *
- *   - Vercel Analytics: pageviews y eventos custom (gratis en plan Hobby).
- *   - Vercel Speed Insights: Core Web Vitals reales en producción.
- *   - Microsoft Clarity: heatmaps y session replay (gratis sin tope).
+ * Política de consentimiento (ley 1581/2012 Habeas Data):
+ *   - Vercel Analytics + Speed Insights: SIEMPRE activos. Categoría
+ *     "essential" porque son agregados anónimos sin cookies de tracking
+ *     ni PII identificable.
+ *   - Microsoft Clarity: solo si el usuario aceptó "analytics" en el
+ *     banner. Registra session replays con IP, lo que es PII bajo la ley
+ *     colombiana, así que requiere consentimiento explícito.
  *
- * Clarity se carga solo si NEXT_PUBLIC_CLARITY_ID está poblado.
- * Esto protege previews y entornos locales sin tener que comentar/descomentar.
- *
- * GA4 se aplaza hasta que tengamos banner de consentimiento Habeas Data
- * (ley 1581 colombiana). No lo registramos sin permiso del visitante.
+ * GA4 se aplaza hasta que tengamos infraestructura de consent management
+ * más rica. Por ahora, Vercel Analytics + Clarity con consentimiento son
+ * suficientes para entender conversión.
  */
 export default function SiteAnalytics() {
+  const { state, isLoaded } = useConsent();
   const clarityId = process.env.NEXT_PUBLIC_CLARITY_ID;
+  const clarityAllowed = isLoaded && state?.analytics === true;
 
   return (
     <>
       <Analytics />
       <SpeedInsights />
-      {clarityId && (
+      {clarityId && clarityAllowed && (
         <Script id="ms-clarity" strategy="afterInteractive">
           {`
             (function(c,l,a,r,i,t,y){

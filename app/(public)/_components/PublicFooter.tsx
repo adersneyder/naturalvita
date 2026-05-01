@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { COMPANY, REGULATORY } from "@/lib/legal/company-info";
 
 export default function PublicFooter() {
   const year = new Date().getFullYear();
@@ -18,11 +19,59 @@ export default function PublicFooter() {
                 />
               </svg>
             </span>
-            <span className="font-serif text-lg">NaturalVita</span>
+            <span className="font-serif text-lg">{COMPANY.brandName}</span>
           </div>
           <p className="text-sm text-white/70 leading-relaxed">
-            Tienda online de productos naturales en Colombia. Una marca de Everlife Colombia.
+            {COMPANY.brandTagline}. Una marca de {COMPANY.parentBrand}.
           </p>
+          <ul className="mt-4 flex gap-3">
+            <li>
+              <a
+                href={COMPANY.instagramUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-white/70 hover:text-white"
+                aria-label="Instagram"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="2" y="2" width="20" height="20" rx="5" />
+                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+                </svg>
+              </a>
+            </li>
+            <li>
+              <a
+                href={COMPANY.facebookUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-white/70 hover:text-white"
+                aria-label="Facebook"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+                </svg>
+              </a>
+            </li>
+          </ul>
         </div>
 
         {/* Catálogo */}
@@ -37,38 +86,47 @@ export default function PublicFooter() {
               </Link>
             </li>
             <li>
-              <Link href="/colecciones" className="text-white/85 hover:text-white">
-                Colecciones
+              <Link href="/buscar" className="text-white/85 hover:text-white">
+                Buscar productos
               </Link>
             </li>
             <li>
-              <Link href="/laboratorios" className="text-white/85 hover:text-white">
-                Laboratorios
+              <Link href="/carrito" className="text-white/85 hover:text-white">
+                Mi carrito
+              </Link>
+            </li>
+            <li>
+              <Link href="/mi-cuenta" className="text-white/85 hover:text-white">
+                Mi cuenta
               </Link>
             </li>
           </ul>
         </div>
 
-        {/* Atención */}
+        {/* Soporte */}
         <div>
           <h3 className="font-serif text-sm uppercase tracking-wider text-white/60 mb-3 m-0">
-            Atención
+            Soporte
           </h3>
           <ul className="space-y-2 text-sm">
             <li>
-              <Link href="/contacto" className="text-white/85 hover:text-white">
-                Contacto
-              </Link>
-            </li>
-            <li>
-              <Link href="/preguntas-frecuentes" className="text-white/85 hover:text-white">
-                Preguntas frecuentes
-              </Link>
-            </li>
-            <li>
-              <Link href="/envios-y-devoluciones" className="text-white/85 hover:text-white">
+              <Link
+                href="/legal/envios"
+                className="text-white/85 hover:text-white"
+              >
                 Envíos y devoluciones
               </Link>
+            </li>
+            <li>
+              <a
+                href={`mailto:${COMPANY.publicEmail}`}
+                className="text-white/85 hover:text-white"
+              >
+                Contáctanos
+              </a>
+            </li>
+            <li className="text-white/60 text-xs pt-1 leading-relaxed">
+              {COMPANY.publicEmail}
             </li>
           </ul>
         </div>
@@ -80,31 +138,53 @@ export default function PublicFooter() {
           </h3>
           <ul className="space-y-2 text-sm">
             <li>
-              <Link href="/terminos" className="text-white/85 hover:text-white">
+              <Link
+                href="/legal/privacidad"
+                className="text-white/85 hover:text-white"
+              >
+                Política de datos
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/legal/terminos"
+                className="text-white/85 hover:text-white"
+              >
                 Términos y condiciones
               </Link>
             </li>
             <li>
-              <Link href="/privacidad" className="text-white/85 hover:text-white">
-                Tratamiento de datos
-              </Link>
-            </li>
-            <li>
-              <Link href="/aviso-invima" className="text-white/85 hover:text-white">
-                Aviso INVIMA
+              <Link
+                href="/legal/envios"
+                className="text-white/85 hover:text-white"
+              >
+                Política de envíos
               </Link>
             </li>
           </ul>
         </div>
       </div>
 
-      {/* Línea inferior */}
+      {/* Bottom bar con datos legales */}
       <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between text-xs text-white/60">
-          <p className="m-0">
-            © {year} NaturalVita · Una marca de Everlife Colombia. Todos los derechos reservados.
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-xs text-white/55">
+          <div>
+            <p>
+              © {year} {COMPANY.legalName} · NIT {COMPANY.nit}
+            </p>
+            <p className="mt-1">
+              {COMPANY.addressStreet}, {COMPANY.addressCity},{" "}
+              {COMPANY.addressDepartment}, {COMPANY.addressCountry}
+            </p>
+            {REGULATORY.invimaImporterRegistration && (
+              <p className="mt-1">
+                Registro INVIMA: {REGULATORY.invimaImporterRegistration}
+              </p>
+            )}
+          </div>
+          <p className="md:text-right">
+            Pagos seguros con Bold · Despachos a toda Colombia
           </p>
-          <p className="m-0">Productos sujetos a Resoluciones INVIMA aplicables.</p>
         </div>
       </div>
     </footer>

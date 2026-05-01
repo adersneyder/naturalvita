@@ -195,16 +195,15 @@ export default function CartDrawer() {
             <p className="text-[11px] text-[var(--color-earth-700)] mb-3 m-0">
               Envío e impuestos calculados al finalizar la compra.
             </p>
-            <button
-              type="button"
-              disabled
-              title="El proceso de pago estará disponible próximamente"
-              className="w-full px-5 py-3 bg-[var(--color-earth-100)] text-[var(--color-earth-500)] rounded-xl font-medium cursor-not-allowed"
+            <Link
+              href="/carrito"
+              onClick={close}
+              className="block w-full text-center px-5 py-3 bg-[var(--color-iris-700)] text-white rounded-xl font-medium hover:bg-[var(--color-iris-600)] transition-colors"
             >
-              Proceder al pago
-            </button>
+              Ver carrito y pagar
+            </Link>
             <p className="text-[11px] text-[var(--color-earth-500)] text-center mt-2 m-0">
-              Próximamente
+              Pagos seguros con Bold
             </p>
           </div>
         )}

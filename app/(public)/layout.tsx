@@ -3,13 +3,15 @@ import PublicHeader from "./_components/PublicHeader";
 import PublicFooter from "./_components/PublicFooter";
 import CartDrawer from "./_components/CartDrawer";
 import Toaster from "./_components/Toaster";
+import HabeasDataBanner from "./_components/HabeasDataBanner";
 
 /**
  * Layout del catálogo público. Monta:
- * - Header con logo, nav, búsqueda e icono de carrito
+ * - Header con logo, nav, búsqueda, cuenta e icono de carrito
  * - Drawer lateral del carrito (controlado por estado global)
  * - Toaster para notificaciones (agregado al carrito, etc)
- * - Footer con info legal
+ * - Banner Habeas Data (ley 1581/2012) en primera visita
+ * - Footer con info legal NIT + dirección + redes
  *
  * Las páginas hijas controlan su propio container y padding.
  */
@@ -21,6 +23,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
       <PublicFooter />
       <CartDrawer />
       <Toaster />
+      <HabeasDataBanner />
     </div>
   );
 }

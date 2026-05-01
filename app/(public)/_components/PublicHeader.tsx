@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCartCount } from "@/lib/cart/use-cart";
 import { useCartDrawer } from "@/lib/cart/use-cart-drawer";
 import SearchBar from "./SearchBar";
+import AccountLink from "./AccountLink";
 
 export default function PublicHeader() {
   const cartCount = useCartCount();
@@ -39,7 +40,7 @@ export default function PublicHeader() {
           </span>
         </Link>
 
-        {/* Navegación principal · oculta en mobile, expandible próximamente */}
+        {/* Navegación principal · oculta en mobile */}
         <nav className="hidden md:flex items-center gap-6 text-sm">
           <Link
             href="/tienda"
@@ -48,16 +49,16 @@ export default function PublicHeader() {
             Tienda
           </Link>
           <Link
-            href="/colecciones"
+            href="/buscar"
             className="text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)] font-medium"
           >
-            Colecciones
+            Buscar
           </Link>
           <Link
-            href="/laboratorios"
+            href="/legal/envios"
             className="text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)] font-medium"
           >
-            Laboratorios
+            Envíos
           </Link>
         </nav>
 
@@ -65,6 +66,9 @@ export default function PublicHeader() {
         <div className="flex items-center gap-2">
           {/* Búsqueda · expandible en header con submit a /buscar */}
           <SearchBar variant="header" />
+
+          {/* Cuenta · cambia entre /iniciar-sesion y /mi-cuenta según auth */}
+          <AccountLink />
 
           {/* Carrito */}
           <button
@@ -99,16 +103,16 @@ export default function PublicHeader() {
           Tienda
         </Link>
         <Link
-          href="/colecciones"
+          href="/buscar"
           className="text-[var(--color-earth-700)] whitespace-nowrap"
         >
-          Colecciones
+          Buscar
         </Link>
         <Link
-          href="/laboratorios"
+          href="/legal/envios"
           className="text-[var(--color-earth-700)] whitespace-nowrap"
         >
-          Laboratorios
+          Envíos
         </Link>
       </nav>
     </header>

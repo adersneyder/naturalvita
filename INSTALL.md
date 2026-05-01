@@ -1,71 +1,94 @@
-# NaturalVita · Hito 1.6 Sesión C
+# NaturalVita · Hito 1.7 Sesión A · Auth de cliente, /carrito, /mi-cuenta, legal y Habeas Data
 
-Cierra el catálogo público con búsqueda full-text, sitemap dinámico, robots.txt
-y landing /tienda enriquecida con destacados, colecciones y categorías.
+Esta sesión sienta la base del Hito 1.7 (carrito y checkout). Aquí no
+construimos checkout todavía: eso es Sesión B (formularios y dirección) y
+Sesión C (Bold + envíos + Resend SMTP). Pero todo lo previo al checkout —
+identidad del cliente, página completa del carrito, banner Habeas Data y
+páginas legales — queda listo y deployable.
 
-Build limpio: 24 rutas, 0 errores TS.
+Build limpio: 30 rutas, 0 errores TS.
 
 ---
 
 ## 0. Estado previo asumido
 
-- Sesión B aplicada y desplegada (preview verde en Vercel).
-- Repo en rama de trabajo.
-- `npm install` ya ejecutado con las deps de Sesión B (no se agregan
-  dependencias nuevas en Sesión C).
+- Hito 1.6 Sesión C aplicada y desplegada en producción.
+- `npm install` ya ejecutado con todas las deps de Hito 1.6.
+- Bulks IA corriendo en paralelo en `/admin/productos`.
+
+**No hay deps nuevas en esta sesión.** Tampoco migraciones SQL: las
+policies de `customers`, `addresses`, `carts`, `cart_items`, `orders` ya
+están en Supabase con las reglas correctas (verifiqué via MCP antes de
+codear). Aplicas el ZIP, build, commit y deploy.
 
 ---
 
-## 1. Migración SQL: ya está aplicada
-
-Ya apliqué la migración `products_fulltext_search_vector` directamente en tu
-proyecto de Supabase (`qheynvhdjdnqywyaekpq`) vía MCP. Crea:
-
-- Columna generada `search_vector` (tsvector con pesos A/B/C/D para name,
-  short_description, presentation/keywords, full_description).
-- Índice GIN sobre `search_vector` (búsqueda en milisegundos incluso con
-  decenas de miles de productos).
-- Función RPC `search_products(q, page_size, page_offset)` con ranking por
-  `ts_rank` (la dejo lista por si en una iteración futura migramos a ranking
-  exacto en lugar del orden por relevancia/recientes).
-
-Ya está validada con productos reales: `vitamina c` devuelve "Collagen Plus
-Vitamin C" y "Vitamin C 500 mg" con rank 0.99+. Sin acción de tu lado.
-
-> Si necesitas re-aplicar la migración en otro entorno, el SQL completo está
-> al final de este documento en la sección **Apéndice A**.
-
----
-
-## 2. Aplicar este paquete
+## 1. Aplicar este paquete
 
 Desde la raíz del repo:
 
 ```bash
-cp -r nv-hito-1.6-sesion-c/. ./
+cp -r nv-hito-1.7-sesion-a/. ./
 ```
 
-Archivos nuevos:
-- `app/sitemap.ts` — sitemap.xml dinámico con productos, categorías,
-  colecciones, laboratorios, home y /tienda.
-- `app/robots.ts` — robots.txt que bloquea /admin, /auth, /api y URLs con
-  filtros (querystring) para no inflar el crawl budget.
-- `app/(public)/buscar/page.tsx` — página de búsqueda con resultados
-  full-text y página de "tips" cuando no hay query.
-- `app/(public)/_components/SearchBar.tsx` — caja de búsqueda con dos
-  variantes (compacta para header, ancha para página).
+### Archivos nuevos (14)
 
-Archivos modificados (sobrescriben a Sesión B):
-- `lib/catalog/listing-queries.ts` — `q` ahora usa `textSearch` con
-  `websearch_to_tsquery('spanish', ...)` en lugar de ILIKE; suma queries
-  para landing (`listFeaturedCollections`, `listFeaturedProducts`) y para
-  el sitemap (`listSitemapEntries`).
-- `app/(public)/_components/PublicHeader.tsx` — sustituye el botón de lupa
-  inerte por `SearchBar` real (variante "header") con submit a /buscar.
-- `app/(public)/tienda/page.tsx` — sin filtros muestra hero + bloques
-  curados (categorías, colecciones destacadas, productos destacados) +
-  listado completo abajo. Con cualquier filtro/sort/q activo, salta directo
-  al listado para no hacer scroll innecesario.
+Identidad y consentimiento (`lib/`):
+- `lib/legal/company-info.ts` — constantes de Everlife (NIT, dirección, contacto).
+- `lib/auth/customer-auth.ts` — `requireCustomer()` y `getCurrentCustomer()` con auto-onboarding.
+- `lib/cart/use-consent.ts` — hook + storage del consentimiento Habeas Data.
+
+Componentes públicos:
+- `app/(public)/_components/HabeasDataBanner.tsx` — banner sticky bottom con configuración granular (esencial / analítica / marketing).
+- `app/(public)/_components/AccountLink.tsx` — icono de cuenta del header con estado reactivo a auth.
+
+Páginas:
+- `app/(public)/iniciar-sesion/page.tsx` + `_LoginForm.tsx` — magic link para clientes (separado del admin).
+- `app/(public)/mi-cuenta/page.tsx` + `_LogoutButton.tsx` — dashboard mínimo del cliente.
+- `app/(public)/carrito/page.tsx` + `_CartPageContent.tsx` — carrito en página completa.
+- `app/(public)/legal/privacidad/page.tsx` — política de tratamiento de datos (ley 1581/2012).
+- `app/(public)/legal/terminos/page.tsx` — términos y condiciones.
+- `app/(public)/legal/envios/page.tsx` — política de envíos y devoluciones.
+
+### Archivos modificados (6)
+
+- `app/_components/SiteAnalytics.tsx` — Microsoft Clarity solo carga si el
+  usuario aceptó "analytics" en el banner. Vercel Analytics + Speed Insights
+  siguen siempre activos (anónimos).
+- `app/(public)/layout.tsx` — monta `<HabeasDataBanner>`.
+- `app/(public)/_components/PublicHeader.tsx` — agrega `<AccountLink>` y
+  arregla los enlaces rotos del nav (`/colecciones` y `/laboratorios` que
+  daban 404). El nav ahora es Tienda · Buscar · Envíos.
+- `app/(public)/_components/PublicFooter.tsx` — footer enriquecido con
+  cuatro columnas (marca, catálogo, soporte, legal), redes sociales, y
+  bottom bar con NIT, dirección y registro INVIMA.
+- `app/(public)/_components/CartDrawer.tsx` — botón "Proceder al pago"
+  ahora es link activo a `/carrito` (antes estaba deshabilitado).
+- `app/globals.css` — agrega keyframes `slide-in-up` para el banner.
+
+---
+
+## 2. Llenar datos de Everlife
+
+**Importante antes del lanzamiento público.** Abre `lib/legal/company-info.ts`
+y reemplaza los placeholders marcados con `[TODO]`:
+
+```ts
+nit: "[NIT pendiente]",                 // → "900.123.456-7"
+publicPhone: "[Teléfono pendiente]",    // → "+57 300 123 4567"
+publicWhatsapp: "[WhatsApp pendiente]", // idem
+addressStreet: "[Dirección pendiente]", // → "Calle 100 # 10-20, Oficina 401"
+```
+
+Si Everlife tiene registro INVIMA propio (importador/comercializador),
+ponlo en `REGULATORY.invimaImporterRegistration`. Si no aplica, déjalo
+vacío y el footer no lo muestra. Las URLs de Instagram/Facebook ya están
+con `naturalvita.co` como handle — confirma que esos perfiles existen o
+ajústalos.
+
+Estos datos aparecen en el footer y en las tres páginas legales. Si dejas
+los placeholders, las páginas funcionan pero muestran texto de marcador
+visible. Útil para QA, inaceptable para producción.
 
 ---
 
@@ -78,13 +101,15 @@ npm run build
 Espera ver:
 
 ```
-├ ƒ /buscar                              1.74 kB         112 kB
-├ ○ /robots.txt                            141 B         102 kB
-├ ƒ /sitemap.xml                           141 B         102 kB
-├ ƒ /tienda                                132 B         120 kB
+├ ○ /carrito                             3.57 kB         114 kB
+├ ○ /iniciar-sesion                      1.56 kB         166 kB
+├ ƒ /mi-cuenta                             580 B         169 kB
+├ ○ /legal/envios                          182 B         106 kB
+├ ○ /legal/privacidad                      182 B         106 kB
+├ ○ /legal/terminos                        182 B         106 kB
 ```
 
-24 rutas en total.
+30 rutas en total.
 
 ---
 
@@ -94,24 +119,35 @@ Espera ver:
 npm run dev
 ```
 
-Verifica las rutas nuevas y mejoradas:
+Flujo de validación end-to-end del cliente:
 
-| URL                                | Qué validar                                                    |
-|------------------------------------|----------------------------------------------------------------|
-| `/tienda` (sin filtros)            | Hero, bloques de categorías, colecciones destacadas, destacados, listado |
-| `/tienda?cat=fitoterapeuticos`     | Salta directo al listado (sin bloques curados)                |
-| `/buscar`                          | Página de tips con SearchBar, categorías y colecciones featured |
-| `/buscar?q=vitamina%20c`           | Resultados FTS reales con productos que matchean              |
-| `/buscar?q=algoinexistentexyz`     | Mensaje "Sin resultados" + invitación a navegar               |
-| `/sitemap.xml`                     | XML válido con todas las URLs                                 |
-| `/robots.txt`                      | Reglas de Allow/Disallow correctas                            |
+1. **Banner Habeas Data**: abre `/` en navegador limpio (o `localStorage.clear()`
+   en consola). Aparece banner abajo. Prueba "Personalizar" → toggle de
+   analytics → "Guardar". El banner desaparece. Si recargas, no vuelve.
+   En `localStorage` debe estar `nv:consent:v1` con tu decisión.
 
-En `/buscar` prueba operadores web: `colageno -bovino` debe excluir bovino,
-`"omega 3"` busca la frase exacta. Funciona porque usamos
-`websearch_to_tsquery`.
+2. **Login cliente**: ve a `/iniciar-sesion`, ingresa tu email, recibes
+   magic link en correo, click. Te lleva a `/mi-cuenta` mostrando tu email
+   y los cards "Próximamente". Verifica que en Supabase ahora hay una fila
+   nueva en `customers` con tu `id` y `email`.
 
-Mobile: la lupa en el header se expande a una caja de búsqueda inline al
-tocarla. El botón "Cerrar" la colapsa.
+3. **Cuenta visible en header**: el icono de usuario en el header tiene
+   ahora un punto verde indicando sesión activa. Click → `/mi-cuenta`. En
+   `/mi-cuenta` botón "Cerrar sesión" → vuelves a home con el icono sin
+   punto.
+
+4. **Carrito completo**: agrega 2-3 productos desde la tienda, abre el
+   drawer, click "Ver carrito y pagar". Estás en `/carrito` con los items,
+   stepper de cantidad funcional, eliminar item, vaciar carrito, link
+   "Seguir comprando". Botón "Continuar al pago" lleva a `/checkout` (que
+   por ahora dará 404 porque la armamos en Sesión B).
+
+5. **Legal**: recorre `/legal/privacidad`, `/legal/terminos`, `/legal/envios`.
+   Verifica que aparecen los placeholders de Everlife — eso te recuerda
+   llenar `lib/legal/company-info.ts` antes de producción.
+
+6. **Footer**: scroll hasta el footer. Cuatro columnas, redes, bottom bar
+   con NIT y dirección. Todos los links funcionan.
 
 ---
 
@@ -119,77 +155,54 @@ tocarla. El botón "Cerrar" la colapsa.
 
 ```bash
 git add .
-git commit -m "feat(hito-1.6/C): busqueda FTS postgres + sitemap dinamico + robots + landing tienda enriquecida"
-git push origin hito-1.6-sesion-b   # o la rama que estés usando
+git commit -m "feat(hito-1.7/A): auth cliente magic link + /carrito + /mi-cuenta + Habeas Data banner + paginas legales + footer enriquecido"
+git push origin hito-1.7-sesion-a   # o la rama que estés usando
 ```
 
-Verifica preview de Vercel: `/sitemap.xml` y `/robots.txt` responden bien.
-Si pusiste `NEXT_PUBLIC_SITE_URL` en Vercel apuntando a `https://naturalvita.co`,
-el sitemap usará ese host. Si no, cae al default `https://naturalvita.co`
-hardcodeado.
+En el preview de Vercel:
+- Confirma que `/iniciar-sesion` funciona y que el magic link llega y
+  redirige correctamente.
+- Confirma que el banner aparece en visita limpia.
+- Si pusiste `NEXT_PUBLIC_CLARITY_ID` en Vercel, **rechaza analytics** en
+  el banner y verifica que el script de Clarity NO carga (Network tab).
+  Luego acepta analytics y verifica que carga. Esa es la prueba clave de
+  cumplimiento Habeas Data.
 
 ---
 
-## 6. Lo que cierra
+## 6. Pendientes para Sesión B y siguientes
 
-Hito 1.6 entero termina aquí en lo que es código del catálogo público:
-- ✅ Sesión A — ficha de producto + carrito localStorage + header/footer.
-- ✅ Sesión B — listados con filtros nuqs + ProductCard + paginación + analítica + ratelimit + headers.
-- ✅ Sesión C — búsqueda FTS + sitemap + robots + landing curada.
+**Sesión B** (próxima): formulario de checkout con datos de contacto y
+dirección, catálogo DIVIPOLA de departamentos y ciudades, validación con
+Zod, persistencia en `addresses`, paso de revisión.
 
-**Pendientes para abrir Sesión D (QA + lanzamiento)**:
-- Bulk de generación IA de las 299 fichas (tu acción, ~30 min, ~$5–6 USD).
-  Sigue siendo el bloqueador. Sin esto las fichas se ven con texto crudo.
-- QA mobile real (no solo DevTools): probar en Android e iOS reales.
-- Verificar que Google Search Console recibe el sitemap (registrar el
-  dominio si no está, subir `https://naturalvita.co/sitemap.xml`).
-- Decidir umbral "Envío gratis desde X" (sugerencia: $200.000 COP).
+**Sesión C**: integración Bold por API REST (3DS, PSE, Nequi, QR),
+shipping_rates por departamento, webhook `/api/webhooks/bold`, Resend SMTP
+con templates transaccionales.
 
-**Hito 1.7** queda bien definido para entrar después: carrito persistente
-con sesión, checkout Bold con 3DS/PSE/Nequi, Resend SMTP para confirmaciones,
-política de envíos, banner Habeas Data, footer legal NIT + INVIMA + dirección.
+**Sesión D**: `/pedido/[order_number]` con tracking, /mi-cuenta enriquecida
+con historial real de pedidos y direcciones guardadas, eventos a Klaviyo.
+
+**Pendiente externo (tú)**: bulk de generación IA de las 299 fichas, llenar
+los `[TODO]` de `lib/legal/company-info.ts` con datos reales de Everlife.
 
 ---
 
-## Apéndice A: SQL aplicado en Supabase
+## Apéndice: notas técnicas
 
-Solo para referencia. **Ya está aplicado en producción**, no lo corras de
-nuevo a menos que estés clonando el entorno.
-
-```sql
-ALTER TABLE public.products
-  ADD COLUMN IF NOT EXISTS search_vector tsvector
-  GENERATED ALWAYS AS (
-    setweight(to_tsvector('spanish', coalesce(name, '')), 'A') ||
-    setweight(to_tsvector('spanish', coalesce(short_description, '')), 'B') ||
-    setweight(to_tsvector('spanish', coalesce(presentation, '')), 'C') ||
-    setweight(to_tsvector('spanish', coalesce(search_keywords, '')), 'C') ||
-    setweight(to_tsvector('spanish', coalesce(full_description, '')), 'D')
-  ) STORED;
-
-CREATE INDEX IF NOT EXISTS idx_products_search_vector
-  ON public.products USING GIN (search_vector);
-
-CREATE OR REPLACE FUNCTION public.search_products(
-  q text,
-  page_size int DEFAULT 24,
-  page_offset int DEFAULT 0
-)
-RETURNS TABLE (id uuid, rank real)
-LANGUAGE sql STABLE SECURITY INVOKER
-SET search_path = public
-AS $$
-  SELECT
-    p.id,
-    ts_rank(p.search_vector, websearch_to_tsquery('spanish', q)) AS rank
-  FROM public.products p
-  WHERE
-    p.status = 'active'
-    AND p.search_vector @@ websearch_to_tsquery('spanish', q)
-  ORDER BY rank DESC, p.created_at DESC
-  LIMIT page_size
-  OFFSET page_offset;
-$$;
-
-GRANT EXECUTE ON FUNCTION public.search_products(text, int, int) TO anon, authenticated;
-```
+- **Auto-onboarding de cliente**: cuando un user entra por primera vez a
+  `/mi-cuenta`, `requireCustomer()` detecta que no existe en `customers`,
+  lo crea automáticamente con `id = auth.uid()` y `email`. Las policies
+  de RLS lo permiten (verificadas en BD).
+- **Aislamiento admin/cliente**: el mismo sistema de auth de Supabase
+  sirve para ambos. La diferencia es la tabla: admins están en
+  `admin_users`, clientes en `customers`. `getAdminUser()` y
+  `requireCustomer()` filtran por su tabla. Si un admin entra a
+  `/mi-cuenta`, se crea fila en `customers` para él (es lo correcto: él
+  también puede comprar).
+- **Banner Habeas Data**: el consentimiento vive en `localStorage`. Si en
+  el futuro queremos consent management server-side (sincronizado entre
+  dispositivos), es una migración pequeña: lectura desde `customers.preferences`
+  cuando hay sesión, fallback a localStorage cuando no.
+- **Sin shadcn**: mantengo la regla de Hito 1.6 — sigo construyendo
+  componentes propios alineados con tokens leaf/earth/iris y Fraunces+Inter.
