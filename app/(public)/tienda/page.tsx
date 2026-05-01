@@ -122,13 +122,13 @@ export default async function TiendaPage({
       {/* Hero principal cuando NO hay filtros aplicados. Más generoso visualmente. */}
       {!hasAnyFilter ? (
         <section className="bg-[var(--color-earth-50)] border-b border-[var(--color-earth-100)]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-10 md:py-16">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-16">
             <Breadcrumbs items={[{ label: "Tienda" }]} />
-            <div className="mt-4 max-w-3xl">
-              <h1 className="font-serif text-4xl md:text-5xl text-[var(--color-leaf-900)] tracking-tight leading-tight">
+            <div className="mt-3 md:mt-4 max-w-3xl">
+              <h1 className="font-serif text-2xl md:text-5xl text-[var(--color-leaf-900)] tracking-tight leading-tight">
                 Productos naturales seleccionados con criterio.
               </h1>
-              <p className="mt-4 text-base md:text-lg text-[var(--color-earth-700)] leading-relaxed">
+              <p className="mt-2 md:mt-4 text-sm md:text-lg text-[var(--color-earth-700)] leading-relaxed">
                 Suplementos, vitaminas, fitoterápicos y dermocosmética de los
                 laboratorios más reconocidos de Colombia. Despacho a todo el país.
               </p>
@@ -146,34 +146,34 @@ export default async function TiendaPage({
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-12">
         {/* Bloques curados (solo en landing limpia) */}
         {!hasAnyFilter && (
           <>
             {featuredCollections.length > 0 && (
-              <section className="mb-12">
-                <div className="flex items-end justify-between mb-5">
-                  <h2 className="font-serif text-2xl text-[var(--color-leaf-900)]">
+              <section className="mb-8 md:mb-12">
+                <div className="flex items-end justify-between mb-3 md:mb-5">
+                  <h2 className="font-serif text-xl md:text-2xl text-[var(--color-leaf-900)]">
                     Colecciones destacadas
                   </h2>
                 </div>
                 <ul
                   role="list"
-                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+                  className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4"
                 >
                   {featuredCollections.map((c) => (
                     <li key={c.slug}>
                       <Link
                         href={`/coleccion/${c.slug}`}
-                        className="group block rounded-2xl overflow-hidden bg-[var(--color-earth-50)] hover:shadow-md transition-shadow"
+                        className="group block rounded-xl md:rounded-2xl overflow-hidden bg-[var(--color-earth-50)] hover:shadow-md transition-shadow"
                       >
-                        <div className="relative aspect-[4/3] bg-white">
+                        <div className="relative aspect-square md:aspect-[4/3] bg-white">
                           {c.cover_image_url ? (
                             <Image
                               src={c.cover_image_url}
                               alt={c.name}
                               fill
-                              sizes="(max-width: 640px) 100vw, 25vw"
+                              sizes="(max-width: 640px) 50vw, 25vw"
                               className="object-cover transition-transform duration-500 group-hover:scale-105"
                               unoptimized
                             />
@@ -183,12 +183,12 @@ export default async function TiendaPage({
                             </div>
                           )}
                         </div>
-                        <div className="p-4">
-                          <h3 className="font-serif text-base text-[var(--color-leaf-900)] group-hover:text-[var(--color-iris-700)] transition-colors">
+                        <div className="p-3 md:p-4">
+                          <h3 className="font-serif text-sm md:text-base text-[var(--color-leaf-900)] group-hover:text-[var(--color-iris-700)] transition-colors line-clamp-1">
                             {c.name}
                           </h3>
                           {c.description && (
-                            <p className="text-xs text-[var(--color-earth-700)] mt-1 line-clamp-2">
+                            <p className="hidden md:block text-xs text-[var(--color-earth-700)] mt-1 line-clamp-2">
                               {c.description}
                             </p>
                           )}
@@ -201,9 +201,9 @@ export default async function TiendaPage({
             )}
 
             {featuredProducts.length > 0 && (
-              <section className="mb-12">
-                <div className="flex items-end justify-between mb-5">
-                  <h2 className="font-serif text-2xl text-[var(--color-leaf-900)]">
+              <section className="mb-8 md:mb-12">
+                <div className="flex items-end justify-between mb-3 md:mb-5">
+                  <h2 className="font-serif text-xl md:text-2xl text-[var(--color-leaf-900)]">
                     Destacados de la temporada
                   </h2>
                   <Link
@@ -222,7 +222,7 @@ export default async function TiendaPage({
         {/* Listado completo: con filtros si los hay, "todo el catálogo" si no */}
         <section>
           {!hasAnyFilter && (
-            <h2 className="font-serif text-2xl text-[var(--color-leaf-900)] mb-5">
+            <h2 className="font-serif text-xl md:text-2xl text-[var(--color-leaf-900)] mb-3 md:mb-5">
               Todo el catálogo
             </h2>
           )}

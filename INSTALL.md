@@ -1,4 +1,4 @@
-# NaturalVita · Patch · Eliminar "Por categoría" de la landing /tienda
+# NaturalVita · Patch · Compactar /tienda en mobile
 
 Un solo archivo modificado:
 
@@ -6,55 +6,68 @@ Un solo archivo modificado:
 app/(public)/tienda/page.tsx
 ```
 
-Build limpio: 31 rutas, 0 errores TS.
+Build limpio: 31 rutas, 0 errores TS. Sin deps, sin SQL, sin env.
 
 ---
 
-## Qué cambia
+## Qué cambia (solo en mobile, ≤768px)
 
-Se elimina la sección "Por categoría" de la landing limpia de `/tienda`
-(la que se ve cuando el visitante no ha aplicado ningún filtro). Quedan
-en la landing:
+**Hero**
+- Padding vertical: `py-10` → `py-6` (de 80 a 48px). Ahorra **32px**.
+- Título: `text-4xl` (36px) → `text-2xl` (24px). Ahorra **~24px** de altura.
+- Margen interno (entre breadcrumb y h1, entre h1 y párrafo): de `mt-4` a `mt-2/mt-3`. Ahorra **~16px**.
+- Párrafo: `text-base` → `text-sm`. Ahorra **~8px**.
 
-1. Hero con título y subtítulo
-2. **Colecciones destacadas** (intacta, con imagen de portada)
-3. Destacados de la temporada
-4. "Todo el catálogo" + sidebar de filtros (intacto)
+Total hero: **~80px menos**.
 
-El filtro de categorías sigue accesible donde siempre estuvo:
-- Sidebar izquierdo, primer grupo, abierto por defecto.
-- Cards de categoría que se acceden desde el listado paginado abajo.
-- Subnav de la app (Tienda · Buscar · Envíos).
+**Contenedor inferior**
+- Padding vertical: `py-8` → `py-6`. Ahorra **16px**.
+
+**Colecciones destacadas**
+- Cambio principal: pasa de **1 columna a 2 columnas** (`grid-cols-2 lg:grid-cols-4`). Para 4 colecciones, ahorra ~600px de scroll.
+- Aspect ratio de la imagen: `aspect-[4/3]` → `aspect-square` en mobile. Cards más altas pero más estrechas, mejor balance en 2 cols.
+- Padding interno de la card: `p-4` → `p-3`. Ahorra **8px** por card.
+- Título de la card: `text-base` → `text-sm` con `line-clamp-1`. Ahorra ~12px.
+- Descripción de la card: **oculta en mobile** (`hidden md:block`). Las cards de colección a 2 cols son demasiado estrechas para mostrar 2 líneas de descripción legibles; el nombre + imagen ya comunican.
+- Margen de sección: `mb-12` → `mb-8`. Ahorra **16px**.
+- Margen del header de sección: `mb-5` → `mb-3`. Ahorra **8px**.
+- Header h2: `text-2xl` → `text-xl`. Ahorra **~6px**.
+- Border-radius: `rounded-2xl` → `rounded-xl`. Más sobrio en cards pequeñas.
+
+**Destacados de la temporada y "Todo el catálogo"**
+- Mismo tratamiento: `mb-12` → `mb-8`, `mb-5` → `mb-3`, `text-2xl` → `text-xl`.
 
 ---
 
-## Por qué
+## Resultado esperado
 
-Tres puntos de acceso a categorías en la misma página era redundancia.
-Las colecciones, en cambio, solo tienen un punto de acceso visualmente
-rico (la sección con `cover_image_url`). Mantener la que aporta valor
-diferencial editorial; eliminar la que duplicaba navegación.
+En un teléfono típico (viewport 375×700 efectivo):
+
+**Antes**: hero 220px + colecciones 1500px (4 cards a 1 col) + ~30px gaps. La grilla "Todo el catálogo" aparecía después de **~1750px de scroll** (≈3 swipes).
+
+**Ahora**: hero 140px + colecciones ~600px (4 cards a 2 cols) + gaps menores. La grilla "Todo el catálogo" aparece a **~750px** (1 swipe). Más del 50% menos de scroll para llegar al catálogo.
 
 ---
 
 ## Qué NO cambia
 
-- El sidebar izquierdo de filtros — intacto.
-- La query `listActiveCategoriesTree()` se mantiene porque el sidebar
-  la sigue consumiendo.
-- La regla "con cualquier filtro aplicado, oculta los bloques curados"
-  funciona igual.
-- Ninguna otra página, ninguna ruta, ningún archivo fuera de
-  `tienda/page.tsx`.
+- Versión desktop (≥768px): **idéntica** a la actual. Todos los cambios usan breakpoints `md:` para preservar la generosidad visual en pantallas grandes.
+- Sidebar de filtros: intacto.
+- ProductGrid de los Destacados: intacto (su responsividad ya es correcta).
+- Paginación, ordenamiento, JSON-LD, metadata: intactos.
 
 ---
 
 ## QA
 
-1. Visita limpia a `/tienda` → no debe aparecer la sección "Por
-   categoría". El primer bloque después del hero es "Colecciones
-   destacadas".
-2. Aplica cualquier filtro → la landing colapsa al listado normal
-   (comportamiento intacto).
-3. En `/tienda` con la URL limpia, el sidebar izquierdo debe seguir
-   mostrando "Categoría" como primer filtro abierto.
+**Mobile (DevTools responsive 375px o teléfono real):**
+1. Hero compacto, título a 24px, párrafo a 14px, padding moderado.
+2. Colecciones destacadas en 2 columnas con cards cuadradas, sin descripción debajo del nombre.
+3. Destacados con header más pequeño.
+4. La grilla "Todo el catálogo" se ve después de uno o dos swipes, no tres.
+
+**Desktop (≥768px):**
+1. Todo idéntico a antes: hero generoso a 48px de título, colecciones a 4 columnas con `aspect-[4/3]` y descripción visible.
+
+**Tablet (~768-1024px):**
+1. Toma los estilos de desktop porque el breakpoint `md:` se activa en 768px. Si quieres tratamiento intermedio para tablets verticales, lo afinamos en otra iteración.
