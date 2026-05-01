@@ -14,7 +14,15 @@
   --color-earth-700: #6b5239;
   --color-earth-900: #3d2e20;
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Púrpura · color de acción para CTAs públicos (botones de compra, links primarios) */
+  --color-iris-50:  #F1ECFA;
+  --color-iris-100: #DCCCF2;
+  --color-iris-500: #6E47C5;
+  --color-iris-600: #5836AA;
+  --color-iris-700: #4A2E9A;
+  --color-iris-900: #2E1862;
+
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-serif: "Fraunces", Georgia, "Times New Roman", serif;
 }
 
@@ -23,12 +31,30 @@ html {
 }
 
 body {
-  background: var(--color-earth-50);
+  background: #ffffff;
   color: var(--color-earth-900);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .font-serif {
   font-family: var(--font-serif);
 }
+
+/* Animación de entrada suave para drawers y toasts */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes slide-out-right {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-slide-in-right { animation: slide-in-right 0.25s ease-out; }
+.animate-slide-out-right { animation: slide-out-right 0.25s ease-out; }
+.animate-fade-in { animation: fade-in 0.2s ease-out; }
