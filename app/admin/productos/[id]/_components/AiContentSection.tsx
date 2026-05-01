@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import React, { useState, useTransition } from "react";
 
 export type AiGeneratedFields = {
   short_description: string;
@@ -54,6 +54,70 @@ const FIELD_HINTS: Record<keyof AiGeneratedFields, string> = {
   dosage: "30-60 palabras · 3 líneas",
   warnings: "70-110 palabras · incluye disclaimer regulatorio fijo",
 };
+
+/**
+ * Renderer markdown ligero para previsualizar cómo se verá la ficha pública.
+ * Soporta solo lo que necesitan nuestras 5 piezas editoriales:
+ *   - **negrillas**
+ *   - listas con guiones (- item)
+ *   - párrafos separados por línea en blanco
+ *
+ * Cuando construyamos el catálogo público en /tienda usaremos un parser markdown
+ * estándar (react-markdown). Por ahora este helper basta para que el admin
+ * vea la ficha "como se publicará" en el editor.
+ */
+function MarkdownPreview({ text }: { text: string }) {
+  if (!text) return <span className="text-[var(--color-earth-500)] italic">(vacío)</span>;
+
+  // Convertir **bold** a <strong>
+  const renderInline = (line: string): React.ReactNode[] => {
+    const parts = line.split(/(\*\*[^*]+\*\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={i}>{part.slice(2, -2)}</strong>;
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
+  // Procesar línea por línea, agrupando bullets consecutivos en <ul>
+  const lines = text.split("\n");
+  const blocks: React.ReactNode[] = [];
+  let bulletBuffer: string[] = [];
+
+  const flushBullets = () => {
+    if (bulletBuffer.length > 0) {
+      blocks.push(
+        <ul key={`ul-${blocks.length}`} className="list-disc pl-5 space-y-0.5 my-1">
+          {bulletBuffer.map((item, i) => (
+            <li key={i}>{renderInline(item)}</li>
+          ))}
+        </ul>,
+      );
+      bulletBuffer = [];
+    }
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (line.startsWith("- ")) {
+      bulletBuffer.push(line.slice(2));
+    } else if (line === "") {
+      flushBullets();
+      // No insertar nodo: line breaks naturales por margen del siguiente bloque
+    } else {
+      flushBullets();
+      blocks.push(
+        <p key={`p-${blocks.length}`} className="my-1 leading-snug">
+          {renderInline(line)}
+        </p>,
+      );
+    }
+  }
+  flushBullets();
+
+  return <div>{blocks}</div>;
+}
 
 export default function AiContentSection({ productId, current }: Props) {
   const [isPending, startTransition] = useTransition();
@@ -314,19 +378,19 @@ export default function AiContentSection({ productId, current }: Props) {
 
       {/* Mostrar valores actuales si NO hay draft (estado de solo lectura para revisar lo guardado) */}
       {!draft && hasGenerated && (
-        <details className="mt-2">
-          <summary className="text-[11px] text-[var(--color-earth-700)] cursor-pointer">
-            Ver contenido actualmente guardado
+        <details className="mt-2" open>
+          <summary className="text-[11px] text-[var(--color-earth-700)] cursor-pointer mb-2">
+            Vista previa del contenido publicado
           </summary>
-          <div className="mt-2 space-y-2 text-[11px]">
+          <div className="space-y-3 text-[12px]">
             {(Object.keys(FIELD_LABELS) as Array<keyof AiGeneratedFields>).map((field) => (
               <div key={field}>
-                <div className="font-medium text-[var(--color-earth-700)] mb-0.5">
+                <div className="font-medium text-[var(--color-earth-700)] mb-1 text-[10px] uppercase tracking-wide">
                   {FIELD_LABELS[field]}
                 </div>
-                <pre className="text-[11px] text-[var(--color-leaf-900)] bg-[var(--color-earth-50)] p-2 rounded whitespace-pre-wrap font-sans m-0">
-                  {current[field] ?? "(vacío)"}
-                </pre>
+                <div className="text-[12px] text-[var(--color-leaf-900)] bg-[var(--color-earth-50)] p-3 rounded-lg leading-relaxed">
+                  <MarkdownPreview text={current[field] ?? ""} />
+                </div>
               </div>
             ))}
           </div>

@@ -223,12 +223,12 @@ function escapeRegex(s: string): string {
  *   o groseramente fuera de rango (indicador de IA confundida).
  * - **warnings**: informativos. La ficha es aceptable pero podría afinarse.
  *
- * Rangos objetivo (priorizando experiencia de compra y conversión, no SEO máximo):
+ * Rangos objetivo (priorizando experiencia de compra y conversión sobre densidad):
  *   short_description : 140-160 chars  (límite duro: 60 / 165)
- *   full_description  : 75-95 palabras (límite duro: 60 / 130, 1 párrafo)
- *   composition_use   : 40-60 palabras (límite duro: 25 / 100)
+ *   full_description  : 45-65 palabras (límite duro: 35 / 90, 1 párrafo, 3 frases máx)
+ *   composition_use   : 15-40 palabras (límite duro: 8 / 80, solo lista de ingredientes)
  *   dosage            : 15-30 palabras (límite duro: 8 / 60)
- *   warnings          : 40-55 palabras (límite duro: 25 / 100)
+ *   warnings          : 40-60 palabras (límite duro: 25 / 100, 2 bloques con bullets)
  */
 export function validateStructure(output: AiContentFields): {
   ok: boolean;
@@ -250,28 +250,32 @@ export function validateStructure(output: AiContentFields): {
     warnings.push(`short_description larga (${shortLen} chars, ideal 140-160)`);
   }
 
-  // full_description: cuerpo conciso de 1 párrafo
+  // full_description: 3 frases máximo, párrafo único
   const fullWords = (output.full_description ?? "").split(/\s+/).filter(Boolean).length;
   if (fullWords === 0) {
     errors.push("full_description vacía");
-  } else if (fullWords < 60) {
+  } else if (fullWords < 35) {
     errors.push(`full_description demasiado corta (${fullWords} palabras)`);
-  } else if (fullWords > 130) {
+  } else if (fullWords > 90) {
     errors.push(`full_description demasiado larga (${fullWords} palabras)`);
-  } else if (fullWords < 75 || fullWords > 95) {
-    warnings.push(`full_description fuera de rango ideal (${fullWords} palabras, ideal 75-95)`);
+  } else if (fullWords < 45 || fullWords > 65) {
+    warnings.push(`full_description fuera de rango ideal (${fullWords} palabras, ideal 45-65)`);
   }
 
-  // composition_use: lista compacta + 1 frase de uso
+  // composition_use: solo lista de ingredientes (sin sub-sección "Uso recomendado")
   const compoWords = (output.composition_use ?? "").split(/\s+/).filter(Boolean).length;
   if (compoWords === 0) {
     errors.push("composition_use vacía");
-  } else if (compoWords < 25) {
+  } else if (compoWords < 8) {
     errors.push(`composition_use demasiado corta (${compoWords} palabras)`);
-  } else if (compoWords > 100) {
-    errors.push(`composition_use demasiado larga (${compoWords} palabras)`);
-  } else if (compoWords < 40 || compoWords > 60) {
-    warnings.push(`composition_use fuera de rango ideal (${compoWords} palabras, ideal 40-60)`);
+  } else if (compoWords > 80) {
+    errors.push(`composition_use demasiado larga (${compoWords} palabras, ¿incluye "Uso recomendado" por error?)`);
+  } else if (compoWords < 15 || compoWords > 40) {
+    warnings.push(`composition_use fuera de rango ideal (${compoWords} palabras, ideal 15-40)`);
+  }
+  // Detectar el header "Uso recomendado" que ya no debe aparecer
+  if (/uso recomendado/i.test(output.composition_use ?? "")) {
+    warnings.push('composition_use contiene "Uso recomendado" (ya no debe incluirse)');
   }
 
   // dosage: 2 líneas
@@ -286,16 +290,16 @@ export function validateStructure(output: AiContentFields): {
     warnings.push(`dosage fuera de rango ideal (${dosageWords} palabras, ideal 15-30)`);
   }
 
-  // warnings: estructura fija + 1 línea generada
+  // warnings: 2 bloques con bullets
   const warnWords = (output.warnings ?? "").split(/\s+/).filter(Boolean).length;
   if (warnWords === 0) {
     errors.push("warnings vacía");
   } else if (warnWords < 25) {
     errors.push(`warnings demasiado corta (${warnWords} palabras, ¿incluye disclaimer?)`);
   } else if (warnWords > 100) {
-    warnings.push(`warnings larga (${warnWords} palabras, ideal 40-55)`);
-  } else if (warnWords < 40 || warnWords > 55) {
-    warnings.push(`warnings fuera de rango ideal (${warnWords} palabras, ideal 40-55)`);
+    warnings.push(`warnings larga (${warnWords} palabras, ideal 40-60)`);
+  } else if (warnWords < 40 || warnWords > 60) {
+    warnings.push(`warnings fuera de rango ideal (${warnWords} palabras, ideal 40-60)`);
   }
 
   return { ok: errors.length === 0, errors, warnings };
