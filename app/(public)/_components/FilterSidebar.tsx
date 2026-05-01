@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   useQueryState,
   useQueryStates,
@@ -9,7 +9,7 @@ import {
   parseAsInteger,
   parseAsString,
 } from "nuqs";
-import { X, SlidersHorizontal, Check } from "lucide-react";
+import { X, SlidersHorizontal, Check, ChevronDown } from "lucide-react";
 import { formatCop } from "@/lib/format/currency";
 import type { FilterableAttribute } from "@/lib/catalog/listing-queries";
 
@@ -25,14 +25,14 @@ type Props = {
   collections?: Array<{ slug: string; name: string }>;
   /** Laboratorios disponibles. Se ocultan en la página de laboratorio. */
   laboratories?: Array<{ slug: string; name: string }>;
-  /** Atributos filtrable y sus opciones. */
+  /** Atributos filtrables y sus opciones. */
   attributes: FilterableAttribute[];
   /** Rango global de precios en COP. */
   priceRange: { min: number; max: number };
   /** Total de resultados actuales (se muestra en el botón "Aplicar" mobile). */
   totalResults: number;
-  /** Si el contexto fija una categoría (URL /categoria/[slug]), no mostramos
-   *  el filtro de categorías. Mismo principio para colecciones y laboratorios. */
+  /** Si el contexto fija una categoría/colección/laboratorio (URL /categoria/[slug]
+   *  etc.), no mostramos el filtro correspondiente. */
   hideCategories?: boolean;
   hideCollections?: boolean;
   hideLaboratories?: boolean;
@@ -47,6 +47,8 @@ type Props = {
  *   - Cada cambio actualiza la URL inmediatamente (nuqs).
  *   - "Limpiar todo" resetea todos los filtros excepto el contexto de la URL.
  *   - Cualquier cambio resetea `p` a 1.
+ *   - Cada grupo es accordion. Categoría y Laboratorio abiertos por defecto,
+ *     el resto cerrado. El estado de apertura es local (no se persiste).
  */
 export default function FilterSidebar({
   categories,
@@ -189,14 +191,26 @@ function FilterPanel({
   );
   const resetPage = () => setPage(null);
 
-  function toggleArray(
-    current: string[],
-    value: string,
-  ): string[] {
+  function toggleArray(current: string[], value: string): string[] {
     return current.includes(value)
       ? current.filter((v) => v !== value)
       : [...current, value];
   }
+
+  // Particionamos atributos en binarios (1 opción) y multi-opción.
+  // Los binarios típicos son las restricciones dietarias (Vegano, Sin gluten,
+  // Sin azúcar, etc.) — un atributo con un solo valor "Sí". Los agrupamos
+  // bajo una sección común "Características" para no llenar el sidebar de
+  // headers gigantes con un checkbox debajo.
+  const { binaryAttrs, multiAttrs } = useMemo(() => {
+    const binaryAttrs: FilterableAttribute[] = [];
+    const multiAttrs: FilterableAttribute[] = [];
+    for (const a of attributes) {
+      if (a.options.length === 1) binaryAttrs.push(a);
+      else if (a.options.length > 1) multiAttrs.push(a);
+    }
+    return { binaryAttrs, multiAttrs };
+  }, [attributes]);
 
   const hasAnyFilter =
     !!cat ||
@@ -218,42 +232,45 @@ function FilterPanel({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-1">
       {hasAnyFilter && (
-        <button
-          type="button"
-          onClick={clearAll}
-          className="text-xs text-[var(--color-iris-700)] hover:text-[var(--color-iris-600)] font-medium underline underline-offset-4"
-        >
-          Limpiar filtros
-        </button>
+        <div className="pb-3">
+          <button
+            type="button"
+            onClick={clearAll}
+            className="text-xs text-[var(--color-iris-700)] hover:text-[var(--color-iris-600)] font-medium underline underline-offset-4"
+          >
+            Limpiar filtros
+          </button>
+        </div>
       )}
 
+      {/* 1 · Categoría — abierto por defecto */}
       {!hideCategories && categories && categories.length > 0 && (
-        <FilterGroup title="Categoría">
-          <ul className="space-y-1.5">
+        <FilterGroup title="Categoría" defaultOpen>
+          <ul className="space-y-2">
             {categories.map((c) => (
               <li key={c.slug}>
-                <RadioPill
+                <Checkbox
                   label={c.name}
-                  selected={cat === c.slug}
-                  onClick={() => {
+                  checked={cat === c.slug}
+                  onChange={() => {
                     setCat(cat === c.slug ? null : c.slug);
                     resetPage();
                   }}
                 />
                 {c.children.length > 0 && cat === c.slug && (
-                  <ul className="pl-4 mt-1 space-y-1">
+                  <ul className="pl-6 mt-2 space-y-2 border-l border-[var(--color-earth-100)]">
                     {c.children.map((child) => (
                       <li key={child.slug}>
-                        <RadioPill
+                        <Checkbox
                           label={child.name}
-                          selected={cat === child.slug}
-                          size="sm"
-                          onClick={() => {
-                            setCat(child.slug);
+                          checked={cat === child.slug}
+                          onChange={() => {
+                            setCat(cat === child.slug ? c.slug : child.slug);
                             resetPage();
                           }}
+                          size="sm"
                         />
                       </li>
                     ))}
@@ -265,28 +282,10 @@ function FilterPanel({
         </FilterGroup>
       )}
 
-      {!hideCollections && collections && collections.length > 0 && (
-        <FilterGroup title="Colecciones">
-          <ul className="space-y-1.5">
-            {collections.map((c) => (
-              <li key={c.slug}>
-                <Checkbox
-                  label={c.name}
-                  checked={col.includes(c.slug)}
-                  onChange={() => {
-                    setCol(toggleArray(col, c.slug));
-                    resetPage();
-                  }}
-                />
-              </li>
-            ))}
-          </ul>
-        </FilterGroup>
-      )}
-
+      {/* 2 · Laboratorio — abierto por defecto */}
       {!hideLaboratories && laboratories && laboratories.length > 0 && (
-        <FilterGroup title="Laboratorio">
-          <ul className="space-y-1.5">
+        <FilterGroup title="Laboratorio" defaultOpen>
+          <ul className="space-y-2">
             {laboratories.map((l) => (
               <li key={l.slug}>
                 <Checkbox
@@ -303,9 +302,53 @@ function FilterPanel({
         </FilterGroup>
       )}
 
-      {attributes.map((attr) => (
+      {/* 3 · Colecciones */}
+      {!hideCollections && collections && collections.length > 0 && (
+        <FilterGroup title="Colecciones">
+          <ul className="space-y-2">
+            {collections.map((c) => (
+              <li key={c.slug}>
+                <Checkbox
+                  label={c.name}
+                  checked={col.includes(c.slug)}
+                  onChange={() => {
+                    setCol(toggleArray(col, c.slug));
+                    resetPage();
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        </FilterGroup>
+      )}
+
+      {/* 4 · Características — agrupa atributos binarios (Vegano, Sin gluten…) */}
+      {binaryAttrs.length > 0 && (
+        <FilterGroup title="Características">
+          <ul className="space-y-2">
+            {binaryAttrs.map((attr) => {
+              const opt = attr.options[0]; // único por definición
+              return (
+                <li key={attr.slug}>
+                  <Checkbox
+                    label={attr.name}
+                    checked={attrs.includes(opt.slug)}
+                    onChange={() => {
+                      setAttrs(toggleArray(attrs, opt.slug));
+                      resetPage();
+                    }}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </FilterGroup>
+      )}
+
+      {/* 5 · Atributos con múltiples opciones — uno por grupo (ej. Sabor) */}
+      {multiAttrs.map((attr) => (
         <FilterGroup key={attr.slug} title={attr.name}>
-          <ul className="space-y-1.5">
+          <ul className="space-y-2">
             {attr.options.map((o) => (
               <li key={o.slug}>
                 <Checkbox
@@ -322,6 +365,19 @@ function FilterPanel({
         </FilterGroup>
       ))}
 
+      {/* 6 · Disponibilidad */}
+      <FilterGroup title="Disponibilidad">
+        <Checkbox
+          label="Solo productos disponibles"
+          checked={instock}
+          onChange={() => {
+            setInstock(!instock);
+            resetPage();
+          }}
+        />
+      </FilterGroup>
+
+      {/* 7 · Precio — comportamiento original (inputs min/max) */}
       <FilterGroup title="Precio">
         <div className="flex items-center gap-2">
           <input
@@ -353,34 +409,50 @@ function FilterPanel({
           />
         </div>
       </FilterGroup>
-
-      <FilterGroup title="Disponibilidad">
-        <Checkbox
-          label="Solo productos disponibles"
-          checked={instock}
-          onChange={() => {
-            setInstock(!instock);
-            resetPage();
-          }}
-        />
-      </FilterGroup>
     </div>
   );
 }
 
+// ─── Helpers de UI ─────────────────────────────────────────────
+
+/**
+ * Acordeón de filtro. Mantiene el estado abierto/cerrado localmente.
+ * Header como botón con chevron animado, contenido con `hidden` cuando
+ * cerrado (mejor accesibilidad y rendimiento que max-height).
+ */
 function FilterGroup({
   title,
+  defaultOpen = false,
   children,
 }: {
   title: string;
+  defaultOpen?: boolean;
   children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const id = `filter-${title.toLowerCase().replace(/\s+/g, "-")}`;
+
   return (
-    <div>
-      <h3 className="text-xs uppercase tracking-wider font-semibold text-[var(--color-earth-700)] mb-2.5">
-        {title}
-      </h3>
-      {children}
+    <div className="border-b border-[var(--color-earth-100)] last:border-b-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={id}
+        className="w-full flex items-center justify-between py-3 text-xs uppercase tracking-wider font-semibold text-[var(--color-earth-700)] hover:text-[var(--color-leaf-900)] transition-colors"
+      >
+        <span>{title}</span>
+        <ChevronDown
+          size={16}
+          strokeWidth={2}
+          className={`shrink-0 transition-transform duration-200 ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      <div id={id} hidden={!open} className="pb-4">
+        {children}
+      </div>
     </div>
   );
 }
@@ -389,15 +461,21 @@ function Checkbox({
   label,
   checked,
   onChange,
+  size = "md",
 }: {
   label: string;
   checked: boolean;
   onChange: () => void;
+  size?: "sm" | "md";
 }) {
   return (
-    <label className="flex items-center gap-2.5 cursor-pointer text-sm text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)]">
+    <label
+      className={`flex items-center gap-2.5 cursor-pointer ${
+        size === "sm" ? "text-xs" : "text-sm"
+      } text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)]`}
+    >
       <span
-        className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+        className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
           checked
             ? "bg-[var(--color-iris-700)] border-[var(--color-iris-700)]"
             : "border-[var(--color-earth-100)] bg-white"
@@ -413,33 +491,5 @@ function Checkbox({
       />
       <span>{label}</span>
     </label>
-  );
-}
-
-function RadioPill({
-  label,
-  selected,
-  onClick,
-  size = "md",
-}: {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
-  size?: "sm" | "md";
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`text-left w-full transition-colors ${
-        size === "sm" ? "text-xs" : "text-sm"
-      } ${
-        selected
-          ? "text-[var(--color-iris-700)] font-medium"
-          : "text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)]"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
