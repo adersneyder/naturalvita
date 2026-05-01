@@ -1,208 +1,235 @@
-# NaturalVita · Hito 1.7 Sesión A · Auth de cliente, /carrito, /mi-cuenta, legal y Habeas Data
+# NaturalVita · Hito 1.7 Sesión B · Checkout (formulario + DIVIPOLA + persistencia)
 
-Esta sesión sienta la base del Hito 1.7 (carrito y checkout). Aquí no
-construimos checkout todavía: eso es Sesión B (formularios y dirección) y
-Sesión C (Bold + envíos + Resend SMTP). Pero todo lo previo al checkout —
-identidad del cliente, página completa del carrito, banner Habeas Data y
-páginas legales — queda listo y deployable.
+Esta sesión arma el formulario completo de checkout: contacto, dirección
+con catálogo DIVIPOLA, validación con Zod, server actions que persisten
+en `customers` y `addresses`, paso de revisión, sidebar con resumen.
 
-Build limpio: 30 rutas, 0 errores TS.
+El botón "Confirmar y pagar" queda visible pero **deshabilitado** porque
+Bold se integra en Sesión C. Esto permite hacer QA del flujo completo
+hasta el punto del pago sin riesgo de checkout incompleto en producción.
+
+Build limpio: 31 rutas, 0 errores TS. Ruta nueva: `/checkout` (22.3 kB).
 
 ---
 
 ## 0. Estado previo asumido
 
-- Hito 1.6 Sesión C aplicada y desplegada en producción.
-- `npm install` ya ejecutado con todas las deps de Hito 1.6.
-- Bulks IA corriendo en paralelo en `/admin/productos`.
-
-**No hay deps nuevas en esta sesión.** Tampoco migraciones SQL: las
-policies de `customers`, `addresses`, `carts`, `cart_items`, `orders` ya
-están en Supabase con las reglas correctas (verifiqué via MCP antes de
-codear). Aplicas el ZIP, build, commit y deploy.
+- Sesión A del Hito 1.7 aplicada y desplegada (preview verde).
+- `lib/legal/company-info.ts` ya con datos reales de Everlife (o con
+  placeholders, no bloquea el checkout, solo se ve mal en footer).
+- Bulks IA siguen corriendo en paralelo en `/admin/productos`.
 
 ---
 
-## 1. Aplicar este paquete
+## 1. Estructura del ZIP
 
-Desde la raíz del repo:
+Antes de subir, verifica que la descompresión preservó esta estructura:
 
-```bash
-cp -r nv-hito-1.7-sesion-a/. ./
+```
+nv-hito-1.7-sesion-b/
+├── INSTALL.md
+├── package.json                                        ← MODIFICADO
+├── app/
+│   └── (public)/
+│       └── checkout/
+│           ├── page.tsx                                ← NUEVO
+│           ├── _CheckoutClient.tsx                     ← NUEVO
+│           ├── _OrderSummarySidebar.tsx                ← NUEVO
+│           └── actions.ts                              ← NUEVO
+└── lib/
+    └── checkout/
+        ├── schemas.ts                                  ← NUEVO
+        └── divipola-data.ts                            ← NUEVO
 ```
 
-### Archivos nuevos (14)
-
-Identidad y consentimiento (`lib/`):
-- `lib/legal/company-info.ts` — constantes de Everlife (NIT, dirección, contacto).
-- `lib/auth/customer-auth.ts` — `requireCustomer()` y `getCurrentCustomer()` con auto-onboarding.
-- `lib/cart/use-consent.ts` — hook + storage del consentimiento Habeas Data.
-
-Componentes públicos:
-- `app/(public)/_components/HabeasDataBanner.tsx` — banner sticky bottom con configuración granular (esencial / analítica / marketing).
-- `app/(public)/_components/AccountLink.tsx` — icono de cuenta del header con estado reactivo a auth.
-
-Páginas:
-- `app/(public)/iniciar-sesion/page.tsx` + `_LoginForm.tsx` — magic link para clientes (separado del admin).
-- `app/(public)/mi-cuenta/page.tsx` + `_LogoutButton.tsx` — dashboard mínimo del cliente.
-- `app/(public)/carrito/page.tsx` + `_CartPageContent.tsx` — carrito en página completa.
-- `app/(public)/legal/privacidad/page.tsx` — política de tratamiento de datos (ley 1581/2012).
-- `app/(public)/legal/terminos/page.tsx` — términos y condiciones.
-- `app/(public)/legal/envios/page.tsx` — política de envíos y devoluciones.
-
-### Archivos modificados (6)
-
-- `app/_components/SiteAnalytics.tsx` — Microsoft Clarity solo carga si el
-  usuario aceptó "analytics" en el banner. Vercel Analytics + Speed Insights
-  siguen siempre activos (anónimos).
-- `app/(public)/layout.tsx` — monta `<HabeasDataBanner>`.
-- `app/(public)/_components/PublicHeader.tsx` — agrega `<AccountLink>` y
-  arregla los enlaces rotos del nav (`/colecciones` y `/laboratorios` que
-  daban 404). El nav ahora es Tienda · Buscar · Envíos.
-- `app/(public)/_components/PublicFooter.tsx` — footer enriquecido con
-  cuatro columnas (marca, catálogo, soporte, legal), redes sociales, y
-  bottom bar con NIT, dirección y registro INVIMA.
-- `app/(public)/_components/CartDrawer.tsx` — botón "Proceder al pago"
-  ahora es link activo a `/carrito` (antes estaba deshabilitado).
-- `app/globals.css` — agrega keyframes `slide-in-up` para el banner.
+Nota: la carpeta `(public)` con paréntesis es un route group de Next.
+Es importante que GitHub respete los paréntesis en la ruta.
 
 ---
 
-## 2. Llenar datos de Everlife
+## 2. Subir a GitHub
 
-**Importante antes del lanzamiento público.** Abre `lib/legal/company-info.ts`
-y reemplaza los placeholders marcados con `[TODO]`:
+Sigue tu flujo manual habitual. Sugerencia para evitar archivos perdidos:
 
-```ts
-nit: "[NIT pendiente]",                 // → "900.123.456-7"
-publicPhone: "[Teléfono pendiente]",    // → "+57 300 123 4567"
-publicWhatsapp: "[WhatsApp pendiente]", // idem
-addressStreet: "[Dirección pendiente]", // → "Calle 100 # 10-20, Oficina 401"
-```
+1. **Sube `package.json` primero** desde la raíz del repo (es solo el archivo
+   modificado). En el commit pon "deps: add zod 3.23.8".
+2. Crea (o navega a) la carpeta `app/(public)/checkout/` y sube los 4
+   archivos del checkout.
+3. Crea (o navega a) la carpeta `lib/checkout/` y sube los 2 archivos.
 
-Si Everlife tiene registro INVIMA propio (importador/comercializador),
-ponlo en `REGULATORY.invimaImporterRegistration`. Si no aplica, déjalo
-vacío y el footer no lo muestra. Las URLs de Instagram/Facebook ya están
-con `naturalvita.co` como handle — confirma que esos perfiles existen o
-ajústalos.
-
-Estos datos aparecen en el footer y en las tres páginas legales. Si dejas
-los placeholders, las páginas funcionan pero muestran texto de marcador
-visible. Útil para QA, inaceptable para producción.
+Después de subir, abre `app/(public)/checkout/` en GitHub web y cuenta:
+debe haber 4 archivos. Igual con `lib/checkout/`: 2 archivos.
 
 ---
 
-## 3. Build local
+## 3. Vercel: instalar nueva dependencia
+
+`zod` es la única dep nueva. Vercel detecta el cambio en `package.json`
+durante el build automático y la instala. No hay que tocar nada en el
+panel de Vercel.
+
+Si en local quieres probar antes:
 
 ```bash
+npm install
 npm run build
 ```
 
-Espera ver:
+Espera ver en el build:
 
 ```
-├ ○ /carrito                             3.57 kB         114 kB
-├ ○ /iniciar-sesion                      1.56 kB         166 kB
-├ ƒ /mi-cuenta                             580 B         169 kB
-├ ○ /legal/envios                          182 B         106 kB
-├ ○ /legal/privacidad                      182 B         106 kB
-├ ○ /legal/terminos                        182 B         106 kB
+├ ƒ /checkout                            22.3 kB         133 kB
 ```
-
-30 rutas en total.
 
 ---
 
-## 4. Probar en local
+## 4. Cómo funciona el flujo
+
+### Auth gate
+La página `/checkout` es server component que llama `requireCustomer()`.
+Si no hay sesión, redirige a `/iniciar-sesion?next=%2Fcheckout`. Después
+del magic link, vuelve directo al checkout.
+
+### Carrito vacío
+Detectado en cliente (porque el carrito vive en `localStorage`). Si está
+vacío, redirige a `/carrito` automáticamente desde `useEffect`.
+
+### Sección 1 — Contacto
+El email viene fijo desde la sesión. El cliente edita nombre, teléfono,
+tipo y número de documento, y opt-in marketing. Al guardar, los datos
+persisten en `customers` vía server action.
+
+Si el cliente ya tenía datos guardados (de un checkout anterior), el form
+viene precargado y la sección aparece como "completada" desde el inicio.
+
+### Sección 2 — Dirección
+- Si el cliente NO tiene direcciones guardadas: solo muestra formulario
+  para nueva dirección. La primera dirección se marca `is_default=true`
+  automáticamente.
+- Si SÍ tiene: muestra tabs "Direcciones guardadas" / "Nueva dirección".
+  En guardadas, radio button para elegir; en nueva, formulario.
+
+El formulario incluye departamento (select con los 32 departamentos),
+ciudad (select dinámico de municipios principales del departamento, con
+opción "Otro municipio…" que abre input libre), dirección, detalles,
+código postal opcional y etiqueta opcional.
+
+### Sección 3 — Revisar y pagar
+Aparece bloqueada (visible pero `pointer-events-none` y opacity 60%)
+hasta que las dos secciones anteriores estén completas. Cuando se
+desbloquea, muestra resumen del carrito y el botón "Confirmar y pagar"
+**deshabilitado** con texto "Pago seguro por Bold · próximamente en esta
+sesión".
+
+Esto es deliberado: Sesión B termina aquí. Sesión C activa el botón.
+
+### Sidebar derecho — Resumen
+Sticky en desktop, debajo del form en mobile. Lista los items con thumb
+y cantidad, subtotal, "envío calculado al confirmar", total estimado.
+
+---
+
+## 5. Probar en local
 
 ```bash
 npm run dev
 ```
 
-Flujo de validación end-to-end del cliente:
+Flujo de QA:
 
-1. **Banner Habeas Data**: abre `/` en navegador limpio (o `localStorage.clear()`
-   en consola). Aparece banner abajo. Prueba "Personalizar" → toggle de
-   analytics → "Guardar". El banner desaparece. Si recargas, no vuelve.
-   En `localStorage` debe estar `nv:consent:v1` con tu decisión.
-
-2. **Login cliente**: ve a `/iniciar-sesion`, ingresa tu email, recibes
-   magic link en correo, click. Te lleva a `/mi-cuenta` mostrando tu email
-   y los cards "Próximamente". Verifica que en Supabase ahora hay una fila
-   nueva en `customers` con tu `id` y `email`.
-
-3. **Cuenta visible en header**: el icono de usuario en el header tiene
-   ahora un punto verde indicando sesión activa. Click → `/mi-cuenta`. En
-   `/mi-cuenta` botón "Cerrar sesión" → vuelves a home con el icono sin
-   punto.
-
-4. **Carrito completo**: agrega 2-3 productos desde la tienda, abre el
-   drawer, click "Ver carrito y pagar". Estás en `/carrito` con los items,
-   stepper de cantidad funcional, eliminar item, vaciar carrito, link
-   "Seguir comprando". Botón "Continuar al pago" lleva a `/checkout` (que
-   por ahora dará 404 porque la armamos en Sesión B).
-
-5. **Legal**: recorre `/legal/privacidad`, `/legal/terminos`, `/legal/envios`.
-   Verifica que aparecen los placeholders de Everlife — eso te recuerda
-   llenar `lib/legal/company-info.ts` antes de producción.
-
-6. **Footer**: scroll hasta el footer. Cuatro columnas, redes, bottom bar
-   con NIT y dirección. Todos los links funcionan.
+1. **Sin sesión**: ve a `/checkout` → debe redirigir a
+   `/iniciar-sesion?next=%2Fcheckout`. Login con magic link → vuelve a
+   `/checkout`.
+2. **Carrito vacío**: con sesión y carrito vacío, `/checkout` debe
+   redirigir a `/carrito`.
+3. **Carrito con items, primer checkout**:
+   - Ve a `/tienda`, agrega 2-3 productos
+   - Ve a `/checkout`
+   - Sección 1 (Contacto): llena nombre, teléfono móvil de 10 dígitos
+     (probar también con 7 fijos y con +57), tipo doc, número doc.
+     Click "Guardar y continuar". Debe aparecer check verde.
+   - Sección 2 (Dirección): llena los campos. Probar selección de
+     departamento → ciudad cambia. Probar "Otro municipio". Click
+     "Guardar dirección". Debe pasar a modo "Direcciones guardadas"
+     mostrando la dirección recién creada.
+   - Sección 3 (Revisar): debe estar visible y habilitada visualmente.
+     Verifica que el botón "Confirmar y pagar" está deshabilitado y
+     dice "próximamente".
+4. **Carrito con items, checkout subsecuente** (segunda compra):
+   - Refresca la página. Datos de contacto y dirección ya vienen
+     llenos. Tabs "Direcciones guardadas" pre-seleccionada.
+5. **Validaciones Zod**:
+   - Probar teléfono "123" → error "El teléfono debe tener al menos 7 dígitos"
+   - Probar nombre "A" → error "Ingresa tu nombre completo"
+   - Probar dirección con menos de 5 caracteres → error
+   - Probar código postal con 3 dígitos → error
+6. **Persistencia BD**:
+   - Después de guardar datos, verificar en Supabase Dashboard →
+     `customers` y `addresses` que las filas se crearon/actualizaron
+     correctamente con tu `id` de auth user.
 
 ---
 
-## 5. Despliegue
+## 6. Despliegue
 
 ```bash
-git add .
-git commit -m "feat(hito-1.7/A): auth cliente magic link + /carrito + /mi-cuenta + Habeas Data banner + paginas legales + footer enriquecido"
-git push origin hito-1.7-sesion-a   # o la rama que estés usando
+# Tu flujo manual via GitHub web
 ```
 
-En el preview de Vercel:
-- Confirma que `/iniciar-sesion` funciona y que el magic link llega y
-  redirige correctamente.
-- Confirma que el banner aparece en visita limpia.
-- Si pusiste `NEXT_PUBLIC_CLARITY_ID` en Vercel, **rechaza analytics** en
-  el banner y verifica que el script de Clarity NO carga (Network tab).
-  Luego acepta analytics y verifica que carga. Esa es la prueba clave de
-  cumplimiento Habeas Data.
+En el preview de Vercel, repetir los pasos 1-5 contra el preview URL.
+Verificar especialmente:
+- El magic link ahora redirige bien a `/checkout` (no a `/admin`).
+- Las server actions responden (Network tab: petición POST a la página).
+- Los datos persisten al refresh.
 
 ---
 
-## 6. Pendientes para Sesión B y siguientes
+## 7. Lo que cierra
 
-**Sesión B** (próxima): formulario de checkout con datos de contacto y
-dirección, catálogo DIVIPOLA de departamentos y ciudades, validación con
-Zod, persistencia en `addresses`, paso de revisión.
+Esta sesión deja:
+- ✅ Auth gate de checkout funcional
+- ✅ Form completo de contacto y dirección con validación Zod
+- ✅ Catálogo DIVIPOLA con 32 departamentos y 350+ municipios principales
+- ✅ Persistencia en `customers` y `addresses` con RLS
+- ✅ Soporte para múltiples direcciones guardadas con default
+- ✅ Resumen del pedido en sidebar sticky
+- ✅ Sección de revisión preparada para Bold
 
-**Sesión C**: integración Bold por API REST (3DS, PSE, Nequi, QR),
-shipping_rates por departamento, webhook `/api/webhooks/bold`, Resend SMTP
-con templates transaccionales.
-
-**Sesión D**: `/pedido/[order_number]` con tracking, /mi-cuenta enriquecida
-con historial real de pedidos y direcciones guardadas, eventos a Klaviyo.
-
-**Pendiente externo (tú)**: bulk de generación IA de las 299 fichas, llenar
-los `[TODO]` de `lib/legal/company-info.ts` con datos reales de Everlife.
+**No deja:**
+- ❌ Cálculo de envío por departamento (Sesión C)
+- ❌ Integración Bold (Sesión C)
+- ❌ Webhook de confirmación de pago (Sesión C)
+- ❌ Email transaccional (Sesión C)
+- ❌ Página `/pedido/[order_number]` post-pago (Sesión D)
 
 ---
 
-## Apéndice: notas técnicas
+## 8. Decisiones técnicas relevantes
 
-- **Auto-onboarding de cliente**: cuando un user entra por primera vez a
-  `/mi-cuenta`, `requireCustomer()` detecta que no existe en `customers`,
-  lo crea automáticamente con `id = auth.uid()` y `email`. Las policies
-  de RLS lo permiten (verificadas en BD).
-- **Aislamiento admin/cliente**: el mismo sistema de auth de Supabase
-  sirve para ambos. La diferencia es la tabla: admins están en
-  `admin_users`, clientes en `customers`. `getAdminUser()` y
-  `requireCustomer()` filtran por su tabla. Si un admin entra a
-  `/mi-cuenta`, se crea fila en `customers` para él (es lo correcto: él
-  también puede comprar).
-- **Banner Habeas Data**: el consentimiento vive en `localStorage`. Si en
-  el futuro queremos consent management server-side (sincronizado entre
-  dispositivos), es una migración pequeña: lectura desde `customers.preferences`
-  cuando hay sesión, fallback a localStorage cuando no.
-- **Sin shadcn**: mantengo la regla de Hito 1.6 — sigo construyendo
-  componentes propios alineados con tokens leaf/earth/iris y Fraunces+Inter.
+**Single-page, no multi-step**. La conversión en mobile es mejor cuando
+el usuario ve todo el flujo de un vistazo en lugar de saltar entre 3
+páginas. Las secciones se desbloquean visualmente para guiar el orden.
+
+**DIVIPOLA con municipios principales, no completo**. ~350 municipios
+cubren ~90% de pedidos reales. Los demás casos los maneja el input
+libre "Otro municipio". Cuando crezca el volumen y haya patrones reales
+de pedidos a municipios pequeños, se reemplaza `divipola-data.ts` por el
+dataset DANE completo sin tocar el resto.
+
+**Zod compartido cliente/servidor**. Un solo schema en
+`lib/checkout/schemas.ts` valida en el form (al hacer click "Guardar")
+y en la server action (defensa en profundidad). Esto evita drift y es
+el patrón canónico Next 15.
+
+**Botón "Confirmar y pagar" deshabilitado en lugar de oculto**. El
+usuario ve dónde irá a parar y entiende el flujo, en lugar de descubrir
+una sección nueva en Sesión C.
+
+**`recipient_name` y `phone` de la dirección NO se asumen iguales a los
+del contacto**. Caso real: alguien compra para mandar a su mamá, o pide
+con su número y manda al número del portero. El form pre-llena pero
+permite editar.
+
+**Auto-onboarding ya cubre el primer login**: si el cliente entra al
+checkout sin haber pasado por `/mi-cuenta`, `requireCustomer()` crea su
+fila en `customers` automáticamente (lógica de Sesión A).
