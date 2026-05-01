@@ -150,39 +150,6 @@ export default async function TiendaPage({
         {/* Bloques curados (solo en landing limpia) */}
         {!hasAnyFilter && (
           <>
-            {categoriesTree.length > 0 && (
-              <section className="mb-12">
-                <h2 className="font-serif text-2xl text-[var(--color-leaf-900)] mb-5">
-                  Por categoría
-                </h2>
-                <ul
-                  role="list"
-                  className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"
-                >
-                  {categoriesTree.map((c) => (
-                    <li key={c.slug}>
-                      <Link
-                        href={`/categoria/${c.slug}`}
-                        className="block px-4 py-4 rounded-xl bg-white border border-[var(--color-earth-100)] hover:border-[var(--color-iris-700)] hover:shadow-sm transition-all"
-                      >
-                        <p className="font-serif text-base text-[var(--color-leaf-900)]">
-                          {c.name}
-                        </p>
-                        {c.children.length > 0 && (
-                          <p className="text-xs text-[var(--color-earth-500)] mt-1">
-                            {c.children.length}{" "}
-                            {c.children.length === 1
-                              ? "subcategoría"
-                              : "subcategorías"}
-                          </p>
-                        )}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
             {featuredCollections.length > 0 && (
               <section className="mb-12">
                 <div className="flex items-end justify-between mb-5">
