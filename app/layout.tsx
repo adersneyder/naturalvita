@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import MagicLinkDetector from "./_components/MagicLinkDetector";
+import SiteAnalytics from "./_components/SiteAnalytics";
+import Providers from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co",
+  ),
   title: {
     default: "NaturalVita | Productos naturales para tu bienestar",
     template: "%s | NaturalVita",
@@ -52,7 +57,8 @@ export default function RootLayout({
       </head>
       <body>
         <MagicLinkDetector />
-        {children}
+        <Providers>{children}</Providers>
+        <SiteAnalytics />
       </body>
     </html>
   );
