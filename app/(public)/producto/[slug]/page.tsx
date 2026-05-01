@@ -28,7 +28,7 @@ async function getProductBySlug(slug: string) {
        invima_number, presentation, presentation_type,
        category:categories!category_id(id, name, slug),
        laboratory:laboratories!laboratory_id(id, name, slug),
-       images:product_images(url, alt, is_primary, sort_order),
+       images:product_images(url, alt_text, is_primary, sort_order),
        attributes:product_attribute_values(
          attribute:product_attributes(name, slug, attribute_type, show_in_card),
          option:product_attribute_options(value)
@@ -38,7 +38,16 @@ async function getProductBySlug(slug: string) {
     .eq("status", "active")
     .single();
 
-  if (error || !product) return null;
+  if (error) {
+    // Loggeamos para diagnosticar 404 silenciosos. No tirar el error porque
+    // single() con 0 rows también devuelve error code "PGRST116" y eso es
+    // un not-found legítimo, no un bug.
+    if (error.code !== "PGRST116") {
+      console.error(`[/producto/${slug}] Supabase error:`, error.message, error.code);
+    }
+    return null;
+  }
+  if (!product) return null;
 
   const images = (product.images ?? []).slice().sort((a, b) => {
     if (a.is_primary && !b.is_primary) return -1;
@@ -183,7 +192,7 @@ export default async function ProductPage({ params }: { params: Params }) {
               {primaryImage && (
                 <Image
                   src={primaryImage.url}
-                  alt={primaryImage.alt ?? product.name}
+                  alt={primaryImage.alt_text ?? product.name}
                   width={800}
                   height={800}
                   className="w-full h-full object-contain"
@@ -201,7 +210,7 @@ export default async function ProductPage({ params }: { params: Params }) {
                   >
                     <Image
                       src={img.url}
-                      alt={img.alt ?? product.name}
+                      alt={img.alt_text ?? product.name}
                       width={150}
                       height={150}
                       className="w-full h-full object-contain"
