@@ -1,19 +1,84 @@
 "use client";
 
 import Image from "next/image";
+import { useEffect, useState } from "react";
 import { useCart } from "@/lib/cart/use-cart";
 import { formatCop } from "@/lib/format/currency";
 
+type Props = {
+  /** Departamento de la dirección seleccionada. null = no calcular envío. */
+  shippingDepartment: string | null;
+  /** Notifica al padre el quote calculado para que pueda usarlo al confirmar. */
+  onQuoteChange?: (quote: ShippingQuote | null) => void;
+};
+
+type ShippingQuote = {
+  cost_cop: number;
+  base_cost_cop: number;
+  free_above_cop: number | null;
+  is_free: boolean;
+  amount_to_free: number | null;
+};
+
 /**
- * Resumen lateral del pedido en el checkout. Sticky en desktop.
- * Muestra los items con thumbnail pequeño + cantidad + precio, y los totales.
+ * Sidebar del checkout con cálculo en vivo.
  *
- * Envío y total final se muestran "calculados al confirmar" porque el cálculo
- * por departamento + descuentos vive en Sesión C (Bold + shipping_rates).
- * Aquí solo confirmamos el subtotal de productos.
+ * Cuando el usuario selecciona una dirección, este componente hace fetch a
+ * /api/checkout/shipping con el departamento + subtotal con IVA, y muestra
+ * el envío real. El total se actualiza automáticamente.
+ *
+ * Si el cliente está cerca del umbral de envío gratis, mostramos un mensaje
+ * "Te faltan $X para envío gratis" — patrón que aumenta el ticket promedio.
  */
-export default function OrderSummarySidebar() {
+export default function OrderSummarySidebar({
+  shippingDepartment,
+  onQuoteChange,
+}: Props) {
   const { items, subtotal, quantity } = useCart();
+
+  // El subtotal del carrito ya incluye IVA porque price_cop incluye IVA en
+  // el frontend (lo desglosamos visualmente, pero el monto cobrado es el
+  // total con IVA).
+  const subtotalConIva = subtotal;
+
+  // Para mostrar IVA discriminado, asumimos 19% sobre el precio sin IVA
+  // (price_cop / 1.19). En la creación de orden el cálculo real se hace
+  // server-side con tax_rate exacto por producto. Acá es una aproximación
+  // para la UI que será reemplazada por el total exacto al confirmar.
+  // Es una decisión consciente: el sidebar es informativo, la BD es la verdad.
+  const iva = Math.round(subtotalConIva - subtotalConIva / 1.19);
+  const subtotalSinIva = subtotalConIva - iva;
+
+  const [quote, setQuote] = useState<ShippingQuote | null>(null);
+  const [loadingShipping, setLoadingShipping] = useState(false);
+
+  useEffect(() => {
+    if (!shippingDepartment) {
+      setQuote(null);
+      onQuoteChange?.(null);
+      return;
+    }
+    setLoadingShipping(true);
+    const controller = new AbortController();
+    fetch(
+      `/api/checkout/shipping?department=${encodeURIComponent(shippingDepartment)}&subtotal=${subtotalConIva}`,
+      { signal: controller.signal },
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: ShippingQuote | null) => {
+        setQuote(data);
+        onQuoteChange?.(data);
+        setLoadingShipping(false);
+      })
+      .catch((err) => {
+        if (err.name === "AbortError") return;
+        console.error("[shipping fetch]", err);
+        setLoadingShipping(false);
+      });
+    return () => controller.abort();
+  }, [shippingDepartment, subtotalConIva, onQuoteChange]);
+
+  const total = subtotalConIva + (quote?.cost_cop ?? 0);
 
   return (
     <aside className="lg:sticky lg:top-24 lg:self-start">
@@ -22,7 +87,7 @@ export default function OrderSummarySidebar() {
           Tu pedido
         </h2>
 
-        <ul className="space-y-3 mb-4 max-h-80 overflow-y-auto pr-1">
+        <ul className="space-y-3 mb-4 max-h-72 overflow-y-auto pr-1">
           {items.map((item) => (
             <li key={item.product_id} className="flex gap-3">
               <div className="shrink-0 w-14 h-14 rounded-lg bg-white relative overflow-hidden">
@@ -66,21 +131,52 @@ export default function OrderSummarySidebar() {
               </span>
             </dt>
             <dd className="text-[var(--color-leaf-900)] tabular-nums">
-              {formatCop(subtotal)}
+              {formatCop(subtotalSinIva)}
             </dd>
           </div>
-          <div className="flex justify-between text-[var(--color-earth-500)]">
+          <div className="flex justify-between text-[var(--color-earth-700)]">
+            <dt>IVA (19%)</dt>
+            <dd className="text-[var(--color-leaf-900)] tabular-nums">
+              {formatCop(iva)}
+            </dd>
+          </div>
+          <div className="flex justify-between text-[var(--color-earth-700)]">
             <dt>Envío</dt>
-            <dd>Calculado al confirmar</dd>
+            <dd className="tabular-nums">
+              {loadingShipping ? (
+                <span className="text-[var(--color-earth-500)]">Calculando…</span>
+              ) : !quote ? (
+                <span className="text-[var(--color-earth-500)]">
+                  Selecciona dirección
+                </span>
+              ) : quote.is_free ? (
+                <span className="text-[var(--color-leaf-700)] font-medium">
+                  Gratis
+                </span>
+              ) : (
+                <span className="text-[var(--color-leaf-900)]">
+                  {formatCop(quote.cost_cop)}
+                </span>
+              )}
+            </dd>
           </div>
         </dl>
 
+        {/* Mensaje de "te faltan $X para envío gratis" */}
+        {quote &&
+          !quote.is_free &&
+          quote.amount_to_free != null &&
+          quote.amount_to_free > 0 && (
+            <p className="mt-3 text-xs text-[var(--color-iris-700)] bg-[var(--color-iris-100)]/40 rounded-lg px-3 py-2">
+              ✨ Agrega {formatCop(quote.amount_to_free)} más a tu carrito y el
+              envío te sale gratis.
+            </p>
+          )}
+
         <div className="mt-4 pt-4 border-t border-[var(--color-earth-100)] flex justify-between items-baseline">
-          <span className="text-sm text-[var(--color-earth-700)]">
-            Total estimado
-          </span>
+          <span className="text-sm text-[var(--color-earth-700)]">Total</span>
           <span className="font-serif text-2xl text-[var(--color-leaf-900)] tabular-nums">
-            {formatCop(subtotal)}
+            {formatCop(total)}
           </span>
         </div>
 

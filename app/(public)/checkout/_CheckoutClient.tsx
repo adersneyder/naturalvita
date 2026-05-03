@@ -17,7 +17,9 @@ import {
   citiesOfDepartment,
 } from "@/lib/checkout/divipola-data";
 import { saveContactInfo, saveAddress } from "./actions";
+import { startCheckout } from "./_startCheckout";
 import OrderSummarySidebar from "./_OrderSummarySidebar";
+import BoldCheckoutButton from "./_BoldCheckoutButton";
 import type { SavedAddress } from "./page";
 
 type Props = {
@@ -196,6 +198,45 @@ export default function CheckoutClient({
   const hasAddressReady =
     (addressMode === "saved" && !!selectedAddressId) || false;
   const canConfirm = hasContactReady && hasAddressReady;
+
+  // Dirección seleccionada completa (para pasar al sidebar y a Bold)
+  const selectedAddressFull =
+    addressMode === "saved" && selectedAddressId
+      ? savedAddresses.find((a) => a.id === selectedAddressId) ?? null
+      : null;
+
+  // Resultado de startCheckout — datos para Bold
+  const [boldData, setBoldData] = useState<{
+    order_number: string;
+    total_cop: number;
+    bold: {
+      api_key: string;
+      integrity_signature: string;
+      environment: "test" | "production";
+    };
+  } | null>(null);
+
+  async function handleStartCheckout() {
+    setGlobalError(null);
+    if (!selectedAddressFull) {
+      setGlobalError("Selecciona una dirección de envío");
+      return;
+    }
+    startTransition(async () => {
+      const res = await startCheckout({
+        items: cart.items.map((it) => ({
+          product_id: it.product_id,
+          quantity: it.quantity,
+        })),
+        address_id: selectedAddressFull.id,
+      });
+      if (!res.ok) {
+        setGlobalError(res.error);
+        return;
+      }
+      setBoldData(res.order);
+    });
+  }
 
   if (cart.items.length === 0) {
     return null; // El useEffect ya está redirigiendo
@@ -610,29 +651,61 @@ export default function CheckoutClient({
           <SectionHeader number={3} title="Revisar y pagar" done={false} />
 
           <p className="text-sm text-[var(--color-earth-700)] mb-4">
-            Verifica tus datos antes de proceder al pago seguro con Bold.
+            Verifica tus datos arriba. Al confirmar, abrimos la pasarela de
+            Bold para que ingreses tu medio de pago. No salimos de naturalvita.co.
           </p>
 
-          <div className="rounded-lg bg-[var(--color-earth-50)] p-4 mb-4 text-sm">
-            <p className="text-[var(--color-earth-700)] text-xs uppercase tracking-wider mb-1">
-              Resumen del pedido
-            </p>
-            <p className="text-[var(--color-leaf-900)]">
-              {cart.quantity} {cart.quantity === 1 ? "producto" : "productos"}{" "}
-              · revísalos en la barra lateral.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            disabled
-            className="w-full px-5 py-3 rounded-lg bg-[var(--color-earth-100)] text-[var(--color-earth-500)] text-sm font-medium cursor-not-allowed"
-            title="El pago se habilita cuando integremos Bold (Hito 1.7 Sesión C)"
-          >
-            Confirmar y pagar
-          </button>
+          {boldData ? (
+            <div>
+              {/* Pedido creado, mostrar botón de Bold */}
+              <div className="rounded-lg bg-[var(--color-leaf-100)]/40 border border-[var(--color-leaf-100)] p-4 mb-4 text-sm">
+                <p className="text-xs uppercase tracking-wider text-[var(--color-leaf-700)] font-semibold mb-1">
+                  Pedido registrado
+                </p>
+                <p className="text-[var(--color-leaf-900)]">
+                  Tu número de orden es{" "}
+                  <span className="font-mono font-semibold">
+                    {boldData.order_number}
+                  </span>
+                </p>
+              </div>
+              <BoldCheckoutButton
+                orderNumber={boldData.order_number}
+                amountCop={boldData.total_cop}
+                apiKey={boldData.bold.api_key}
+                integritySignature={boldData.bold.integrity_signature}
+                customerEmail={customerEmail}
+                customerName={contact.full_name}
+                customerPhone={contact.phone}
+                customerDocumentType={contact.document_type}
+                customerDocumentNumber={contact.document_number}
+                shippingStreet={selectedAddressFull?.street ?? ""}
+                shippingCity={selectedAddressFull?.city ?? ""}
+                shippingDepartment={selectedAddressFull?.department ?? ""}
+                shippingPostalCode={selectedAddressFull?.postal_code ?? null}
+                description={`Pedido ${boldData.order_number} en NaturalVita`}
+                redirectionUrl={`${typeof window !== "undefined" ? window.location.origin : ""}/pedido/${boldData.order_number}/exito`}
+                onError={(msg) => setGlobalError(msg)}
+              />
+              {boldData.bold.environment === "test" && (
+                <p className="text-[11px] text-center text-[var(--color-earth-500)] mt-3">
+                  Modo prueba activo · usa monto de prueba 555001 (aprobada),
+                  555002 (rechazada) o 555020 (3DS challenge)
+                </p>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleStartCheckout}
+              disabled={!canConfirm || isPending}
+              className="w-full px-5 py-3 rounded-lg bg-[var(--color-iris-700)] text-white text-sm font-medium hover:bg-[var(--color-iris-600)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isPending ? "Preparando pedido…" : "Confirmar y pagar"}
+            </button>
+          )}
           <p className="text-xs text-center text-[var(--color-earth-500)] mt-3">
-            Pago seguro por Bold · próximamente en esta sesión
+            Pago seguro con Bold · Tarjetas, PSE, Nequi y QR
           </p>
         </section>
 
@@ -645,7 +718,9 @@ export default function CheckoutClient({
       </div>
 
       {/* Columna derecha: resumen sticky */}
-      <OrderSummarySidebar />
+      <OrderSummarySidebar
+        shippingDepartment={selectedAddressFull?.department ?? null}
+      />
     </div>
   );
 }
