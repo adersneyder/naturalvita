@@ -1,73 +1,71 @@
-# NaturalVita · Patch · Compactar /tienda en mobile
+# NaturalVita · Patch · Permitir cualquier valor entero en precios
 
 Un solo archivo modificado:
 
 ```
-app/(public)/tienda/page.tsx
+app/admin/productos/[id]/_components/ProductEditor.tsx
 ```
 
-Build limpio: 31 rutas, 0 errores TS. Sin deps, sin SQL, sin env.
+Cambia `step="100"` a `step="1"` en los inputs de **Precio de venta** y
+**Precio comparativo** del editor de productos del admin.
+
+Sin deps, sin SQL, sin env. Build verde, 0 errores TS.
 
 ---
 
-## Qué cambia (solo en mobile, ≤768px)
+## Qué cambia
 
-**Hero**
-- Padding vertical: `py-10` → `py-6` (de 80 a 48px). Ahorra **32px**.
-- Título: `text-4xl` (36px) → `text-2xl` (24px). Ahorra **~24px** de altura.
-- Margen interno (entre breadcrumb y h1, entre h1 y párrafo): de `mt-4` a `mt-2/mt-3`. Ahorra **~16px**.
-- Párrafo: `text-base` → `text-sm`. Ahorra **~8px**.
+Antes: el navegador rechazaba precios que no fueran múltiplos de 100
+(ej: $60.276) con el mensaje "Los dos valores válidos más aproximados
+son 60200 y 60300".
 
-Total hero: **~80px menos**.
+Ahora: cualquier valor entero positivo es aceptado. Ej: $60.276, $19.999,
+$155.555 — todos válidos.
 
-**Contenedor inferior**
-- Padding vertical: `py-8` → `py-6`. Ahorra **16px**.
+Las flechas arriba/abajo del input ahora se mueven de 1 en 1 (en lugar
+de 100 en 100). Es consistente con la validación: si la validación
+acepta cualquier entero, los controles también deberían moverse de 1 en 1.
+Si necesitas subir cientos rápido, usa el teclado (mantén pulsado o escribe
+el valor directo).
 
-**Colecciones destacadas**
-- Cambio principal: pasa de **1 columna a 2 columnas** (`grid-cols-2 lg:grid-cols-4`). Para 4 colecciones, ahorra ~600px de scroll.
-- Aspect ratio de la imagen: `aspect-[4/3]` → `aspect-square` en mobile. Cards más altas pero más estrechas, mejor balance en 2 cols.
-- Padding interno de la card: `p-4` → `p-3`. Ahorra **8px** por card.
-- Título de la card: `text-base` → `text-sm` con `line-clamp-1`. Ahorra ~12px.
-- Descripción de la card: **oculta en mobile** (`hidden md:block`). Las cards de colección a 2 cols son demasiado estrechas para mostrar 2 líneas de descripción legibles; el nombre + imagen ya comunican.
-- Margen de sección: `mb-12` → `mb-8`. Ahorra **16px**.
-- Margen del header de sección: `mb-5` → `mb-3`. Ahorra **8px**.
-- Header h2: `text-2xl` → `text-xl`. Ahorra **~6px**.
-- Border-radius: `rounded-2xl` → `rounded-xl`. Más sobrio en cards pequeñas.
-
-**Destacados de la temporada y "Todo el catálogo"**
-- Mismo tratamiento: `mb-12` → `mb-8`, `mb-5` → `mb-3`, `text-2xl` → `text-xl`.
+**Decimales siguen rechazados** — el COP no usa centavos en operaciones
+reales y todos los campos en BD son `integer`. Si alguien intenta `60.276,50`
+el navegador rechaza el decimal, comportamiento correcto.
 
 ---
 
-## Resultado esperado
+## Cómo aplicar
 
-En un teléfono típico (viewport 375×700 efectivo):
-
-**Antes**: hero 220px + colecciones 1500px (4 cards a 1 col) + ~30px gaps. La grilla "Todo el catálogo" aparecía después de **~1750px de scroll** (≈3 swipes).
-
-**Ahora**: hero 140px + colecciones ~600px (4 cards a 2 cols) + gaps menores. La grilla "Todo el catálogo" aparece a **~750px** (1 swipe). Más del 50% menos de scroll para llegar al catálogo.
-
----
-
-## Qué NO cambia
-
-- Versión desktop (≥768px): **idéntica** a la actual. Todos los cambios usan breakpoints `md:` para preservar la generosidad visual en pantallas grandes.
-- Sidebar de filtros: intacto.
-- ProductGrid de los Destacados: intacto (su responsividad ya es correcta).
-- Paginación, ordenamiento, JSON-LD, metadata: intactos.
+Sube el archivo único reemplazando el existente. Vercel auto-deploy.
 
 ---
 
 ## QA
 
-**Mobile (DevTools responsive 375px o teléfono real):**
-1. Hero compacto, título a 24px, párrafo a 14px, padding moderado.
-2. Colecciones destacadas en 2 columnas con cards cuadradas, sin descripción debajo del nombre.
-3. Destacados con header más pequeño.
-4. La grilla "Todo el catálogo" se ve después de uno o dos swipes, no tres.
+En `/admin/productos/{id}` o `/admin/productos/nuevo`:
 
-**Desktop (≥768px):**
-1. Todo idéntico a antes: hero generoso a 48px de título, colecciones a 4 columnas con `aspect-[4/3]` y descripción visible.
+1. Edita el campo "Precio de venta" y pon `60276`. Click "Guardar".
+   Debe guardar sin error.
+2. Pon `19999`. Guardar. OK.
+3. Pon `155555`. Guardar. OK.
+4. Pon `123.45` (con decimal). El navegador debe rechazarlo — esto es
+   intencional, COP no usa centavos.
+5. Las flechas arriba/abajo del input ahora suben de 1 en 1. Si pierdes
+   esa conveniencia, puedes seguir escribiendo el valor directo o usar
+   las teclas Page Up/Down (algunos navegadores las mapean a saltos
+   más grandes).
 
-**Tablet (~768-1024px):**
-1. Toma los estilos de desktop porque el breakpoint `md:` se activa en 768px. Si quieres tratamiento intermedio para tablets verticales, lo afinamos en otra iteración.
+---
+
+## Por qué este cambio
+
+El `step="100"` era una conveniencia que asumía que todos los precios
+serían "redondos". En la realidad, los precios de los laboratorios
+colombianos vienen con cualquier número (al cambio del USD, márgenes
+variables, redondeos del proveedor). Forzar múltiplos de 100 era una
+restricción artificial que bloqueaba operación legítima.
+
+Esta es la primera de varias correcciones operativas que pueden surgir
+mientras llenas el catálogo. Si encuentras más restricciones similares
+en otros campos del admin (stock, peso, dimensiones), me avisas y las
+afinamos con la misma lógica.

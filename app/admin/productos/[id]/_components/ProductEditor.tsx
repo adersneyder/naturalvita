@@ -673,7 +673,7 @@ export default function ProductEditor({
               name="price_cop"
               type="number"
               min="0"
-              step="100"
+              step="1"
               defaultValue={product.price_cop}
               required
               onChange={(e) => setPreviewPrice(parseInt(e.target.value) || 0)}
@@ -690,7 +690,7 @@ export default function ProductEditor({
               name="compare_at_price_cop"
               type="number"
               min="0"
-              step="100"
+              step="1"
               defaultValue={product.compare_at_price_cop ?? ""}
               placeholder="Para mostrar descuento"
             />
