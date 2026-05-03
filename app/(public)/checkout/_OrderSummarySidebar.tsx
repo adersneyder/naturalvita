@@ -36,18 +36,14 @@ export default function OrderSummarySidebar({
 }: Props) {
   const { items, subtotal, quantity } = useCart();
 
-  // El subtotal del carrito ya incluye IVA porque price_cop incluye IVA en
-  // el frontend (lo desglosamos visualmente, pero el monto cobrado es el
-  // total con IVA).
-  const subtotalConIva = subtotal;
-
-  // Para mostrar IVA discriminado, asumimos 19% sobre el precio sin IVA
-  // (price_cop / 1.19). En la creación de orden el cálculo real se hace
-  // server-side con tax_rate exacto por producto. Acá es una aproximación
-  // para la UI que será reemplazada por el total exacto al confirmar.
-  // Es una decisión consciente: el sidebar es informativo, la BD es la verdad.
-  const iva = Math.round(subtotalConIva - subtotalConIva / 1.19);
-  const subtotalSinIva = subtotalConIva - iva;
+  // El subtotal del carrito ya es el precio bruto que el cliente paga
+  // (price_cop ya incluye IVA cuando aplica, según tax_type del producto).
+  // Aquí no desglosamos IVA porque para hacerlo correctamente necesitaríamos
+  // enviar el tax_type de cada producto al carrito; hoy el carrito en
+  // localStorage solo guarda price_cop bruto. El desglose preciso (con IVA
+  // de 19%/5%/0% según producto) se calcula server-side al crear la orden y
+  // aparece en el email de confirmación y en la factura.
+  const subtotalBruto = subtotal;
 
   const [quote, setQuote] = useState<ShippingQuote | null>(null);
   const [loadingShipping, setLoadingShipping] = useState(false);
@@ -61,7 +57,7 @@ export default function OrderSummarySidebar({
     setLoadingShipping(true);
     const controller = new AbortController();
     fetch(
-      `/api/checkout/shipping?department=${encodeURIComponent(shippingDepartment)}&subtotal=${subtotalConIva}`,
+      `/api/checkout/shipping?department=${encodeURIComponent(shippingDepartment)}&subtotal=${subtotalBruto}`,
       { signal: controller.signal },
     )
       .then((r) => (r.ok ? r.json() : null))
@@ -76,9 +72,9 @@ export default function OrderSummarySidebar({
         setLoadingShipping(false);
       });
     return () => controller.abort();
-  }, [shippingDepartment, subtotalConIva, onQuoteChange]);
+  }, [shippingDepartment, subtotalBruto, onQuoteChange]);
 
-  const total = subtotalConIva + (quote?.cost_cop ?? 0);
+  const total = subtotalBruto + (quote?.cost_cop ?? 0);
 
   return (
     <aside className="lg:sticky lg:top-24 lg:self-start">
@@ -131,13 +127,7 @@ export default function OrderSummarySidebar({
               </span>
             </dt>
             <dd className="text-[var(--color-leaf-900)] tabular-nums">
-              {formatCop(subtotalSinIva)}
-            </dd>
-          </div>
-          <div className="flex justify-between text-[var(--color-earth-700)]">
-            <dt>IVA (19%)</dt>
-            <dd className="text-[var(--color-leaf-900)] tabular-nums">
-              {formatCop(iva)}
+              {formatCop(subtotalBruto)}
             </dd>
           </div>
           <div className="flex justify-between text-[var(--color-earth-700)]">

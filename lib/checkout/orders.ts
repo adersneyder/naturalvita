@@ -68,7 +68,7 @@ export async function createPendingOrder(
     .from("products")
     .select(
       `id, slug, name, sku, price_cop, stock, track_stock, status, tax_rate_id,
-       tax_rate:tax_rates!tax_rate_id(percentage),
+       tax_rate:tax_rates!tax_rate_id(rate_percent, tax_type),
        images:product_images!product_id(url, is_primary, sort_order)`,
     )
     .in("id", productIds)
@@ -88,14 +88,22 @@ export async function createPendingOrder(
   }
 
   // 2. Re-validar stock + 3. Calcular IVA + 4. Construir líneas
+  // Modelo fiscal Colombia + NaturalVita:
+  //   - tax_type='included' → price_cop YA incluye IVA. Subtotal = price/(1+rate),
+  //     IVA = price - subtotal. El cliente paga exactamente price_cop.
+  //   - tax_type='excluded' → no es objeto del impuesto (suplementos). Cliente
+  //     paga price_cop, IVA = 0.
+  //   - tax_type='exempt' → aparece en factura al 0% (medicamentos INVIMA).
+  //     Cliente paga price_cop, IVA = 0 pero se reporta diferente fiscalmente.
+  // En los tres casos el TOTAL cobrado al cliente es siempre price_cop * quantity.
   const productMap = new Map(products.map((p) => [p.id, p]));
   type LineComputed = {
     product_id: string;
     quantity: number;
-    unit_price_cop: number; // sin IVA
-    line_subtotal: number;
-    line_tax: number;
-    line_total: number; // con IVA
+    unit_price_cop: number; // precio bruto que paga el cliente (con IVA si aplica)
+    line_subtotal: number;  // base imponible (sin IVA)
+    line_tax: number;       // IVA discriminado
+    line_total: number;     // total cobrado (= unit_price * qty para todos los casos)
     product_name: string;
     product_sku: string | null;
     image_url: string | null;
@@ -124,10 +132,27 @@ export async function createPendingOrder(
       };
     }
 
-    const taxRate = (p.tax_rate as { percentage?: number } | null)?.percentage ?? 0;
-    const lineSubtotal = p.price_cop * qty;
-    const lineTax = Math.round(lineSubtotal * (taxRate / 100));
-    const lineTotal = lineSubtotal + lineTax;
+    const taxInfo = p.tax_rate as
+      | { rate_percent?: string | number; tax_type?: string }
+      | null;
+    const taxType = taxInfo?.tax_type ?? "excluded";
+    const rate = Number(taxInfo?.rate_percent ?? 0);
+
+    // Total bruto cobrado al cliente — siempre price_cop * qty
+    const lineTotal = p.price_cop * qty;
+
+    // Desglose para reporte fiscal
+    let lineSubtotal: number;
+    let lineTax: number;
+    if (taxType === "included" && rate > 0) {
+      // Desglose hacia atrás: price = subtotal * (1 + rate/100)
+      lineSubtotal = Math.round(lineTotal / (1 + rate / 100));
+      lineTax = lineTotal - lineSubtotal;
+    } else {
+      // excluded o exempt: no hay IVA discriminado
+      lineSubtotal = lineTotal;
+      lineTax = 0;
+    }
 
     subtotalSinIva += lineSubtotal;
     totalIva += lineTax;
