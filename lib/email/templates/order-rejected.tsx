@@ -119,7 +119,7 @@ export function OrderRejected({
           margin: 0,
         }}
       >
-        Si necesitas ayuda, escríbenos a contacto@naturalvita.co
+        Si necesitas ayuda, escríbenos a info@naturalvita.co
       </Text>
     </EmailLayout>
   );

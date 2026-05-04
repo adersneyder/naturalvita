@@ -45,7 +45,7 @@ export async function sendEmail(
   const from =
     process.env.RESEND_FROM_EMAIL ?? "NaturalVita <pedidos@naturalvita.co>";
   const replyTo =
-    process.env.RESEND_REPLY_TO ?? "contacto@naturalvita.co";
+    process.env.RESEND_REPLY_TO ?? "info@naturalvita.co";
 
   try {
     const html = await render(params.template);

@@ -1,94 +1,83 @@
-# NaturalVita · Patch · Fix schema tax_rates + cálculo fiscal correcto
+# NaturalVita · Patch · Consolidar info@naturalvita.co como bandeja única
 
-Dos archivos modificados:
+Cambia todas las referencias a `contacto@naturalvita.co` por
+`info@naturalvita.co` en código + footer + templates de email.
+Elimina referencias a `soporte@` y `no-reply@` que estaban declaradas
+pero no se usaban.
+
+6 archivos modificados. Sin SQL, sin nuevas deps. Build verde.
+
+---
+
+## Estructura del ZIP
 
 ```
-lib/checkout/orders.ts                          ← FIX schema + lógica fiscal
-app/(public)/checkout/_OrderSummarySidebar.tsx  ← simplifica IVA en sidebar
+nv-fix-info-email/
+├── INSTALL.md
+├── app/(public)/iniciar-sesion/_LoginForm.tsx     ← MODIFICADO
+└── lib/
+    ├── legal/company-info.ts                       ← MODIFICADO
+    └── email/
+        ├── client.ts                               ← MODIFICADO
+        └── templates/
+            ├── _layout.tsx                         ← MODIFICADO
+            ├── order-rejected.tsx                  ← MODIFICADO
+            └── order-refunded.tsx                  ← MODIFICADO
 ```
 
-Build verde, 0 errores TS.
+---
+
+## Aplicar
+
+### Paso 1: Subir los 6 archivos al repo
+
+Sube cada archivo a su ruta exacta reemplazando el existente.
+
+### Paso 2: Cambiar variable en Vercel
+
+Ve a `vercel.com` → tu proyecto → Settings → Environment Variables.
+
+Edita la variable **`RESEND_REPLY_TO`**:
+- Valor anterior: `contacto@naturalvita.co`
+- Valor nuevo: `info@naturalvita.co`
+
+Guarda. Vercel relanza automáticamente en ~30 segundos.
+
+### Paso 3: Verificar
+
+- Abre cualquier página del sitio (ej `/legal/privacidad`) → footer debe mostrar `info@naturalvita.co`.
+- Crea un pedido de prueba (cualquier monto sandbox) → email "Recibimos tu pedido" debe llegar.
+- Abre el email → reply-to debe ser `info@naturalvita.co` (responde y verifica que el destinatario es info@, no contacto@).
 
 ---
 
-## Qué pasó (diagnóstico)
+## Lo que NO toca este patch
 
-Al hacer click "Confirmar y pagar" salía "Error consultando productos".
-Causa real: en mi código de Sesión C asumí que la columna de IVA en la
-tabla `tax_rates` se llamaba `percentage`, pero en tu BD se llama
-`rate_percent`. Supabase rechazaba el query y caía en el catch genérico.
-
-**Adicionalmente**, descubrí algo más serio que silenciosamente habría
-duplicado el IVA cobrado al cliente: **tu modelo fiscal usa
-`tax_type='included'`** (IVA incluido en `price_cop`), no IVA agregado
-encima del precio. Mi código original sumaba IVA encima, lo que habría
-cobrado de más. Este patch lo corrige.
-
-## Modelo fiscal correcto que ahora respeto
-
-Tu tabla `tax_rates` tiene cuatro tipos:
-
-| Código | tax_type | rate | Aplicación |
-|--------|----------|------|------------|
-| EXCLUIDO | excluded | 0% | Suplementos dietarios — no aplica IVA |
-| IVA_19 | included | 19% | Cosméticos/aceites/deportivos — IVA ya incluido en precio |
-| IVA_5 | included | 5% | Tarifa reducida — IVA ya incluido |
-| EXENTO | exempt | 0% | Medicamentos INVIMA — aparece en factura al 0% |
-
-**Regla clave**: el cliente siempre paga `price_cop * quantity`. El IVA
-es un desglose informativo, no se suma encima.
-
-Mi código ahora calcula correctamente:
-
-- `included` con rate > 0: subtotal = `price_cop / (1 + rate/100)`,
-  IVA = `price_cop - subtotal`. Cliente paga `price_cop`.
-- `excluded`: subtotal = `price_cop`, IVA = 0. Cliente paga `price_cop`.
-- `exempt`: subtotal = `price_cop`, IVA = 0 (reportado al 0%). Cliente paga `price_cop`.
-
-## Cambios en `_OrderSummarySidebar.tsx`
-
-Antes el sidebar asumía 19% de IVA para TODOS los productos del carrito.
-Ese supuesto era incorrecto en la mayoría de tu catálogo (muchos productos
-son `excluded` por ser suplementos dietarios).
-
-Calcular IVA preciso en el cliente requeriría enviar el `tax_type` de cada
-producto al carrito de localStorage, lo cual no hacemos hoy. **Decisión
-honesta**: el sidebar ahora muestra solo "Subtotal + Envío + Total", sin
-desglosar IVA. El desglose preciso aparece en el email de confirmación
-post-pago donde sí tengo los tax_types exactos por producto.
-
-Esto NO afecta el monto cobrado al cliente (que siempre fue `price_cop`).
-Solo cambia que no le mostramos un IVA inventado en el sidebar.
+- `pedidos@naturalvita.co` (FROM_EMAIL) — sigue igual, es la dirección remitente.
+- Las páginas legales (`/legal/privacidad`, `/legal/terminos`, `/legal/envios`) leen desde `company-info.ts` así que se actualizan solas con el cambio del archivo.
+- `RESEND_FROM_EMAIL` en Vercel sigue como `NaturalVita <pedidos@naturalvita.co>`. No tocar.
 
 ---
 
-## Cómo aplicar
+## Por qué este cambio
 
-Sube los dos archivos a sus rutas exactas reemplazando los existentes.
-Vercel auto-deploy.
+Decisión de simplificación operativa: usar una sola bandeja de contacto
+(`info@naturalvita.co`, ya creada en Hostinger) en lugar de mantener tres
+buzones (`contacto@`, `soporte@`, `info@`) que crearían confusión sobre
+dónde escribir.
 
----
-
-## QA
-
-1. Recarga `/checkout` en preview con un producto en el carrito.
-2. Verifica que el sidebar muestre solo: Subtotal · Envío · Total.
-3. Click "Confirmar y pagar".
-4. Ahora debe **crear la orden sin error** y mostrar el botón de Bold.
-5. Si lo abres y completas con monto $555.001, Bold simulará aprobado y
-   llegarán los emails con el IVA correctamente desglosado por producto
-   según su tax_type.
+Esto NO afecta el flujo de webhook de Bold ni resuelve el problema de
+emails de "Pago confirmado" que no llegan. Esos no llegan porque el
+webhook de Bold sandbox no se está disparando (problema separado, en
+investigación con test de producción $1.500).
 
 ---
 
-## Lo que esto enseña para adelante
+## Limpieza arquitectónica futura
 
-Cada vez que escriba código que toque BD, voy a verificar el schema real
-con MCP **antes** de armar las queries — no después de un error en
-producción. Lo mismo para casos fiscales: mi default era "IVA agregado"
-porque es el modelo común en USA y Europa, pero Colombia con
-`tax_type='included'` es distinto y debí mirarlo desde el día uno.
-
-Si encuentras más asunciones mías que no calzan con tu schema real,
-mándame screenshot del error y los logs de Vercel y los corrijo igual
-de rápido.
+Hoy varios archivos hardcodean `info@naturalvita.co` directamente. En
+una sesión futura sería bueno refactorizar para que todos lean desde
+`COMPANY.publicEmail` y `EMAIL.replyTo` de `lib/legal/company-info.ts`
+— así un cambio futuro de email solo requiere editar ese archivo. Lo
+dejo agendado pero no lo hago ahora para no introducir cambios extra
+mientras estamos depurando otro problema.

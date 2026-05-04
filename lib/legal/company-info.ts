@@ -22,8 +22,7 @@ export const COMPANY = {
   nit: "[NIT pendiente]",
 
   // Contacto operativo
-  // [TODO] Email de contacto público (hola@, contacto@, etc.)
-  publicEmail: "contacto@naturalvita.co",
+  publicEmail: "info@naturalvita.co",
   // [TODO] Teléfono / WhatsApp de atención al cliente
   publicPhone: "[Teléfono pendiente]",
   publicWhatsapp: "[WhatsApp pendiente]",
@@ -60,10 +59,13 @@ export const REGULATORY = {
 
 /**
  * Para emails transaccionales en Hito 1.7 Sesión C.
+ *
+ * Estos valores son los defaults hardcoded en `lib/email/client.ts`. En
+ * producción los valores reales vienen de las variables de entorno
+ * `RESEND_FROM_EMAIL` y `RESEND_REPLY_TO` configuradas en Vercel.
  */
 export const EMAIL = {
   fromName: "NaturalVita",
-  fromAddress: "no-reply@naturalvita.co",
-  replyTo: "contacto@naturalvita.co",
-  supportAddress: "soporte@naturalvita.co",
+  fromAddress: "pedidos@naturalvita.co",
+  replyTo: "info@naturalvita.co",
 } as const;
