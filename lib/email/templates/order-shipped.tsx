@@ -5,7 +5,11 @@ export type OrderShippedProps = {
   customerName: string;
   orderNumber: string;
   trackingNumber: string | null;
+  /** Nombre legible de la transportadora ("Servientrega", "Coordinadora", etc.) */
   carrier: string | null;
+  /** URL deep-link a la página de tracking de la transportadora con
+   * número pre-llenado, si la transportadora soporta deep-link. NULL si no. */
+  carrierTrackingUrl: string | null;
   shippingAddress: {
     recipient: string;
     street: string;
@@ -13,26 +17,35 @@ export type OrderShippedProps = {
     city: string;
     department: string;
   };
-  trackingUrl: string;
+  /** URL al detalle del pedido en NaturalVita (siempre disponible) */
+  orderUrl: string;
 };
 
 /**
  * Email enviado cuando el admin marca el pedido como shipped en
  * /admin/pedidos/[id]. Le avisa al cliente que su paquete ya salió.
  *
- * Si hay tracking_number lo destacamos. Si no, el email igual sale
- * pero sin el bloque de número (caso típico para pedidos en moto local
- * Bogotá donde aplican mensajería propia sin guía).
+ * Lógica del botón de tracking:
+ *   - Si hay carrierTrackingUrl: botón principal "Rastrear con [Carrier]"
+ *     que lleva directo al tracking con el número pre-llenado.
+ *   - Si no hay carrierTrackingUrl pero sí trackingNumber + carrier: bloque
+ *     visible con el número y una nota para que el cliente lo busque manual.
+ *   - Si no hay tracking: solo el botón secundario al detalle en NaturalVita.
+ *
+ * En todos los casos hay un botón secundario "Ver detalle del pedido" que
+ * lleva a /mi-cuenta/pedido/[order_number] dentro de NaturalVita.
  */
 export function OrderShipped({
   customerName,
   orderNumber,
   trackingNumber,
   carrier,
+  carrierTrackingUrl,
   shippingAddress,
-  trackingUrl,
+  orderUrl,
 }: OrderShippedProps) {
   const firstName = customerName.split(" ")[0] || "Hola";
+  const hasDeepLink = Boolean(carrierTrackingUrl);
 
   return (
     <EmailLayout
@@ -79,7 +92,7 @@ export function OrderShipped({
               backgroundColor: C.earth50,
               borderRadius: "8px",
               padding: "16px",
-              margin: "0 0 24px",
+              margin: "0 0 16px",
             }}
           >
             <Text
@@ -87,8 +100,7 @@ export function OrderShipped({
                 fontSize: "16px",
                 color: C.leaf900,
                 margin: 0,
-                fontFamily:
-                  "Menlo, Monaco, Consolas, monospace",
+                fontFamily: "Menlo, Monaco, Consolas, monospace",
                 letterSpacing: "0.02em",
               }}
             >
@@ -106,6 +118,45 @@ export function OrderShipped({
               </Text>
             )}
           </Section>
+
+          {/* Botón principal de tracking si hay deep link */}
+          {hasDeepLink && carrierTrackingUrl && (
+            <Section style={{ textAlign: "center", margin: "16px 0 24px" }}>
+              <a
+                href={carrierTrackingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-block",
+                  backgroundColor: C.iris700,
+                  color: C.white,
+                  padding: "12px 24px",
+                  borderRadius: "8px",
+                  textDecoration: "none",
+                  fontSize: "14px",
+                  fontWeight: 500,
+                }}
+              >
+                Rastrear con {carrier}
+              </a>
+            </Section>
+          )}
+
+          {/* Si no hay deep link pero hay carrier, mensaje informativo */}
+          {!hasDeepLink && carrier && (
+            <Text
+              style={{
+                fontSize: "12px",
+                color: C.earth500,
+                margin: "0 0 24px",
+                lineHeight: 1.5,
+                fontStyle: "italic",
+              }}
+            >
+              Para rastrear el envío, copia el número de guía y búscalo en la
+              página de {carrier}.
+            </Text>
+          )}
         </>
       )}
 
@@ -136,21 +187,23 @@ export function OrderShipped({
         {shippingAddress.city}, {shippingAddress.department}
       </Text>
 
+      {/* Botón secundario al detalle en NaturalVita */}
       <Section style={{ textAlign: "center", margin: "28px 0 0" }}>
         <a
-          href={trackingUrl}
+          href={orderUrl}
           style={{
             display: "inline-block",
-            backgroundColor: C.iris700,
-            color: C.white,
+            backgroundColor: hasDeepLink ? C.white : C.iris700,
+            color: hasDeepLink ? C.leaf900 : C.white,
             padding: "12px 24px",
             borderRadius: "8px",
             textDecoration: "none",
             fontSize: "14px",
             fontWeight: 500,
+            border: hasDeepLink ? `1px solid ${C.earth100}` : "none",
           }}
         >
-          Ver detalle del pedido
+          {hasDeepLink ? "Ver detalle en NaturalVita" : "Ver detalle del pedido"}
         </a>
       </Section>
     </EmailLayout>

@@ -27,6 +27,7 @@ export type CustomerOrderDetail = CustomerOrderRow & {
   shipping_city: string;
   shipping_department: string;
   shipping_postal_code: string | null;
+  shipping_carrier: string | null;
   tracking_number: string | null;
   notes: string | null;
   bold_payment_id: string | null;
@@ -101,7 +102,7 @@ export async function getCustomerOrderDetail(
        customer_email,
        created_at, paid_at, shipped_at, delivered_at,
        shipping_recipient, shipping_phone, shipping_street, shipping_details,
-       shipping_city, shipping_department, shipping_postal_code,
+       shipping_city, shipping_department, shipping_postal_code, shipping_carrier,
        tracking_number, notes, bold_payment_id,
        items:order_items!order_id(
          product_id, product_name, product_sku, product_image_url,

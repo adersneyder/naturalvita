@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { CARRIERS, CARRIER_SLUGS, type CarrierSlug } from "@/lib/shipping/carriers";
 import {
   markOrderProcessing,
   markOrderShipped,
@@ -17,6 +18,7 @@ type Props = {
   status: string;
   paymentStatus: string;
   trackingNumber: string | null;
+  shippingCarrier: string | null;
   notes: string | null;
 };
 
@@ -26,6 +28,7 @@ export default function OrderActions({
   status,
   paymentStatus,
   trackingNumber: initialTracking,
+  shippingCarrier: initialCarrier,
   notes: initialNotes,
 }: Props) {
   const router = useRouter();
@@ -38,7 +41,10 @@ export default function OrderActions({
   // UI state para forms
   const [showShipForm, setShowShipForm] = useState(false);
   const [trackingNumber, setTrackingNumber] = useState(initialTracking ?? "");
-  const [carrier, setCarrier] = useState("");
+  const [carrierSlug, setCarrierSlug] = useState<CarrierSlug | "">(
+    (initialCarrier as CarrierSlug) ?? "",
+  );
+  const [carrierOther, setCarrierOther] = useState("");
 
   const [showCancelForm, setShowCancelForm] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
@@ -68,11 +74,19 @@ export default function OrderActions({
   function runShip(e: React.FormEvent) {
     e.preventDefault();
     setFeedback(null);
+    if (!carrierSlug) {
+      setFeedback({
+        type: "error",
+        text: "Selecciona la transportadora antes de continuar",
+      });
+      return;
+    }
     startTransition(async () => {
       const res = await markOrderShipped({
         orderId,
         trackingNumber: trackingNumber.trim() || "",
-        carrier: carrier.trim() || "",
+        carrier: carrierSlug as CarrierSlug,
+        carrierOther: carrierSlug === "other" ? carrierOther.trim() : "",
       });
       handleResult(res);
       if (res.ok) {
@@ -188,25 +202,56 @@ export default function OrderActions({
               Enviar pedido
             </p>
             <p className="text-[11px] text-[var(--color-earth-700)]">
-              Enviaremos un correo al cliente avisándole que su pedido va en
-              camino.
+              Enviaremos un correo al cliente con el botón de rastreo de la
+              transportadora.
             </p>
-            <input
-              type="text"
-              value={trackingNumber}
-              onChange={(e) => setTrackingNumber(e.target.value)}
-              placeholder="Número de guía (opcional)"
-              maxLength={100}
-              className="w-full px-3 py-1.5 rounded-lg border border-[var(--color-earth-100)] bg-white text-sm focus:border-[var(--color-iris-700)] focus:outline-none"
-            />
-            <input
-              type="text"
-              value={carrier}
-              onChange={(e) => setCarrier(e.target.value)}
-              placeholder="Transportadora (ej: Servientrega)"
-              maxLength={60}
-              className="w-full px-3 py-1.5 rounded-lg border border-[var(--color-earth-100)] bg-white text-sm focus:border-[var(--color-iris-700)] focus:outline-none"
-            />
+            <label className="block">
+              <span className="block text-[11px] text-[var(--color-earth-700)] mb-1">
+                Transportadora *
+              </span>
+              <select
+                value={carrierSlug}
+                onChange={(e) => setCarrierSlug(e.target.value as CarrierSlug | "")}
+                required
+                className="w-full px-3 py-1.5 rounded-lg border border-[var(--color-earth-100)] bg-white text-sm focus:border-[var(--color-iris-700)] focus:outline-none"
+              >
+                <option value="">Selecciona…</option>
+                {CARRIER_SLUGS.map((slug) => (
+                  <option key={slug} value={slug}>
+                    {CARRIERS[slug].label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {carrierSlug === "other" && (
+              <input
+                type="text"
+                value={carrierOther}
+                onChange={(e) => setCarrierOther(e.target.value)}
+                placeholder="Nombre de la transportadora"
+                maxLength={60}
+                required
+                className="w-full px-3 py-1.5 rounded-lg border border-[var(--color-earth-100)] bg-white text-sm focus:border-[var(--color-iris-700)] focus:outline-none"
+              />
+            )}
+            <label className="block">
+              <span className="block text-[11px] text-[var(--color-earth-700)] mb-1">
+                Número de guía (opcional)
+              </span>
+              <input
+                type="text"
+                value={trackingNumber}
+                onChange={(e) => setTrackingNumber(e.target.value)}
+                placeholder="Ej. 9876543210"
+                maxLength={100}
+                className="w-full px-3 py-1.5 rounded-lg border border-[var(--color-earth-100)] bg-white text-sm focus:border-[var(--color-iris-700)] focus:outline-none"
+              />
+            </label>
+            {carrierSlug && carrierSlug !== "other" && trackingNumber && (
+              <p className="text-[11px] text-[var(--color-earth-700)] bg-white rounded p-2 border border-[var(--color-earth-100)]">
+                El cliente verá un botón &ldquo;Rastrear con {CARRIERS[carrierSlug].label}&rdquo; que abre el tracking directo.
+              </p>
+            )}
             <div className="flex items-center gap-2 pt-1">
               <button
                 type="submit"

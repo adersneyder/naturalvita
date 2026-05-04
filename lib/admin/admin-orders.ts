@@ -30,6 +30,7 @@ export type AdminOrderDetail = AdminOrderRow & {
   shipping_street: string;
   shipping_details: string | null;
   shipping_postal_code: string | null;
+  shipping_carrier: string | null;
   bold_payment_id: string | null;
   tracking_number: string | null;
   notes: string | null;
@@ -140,7 +141,7 @@ export async function getAdminOrderDetail(
        total_cop, subtotal_cop, shipping_cop, tax_cop, discount_cop,
        created_at, paid_at, shipped_at, delivered_at, updated_at,
        shipping_recipient, shipping_phone, shipping_street, shipping_details,
-       shipping_city, shipping_department, shipping_postal_code,
+       shipping_city, shipping_department, shipping_postal_code, shipping_carrier,
        tracking_number, notes, bold_payment_id,
        items:order_items!order_id(
          product_id, product_name, product_sku, product_image_url,

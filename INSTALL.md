@@ -1,313 +1,140 @@
-# NaturalVita · Hito 1.7 Sesión D · Mi cuenta enriquecida + admin pedidos/clientes
+# NaturalVita · Patch · Tracking deep-link estilo Temu
 
-Cierre completo del Hito 1.7. Convierte `/mi-cuenta` de scaffolding a
-experiencia 100% funcional, abre el panel admin de pedidos y clientes
-con acciones operativas reales (despacho, cancelación, reembolso) y deja
-preparado el plumbing para integrar Klaviyo en Hito 2 sin reescribir
-nada del flujo.
+Permite que el cliente haga click en el botón "Rastrear con [Carrier]"
+desde el email "Pedido enviado" (o desde `/mi-cuenta/pedido/...`) y
+sea llevado directo a la página de tracking de la transportadora con
+el número de guía pre-llenado.
 
-23 archivos. 1 migración SQL aplicada por MCP Supabase.
-Build de producción verde: **41 rutas**, 0 errores TS.
+8 archivos. 1 migración SQL aplicada por MCP Supabase. Build verde
+con 41 rutas, 0 errores TS.
 
 ---
 
-## Migración aplicada por MCP Supabase
+## Migración aplicada por MCP
 
-**No requiere acción de tu parte** — la migración ya fue aplicada
-directamente por el MCP de Supabase. Se llama
-`admin_policies_for_orders_and_customers` y agrega 5 policies RLS:
+Sin acción de tu parte. Migración `add_shipping_carrier_to_orders`:
 
 ```sql
--- ORDERS
-CREATE POLICY "Admins read all orders" ON public.orders
-  FOR SELECT TO authenticated
-  USING (current_admin_role() IS NOT NULL);
-
-CREATE POLICY "Admins update orders" ON public.orders
-  FOR UPDATE TO authenticated
-  USING (current_admin_role() = ANY (ARRAY['owner','admin']))
-  WITH CHECK (current_admin_role() = ANY (ARRAY['owner','admin']));
-
--- ORDER_ITEMS, CUSTOMERS, ADDRESSES (solo SELECT)
--- (idem patrón con current_admin_role() IS NOT NULL)
+ALTER TABLE public.orders ADD COLUMN shipping_carrier text;
+COMMENT ON COLUMN public.orders.shipping_carrier IS
+  'Slug de la transportadora (ver lib/shipping/carriers.ts)';
 ```
 
-Estas policies habilitan al panel admin a ver y modificar pedidos,
-items, clientes y direcciones sin saltarse RLS con service-role en
-cada query.
+Ya está en BD. Tu pedido NV-20260504-FR5R quedó con `shipping_carrier=NULL`
+porque se marcó shipped antes de esta migración. Eso está OK — el botón
+de tracking simplemente no aparece en ese pedido viejo, y el resto del
+sistema funciona igual.
 
 ---
 
 ## Estructura del ZIP
 
 ```
-nv-hito-1.7-sesion-d/
+nv-fix-carrier-tracking/
 ├── INSTALL.md
 ├── app/
-│   ├── (public)/mi-cuenta/
-│   │   ├── _AccountTabs.tsx           ← NUEVO (tabs cliente)
-│   │   ├── _SummaryPanel.tsx          ← NUEVO (overview KPIs + últimos pedidos)
-│   │   ├── _OrdersListPanel.tsx       ← NUEVO (listado pedidos cliente)
-│   │   ├── _AddressesPanel.tsx        ← NUEVO (CRUD direcciones)
-│   │   ├── _DataPanel.tsx             ← NUEVO (editar perfil)
-│   │   ├── actions.ts                 ← NUEVO (server actions cliente)
-│   │   ├── page.tsx                   ← REEMPLAZADO (orquesta tabs)
-│   │   └── pedido/[order_number]/
-│   │       └── page.tsx               ← NUEVO (detalle pedido cliente)
-│   └── admin/
-│       ├── page.tsx                   ← MODIFICADO (KPIs reales pedidos hoy)
-│       ├── _components/
-│       │   └── AdminPagination.tsx    ← NUEVO (paginación admin)
-│       ├── pedidos/
-│       │   ├── page.tsx               ← NUEVO (listado admin)
-│       │   ├── actions.ts             ← NUEVO (mark shipped/cancelled/etc)
-│       │   ├── _OrdersFilters.tsx     ← NUEVO (filtros)
-│       │   └── [id]/
-│       │       ├── page.tsx           ← NUEVO (detalle admin)
-│       │       └── _OrderActions.tsx  ← NUEVO (panel acciones)
-│       └── clientes/
-│           ├── page.tsx               ← NUEVO (listado clientes)
-│           └── [id]/
-│               └── page.tsx           ← NUEVO (detalle cliente)
-├── components/orders/                  (compartidos cliente y admin)
-│   ├── StatusBadge.tsx                ← NUEVO
-│   └── OrderTimeline.tsx              ← NUEVO
+│   ├── (public)/mi-cuenta/pedido/[order_number]/
+│   │   └── page.tsx                      ← MODIFICADO
+│   └── admin/pedidos/
+│       ├── actions.ts                    ← MODIFICADO
+│       └── [id]/
+│           ├── page.tsx                  ← MODIFICADO
+│           └── _OrderActions.tsx         ← MODIFICADO
 └── lib/
-    ├── admin/
-    │   └── admin-orders.ts            ← NUEVO (queries admin reusables)
-    ├── checkout/
-    │   └── customer-orders.ts         ← NUEVO (queries cliente + timeline)
-    ├── email/templates/
-    │   └── order-shipped.tsx          ← NUEVO (5° plantilla email)
-    └── events/
-        └── track.ts                   ← NUEVO (stub Klaviyo)
+    ├── admin/admin-orders.ts             ← MODIFICADO
+    ├── checkout/customer-orders.ts       ← MODIFICADO
+    ├── email/templates/order-shipped.tsx ← MODIFICADO
+    └── shipping/
+        └── carriers.ts                   ← NUEVO
 ```
 
 ---
 
 ## Aplicar
 
-### Paso 1: Subir todos los archivos al repo
-
-Sube los 23 archivos a sus rutas exactas. Ningún archivo borra
-contenido del repo — todos son nuevos excepto:
-- `app/(public)/mi-cuenta/page.tsx` (reemplaza el de Sesión A con
-  scaffolding "Próximamente").
-- `app/admin/page.tsx` (modifica solo los KPIs hardcoded; el resto del
-  dashboard se conserva).
-
-### Paso 2: Verificar variables de entorno
-
-Sin cambios. Sigue usando las mismas variables de Vercel que ya tienes
-configuradas (Resend, Bold, Supabase). El nuevo módulo `lib/events/track.ts`
-no requiere ninguna variable; cuando integres Klaviyo en Hito 2,
-agregarás `KLAVIYO_API_KEY` ahí.
-
-### Paso 3: Verificar deploy en Vercel
-
-Vercel hace auto-deploy. Espera ~1 minuto, ve a `vercel.com →
-naturalvita → Deployments`. El último build debe estar verde con 41
-rutas.
+Sube los 8 archivos a sus rutas exactas. Sin variables de entorno
+nuevas. Vercel hará deploy automáticamente.
 
 ---
 
-## Funcionalidad implementada
+## Lo que cambió
 
-### Cliente: `/mi-cuenta` enriquecida
+### 1. `lib/shipping/carriers.ts` (nuevo, fuente de verdad)
 
-Cuatro pestañas en una sola URL con `?tab=...`:
+Catálogo de transportadoras soportadas con builders de URL deep-link.
+Soporta:
 
-**Resumen** (`/mi-cuenta`):
-- Bienvenida con nombre del cliente.
-- KPIs: pedidos realizados, total invertido.
-- Últimos 3 pedidos con badges de estado clickeables al detalle.
-- Dirección predeterminada visible.
-- Empty state si no hay pedidos aún.
+- **Servientrega** — deep link funcional con `?numero=`
+- **Coordinadora** — deep link funcional con `?guia=`
+- **Interrapidísimo** — deep link funcional con `?guia=`
+- **Envia.co** — deep link funcional con `?guia=`
+- **Deprisa** — deep link funcional con `?TipoConsulta=Guia&CodigoBusqueda=`
+- **TCC** — sin deep link (su tracking es POST), abre página genérica
+- **Domina** — sin deep link público (requiere login), no abre nada
+- **Otra** — texto libre, sin deep link
 
-**Pedidos** (`?tab=pedidos`):
-- Lista completa de pedidos del cliente con badge de pago, fecha, total.
-- Mobile-friendly: se reorganiza en stack en pantallas chicas.
-- Click → detalle del pedido en `/mi-cuenta/pedido/[order_number]`.
+Funciones públicas:
 
-**Direcciones** (`?tab=direcciones`):
-- CRUD completo: agregar, editar, eliminar, marcar predeterminada.
-- Form con DIVIPOLA (32 deptos + 350 municipios + Otro libre) reusando
-  el mismo helper que el checkout.
-- Validación con Zod compartida cliente/server.
-- Si no hay direcciones, abre el form de nueva automáticamente.
-- La primera dirección creada se marca default automáticamente.
+- `buildTrackingUrl(slug, trackingNumber)` → `string | null`
+- `getCarrierLabel(slug)` → `string | null` (nombre legible)
+- `isValidCarrierSlug(value)` → guard de tipo
 
-**Mis datos** (`?tab=datos`):
-- Form para nombre completo, teléfono, tipo + número de documento,
-  consentimiento marketing.
-- Email NO editable (es la identidad del usuario en auth.users).
-- Validación con `ContactSchema` reusado del checkout.
+Para agregar una transportadora: una línea en el objeto `CARRIERS` y
+ya está. La UI, validación y tipos se actualizan automáticamente.
 
-### Cliente: detalle pedido `/mi-cuenta/pedido/[order_number]`
+### 2. Admin: dropdown de transportadoras
 
-- Timeline visual de 4 etapas: Recibido → Pagado → Enviado → Entregado.
-  Etapas terminadas en verde leaf, actual con pulse iris, pendientes en
-  earth-100 vacío. Si la orden fue cancelada o reembolsada, las etapas
-  no alcanzadas se muestran tachadas.
-- Lista de items con imagen, SKU, cantidad y subtotal.
-- Sidebar con resumen monetario (subtotal, IVA, envío, descuento, total).
-- Dirección de envío visible.
-- Mensaje contextual si la orden está cancelada o reembolsada.
+En `/admin/pedidos/[id]`, al hacer click en "Marcar como enviado":
 
-### Admin: `/admin/pedidos`
+**Antes**: dos inputs de texto libre (transportadora y guía). El admin
+podía escribir "Servientrega" o "servientrega" o "SERVI" — cualquier
+cosa, sin validación.
 
-- Listado paginado (25 por página) ordenado por fecha desc.
-- Filtros por:
-  - Búsqueda libre: order_number, customer_email, customer_name (ILIKE).
-  - Estado: 7 valores canónicos (pending → refunded).
-  - Estado de pago: 5 valores (pending → partially_refunded).
-- Cada fila muestra pedido + cliente + fecha + dos badges de estado + total.
-- Click → detalle.
+**Ahora**:
+- Dropdown obligatorio con las 8 transportadoras predefinidas + "Otra".
+- Si elige "Otra", aparece input para nombre libre (queda como label
+  visible pero sin botón de tracking).
+- Si elige una predefinida + escribe número de guía, aparece preview:
+  *"El cliente verá un botón 'Rastrear con [Carrier]' que abre el
+  tracking directo."*
 
-### Admin: detalle pedido `/admin/pedidos/[id]`
+El slug se persiste en `orders.shipping_carrier` (ej: `'servientrega'`)
+y el número en `orders.tracking_number` como antes.
 
-Layout en 2 columnas:
+### 3. Email "Pedido enviado" enriquecido
 
-**Columna principal**:
-- Cliente (con link al perfil del cliente).
-- Items del pedido (con link a cada producto).
-- Totales con desglose IVA + envío.
-- Bold tracking (payment_id + paid_at) cuando aplica.
+La plantilla `lib/email/templates/order-shipped.tsx` ahora muestra:
 
-**Sidebar**:
-- Panel de acciones operativas (ver siguiente sección).
-- Timeline visual igual al del cliente.
-- Dirección de envío.
+- Bloque resaltado con número de guía + nombre de transportadora.
+- **Botón principal "Rastrear con [Carrier]"** (iris púrpura) que abre
+  la página de tracking de la transportadora con el número
+  pre-llenado, en una pestaña nueva.
+- **Botón secundario "Ver detalle en NaturalVita"** (blanco con borde)
+  que abre `/mi-cuenta/pedido/[order_number]`.
 
-### Acciones operativas admin
+Si la transportadora no soporta deep link (TCC, Domina, "Otra"):
+- Sin botón principal de tracking.
+- Mensaje informativo: "Para rastrear el envío, copia el número de
+  guía y búscalo en la página de [Carrier]."
+- El botón "Ver detalle del pedido" pasa a ser el principal (iris).
 
-El panel de acciones en `/admin/pedidos/[id]` muestra solo las acciones
-válidas según el estado actual del pedido:
+### 4. `/mi-cuenta/pedido/[order_number]` enriquecido
 
-| Estado actual                | Acciones disponibles                           |
-|------------------------------|------------------------------------------------|
-| pending                      | Cancelar                                       |
-| paid                         | Marcar en preparación, Marcar enviado, Cancelar, Reembolsado |
-| processing                   | Marcar enviado, Cancelar, Reembolsado          |
-| shipped                      | Marcar entregado, Reembolsado                  |
-| delivered                    | Reembolsado                                    |
-| cancelled, refunded          | (ninguna; estados terminales)                  |
+El detalle del pedido del cliente muestra el mismo botón "Rastrear con
+[Carrier]" cuando aplica, dentro del card de "Estado del pedido"
+debajo de la cronología visual. Solo aparece para pedidos en estado
+`shipped` o `delivered`.
 
-Detalle de cada acción:
+### 5. `/admin/pedidos/[id]` con link rápido al tracking
 
-**Marcar en preparación** (`processing`): solo cambia status, sin email.
-Útil para cuando el equipo empieza a armar el paquete.
+El sidebar de cronología en admin ahora muestra:
+- Nombre legible de la transportadora.
+- Número de guía en font monoespaciado.
+- Link "Abrir tracking →" que abre la página de la transportadora con
+  el número pre-llenado (sólo si soporta deep link).
 
-**Marcar enviado** (`shipped`): captura número de guía + transportadora
-opcionales, marca status=shipped + fulfillment=fulfilled,
-shipped_at=now. **Side effects**: envía email al cliente con plantilla
-"Pedido enviado" (incluye número de guía si existe) + dispara evento
-`Fulfilled Order` al stub de tracking.
-
-**Marcar entregado** (`delivered`): pide confirmación, setea
-status=delivered + delivered_at=now. NO envía email (sería redundante
-— el cliente ya tiene el paquete).
-
-**Cancelar pedido**: pide razón opcional que se acumula en `notes` con
-fecha. Cambia status=cancelled. **Importante**: NO ejecuta reembolso
-automático en Bold — si el pedido estaba pagado, el admin debe
-reembolsar manualmente desde panel Bold y después usar la acción
-"Marcar reembolsado".
-
-**Marcar reembolsado**: pide razón opcional, marca
-status=refunded + payment_status=refunded. Útil cuando Bold no envía
-webhook VOID_APPROVED o cuando se procesa un reembolso fuera del
-sistema. Idempotente con el webhook real cuando llegue.
-
-**Notas internas**: textarea de notas privadas del equipo (no visibles
-al cliente). Botón "Guardar" aparece solo cuando hay cambios sin
-guardar.
-
-### Admin: `/admin/clientes`
-
-- Lista de los 200 clientes más recientes.
-- Por cada uno: nombre, email, teléfono, # pedidos totales, total gastado
-  (solo pedidos pagados).
-- Click → detalle del cliente.
-
-### Admin: detalle cliente `/admin/clientes/[id]`
-
-- Resumen: total invertido, pedidos completados.
-- Lista cronológica de todos los pedidos del cliente.
-- Direcciones guardadas con badge de "Predeterminada".
-- Información de contacto: email, teléfono, documento, consentimiento
-  marketing.
-
-### Dashboard `/admin` actualizado
-
-Los KPIs hardcoded a 0 ahora muestran datos reales:
-- "Ventas hoy" suma `total_cop` de todos los pedidos pagados creados
-  desde medianoche hora Bogotá.
-- "Pedidos hoy" cuenta pedidos creados desde medianoche.
-- "Productos activos" sigue como antes.
-- "Visitantes hoy" sigue en 0 (Hito 2: tracking).
-
-Sección "Requieren atención" gana fila nueva: "Pedidos por despachar"
-(pagados, sin enviar). Reemplaza la fila de "Mensajes del chatbot" que
-no aplica todavía.
-
-### Email "Pedido enviado"
-
-Quinta plantilla en `lib/email/templates/order-shipped.tsx`. Replica el
-diseño de las otras 4 (header NaturalVita serif + card blanca + botón
-iris) y muestra:
-- Saludo personalizado.
-- Número de pedido + tiempo estimado.
-- Bloque destacado de número de guía si existe (mono font, easy-to-copy).
-- Transportadora si se proporciona.
-- Dirección destino.
-- Botón a `/mi-cuenta/pedido/[order_number]`.
-
-### Plumbing Klaviyo (`lib/events/track.ts`)
-
-Stub que loguea a console + console.log mínimo en producción. Cuatro
-funciones tipadas listas para reemplazar el cuerpo cuando entre Klaviyo:
-
-- `trackOrderPlaced` (cuando se crea la orden pendiente)
-- `trackOrderPaid` (cuando webhook SALE_APPROVED de Bold llega)
-- `trackOrderShipped` (cuando admin marca shipped — YA usado en Sesión D)
-- `trackOrderRefunded` (cuando se reembolsa)
-
-Convención de nombres compatible con el ecosistema estándar de
-e-commerce tracking (Klaviyo, Segment): "Placed Order", "Ordered
-Product", "Fulfilled Order", "Refunded Order".
-
-**Por qué stub y no integración real**: integrar Klaviyo hoy mismo
-agregaría una dependencia bloqueante con ese servicio (variable de
-entorno, manejo de fallos, sincronización de listas) sin valor
-inmediato — no hay clientes reales todavía. Cuando llegue Hito 2 con
-"Pre-lanzamiento controlado", se cambia el cuerpo de las 4 funciones y
-todo el código consumidor sigue funcionando sin modificaciones.
-
----
-
-## Lo que NO incluye este Sesión D
-
-**No se construyó porque depende del webhook Bold bloqueado**:
-
-- Eventos Klaviyo automáticos al pagar (`trackOrderPaid` en el webhook
-  Bold). El call site existe pero el webhook nunca dispara hoy. Cuando
-  Bold arregle, agregar la línea `await trackOrderPaid(...)` dentro del
-  handler `SALE_APPROVED` del webhook.
-
-**No se construyó porque NO es prioridad ahora**:
-
-- Reembolso ejecutado vía API Bold desde el admin. Hoy el admin debe
-  procesar reembolsos en el panel de Bold y después marcar en
-  NaturalVita. Esto es deliberado: la integración con la API de
-  reembolsos de Bold cuando los webhooks no entregan correctamente
-  agregaría complejidad sin certeza de funcionamiento.
-- Búsqueda en `/admin/clientes` con filtros. Hoy carga los 200 más
-  recientes. Si llegamos a ese volumen, agregamos paginación + búsqueda
-  con la misma plantilla de `/admin/pedidos`.
-- Reenviar email de pedido desde admin (botón "Reenviar confirmación").
-  Útil si un cliente reporta no haber recibido. Lo implementaríamos
-  como acción extra en `_OrderActions.tsx`. Bajo demanda.
+Útil para soporte: el admin puede consultar el estado del envío sin
+salir de NaturalVita.
 
 ---
 
@@ -315,53 +142,58 @@ todo el código consumidor sigue funcionando sin modificaciones.
 
 Una vez subido el ZIP y deploy verde:
 
-### Como cliente:
-1. Login en `/iniciar-sesion`.
-2. `/mi-cuenta` → ver tabs funcionando, datos personales editables.
-3. `?tab=direcciones` → agregar nueva dirección, marcar default,
-   eliminar otra.
-4. `?tab=pedidos` → ver tu pedido NV-20260504-FR5R con badge "Pago
-   confirmado".
-5. Click en el pedido → ver timeline con primera etapa "Pedido
-   recibido" + segunda etapa "Pago confirmado" en verde, las dos
-   siguientes pendientes.
+1. **Crea un pedido nuevo de prueba** o usa uno futuro real. NO uses
+   FR5R porque su `shipping_carrier` está NULL y no tendrá botón.
 
-### Como admin:
-1. Login en `/admin/login`.
-2. Dashboard → ver KPI "Pedidos hoy: 1" (o lo que corresponda) y
-   "Pedidos por despachar: 1" en sidebar de atención.
-3. `/admin/pedidos` → ver listado con tu orden NV-20260504-FR5R.
-4. Click en la orden → ver detalle con timeline + items + totales +
-   acciones.
-5. **Probar acción "Marcar enviado"**: poner número de guía ficticio y
-   transportadora, click confirmar. Resultado: status pasa a `shipped`,
-   email llega al cliente desde `info@naturalvita.co`, fecha shipped_at
-   se setea.
-6. **Probar acción "Marcar entregado"**: click, confirmar, status pasa a
-   `delivered`. Sin email.
-7. `/admin/clientes` → ver los 2 clientes registrados.
-8. Click en el cliente sneyderpst@gmail.com → ver perfil con su pedido
-   FR5R + dirección guardada.
+2. Como admin: marcar como enviado con Servientrega + número
+   ficticio "1234567890". Click "Confirmar envío".
 
-### Validación cruzada cliente:
-9. Volver a `/mi-cuenta?tab=pedidos` → la orden ahora muestra "Enviado"
-   (o "Entregado" si llegaste a ese paso).
-10. Click → timeline visualmente actualizado, número de guía visible.
+3. Revisar email recibido en Gmail: debe tener:
+   - Bloque con el número 1234567890 + "Transportadora: Servientrega".
+   - Botón iris "Rastrear con Servientrega" arriba.
+   - Botón blanco "Ver detalle en NaturalVita" abajo.
+
+4. Click en "Rastrear con Servientrega": abre nueva pestaña a
+   `https://www.servientrega.com/wps/portal/rastreo-envio?numero=1234567890`.
+
+5. Como cliente en `/mi-cuenta/pedido/[NUM]`: ver el mismo botón
+   "Rastrear con Servientrega" debajo de la cronología.
+
+6. Como admin en `/admin/pedidos/[id]`: ver "Transportadora:
+   Servientrega" + "Guía: 1234567890" + link "Abrir tracking →" en el
+   sidebar de cronología.
 
 ---
 
-## Próximos pasos sugeridos
+## Notas
 
-Con Hito 1.7 cerrado al 100%, las opciones para el siguiente paso son:
+**El pedido NV-20260504-FR5R existente tiene `shipping_carrier=NULL`**
+porque la migración llegó después de marcarse shipped. No tendrá botón
+de tracking en ningún lado. Si querés rellenarlo manualmente para
+testear con esa orden, ejecutá en Supabase Studio:
 
-**Opción A — Hito 2 Sesión A "Pre-lanzamiento controlado"**: plantillas
-Klaviyo, página `/sobre-nosotros`, Google Search Console, Microsoft
-Clarity, banner cupón. Mi recomendación.
+```sql
+UPDATE orders
+SET shipping_carrier = 'servientrega'
+WHERE order_number = 'NV-20260504-FR5R';
+```
 
-**Opción B — Hito 1.3 retomar**: gestión de admins con sistema de
-invitaciones (la tabla `admin_invitations` ya existe en BD). Útil
-cuando crezca el equipo, pero no urgente con un solo admin.
+**Verificación de URLs de transportadoras**: las URLs en `carriers.ts`
+fueron tomadas de las páginas oficiales actuales. Si una transportadora
+cambia su estructura de URL (raro pero pasa), basta editar la lambda
+de `buildTrackingUrl` correspondiente. Sin migración, sin redeploy de
+DB, sólo modificar el archivo y desplegar Next.
 
-**Opción C — Esperar respuesta de Bold y validar webhook real**:
-mientras se espera, no construir más sino consolidar tests E2E con QA
-real. Útil si Bold responde rápido.
+**Por qué TCC y Domina no soportan deep link**: TCC usa POST en su
+formulario de tracking (no acepta query string GET), Domina exige
+login en su portal. Si querés que el cliente igualmente vea un botón
+"Ver tracking" que los lleve a la página principal aunque tengan que
+pegar el número, lo agrego — solo dime.
+
+**Próximos pasos sugeridos** (si querés en otro patch):
+- Agregar guardar carrier para cuando crees un pedido con destino
+  Bogotá (envío express): el sistema podría sugerir Coordinadora o
+  Servientrega automáticamente.
+- Estado en vivo del tracking via API (algunas transportadoras
+  exponen API REST: Coordinadora, Servientrega). Esto es Hito 3+,
+  agrega complejidad considerable.

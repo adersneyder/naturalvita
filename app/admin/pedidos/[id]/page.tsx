@@ -7,6 +7,10 @@ import { buildOrderTimeline } from "@/lib/checkout/customer-orders";
 import { formatCop } from "@/lib/format/currency";
 import { StatusBadge } from "@/components/orders/StatusBadge";
 import { OrderTimeline } from "@/components/orders/OrderTimeline";
+import {
+  buildTrackingUrl,
+  getCarrierLabel,
+} from "@/lib/shipping/carriers";
 import OrderActions from "./_OrderActions";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +29,10 @@ export default async function AdminOrderDetailPage({
   if (!order) notFound();
 
   const timeline = buildOrderTimeline(order);
+  const trackingDeepLink = buildTrackingUrl(
+    order.shipping_carrier,
+    order.tracking_number,
+  );
 
   return (
     <>
@@ -216,6 +224,7 @@ export default async function AdminOrderDetailPage({
               status={order.status}
               paymentStatus={order.payment_status}
               trackingNumber={order.tracking_number}
+              shippingCarrier={order.shipping_carrier}
               notes={order.notes}
             />
           </article>
@@ -226,14 +235,38 @@ export default async function AdminOrderDetailPage({
               Cronología
             </h2>
             <OrderTimeline stages={timeline} />
-            {order.tracking_number && (
-              <div className="mt-4 pt-4 border-t border-[var(--color-earth-100)]">
-                <p className="text-[10px] uppercase tracking-wider text-[var(--color-earth-700)] font-medium">
-                  Guía
-                </p>
-                <p className="text-sm text-[var(--color-leaf-900)] font-mono mt-1">
-                  {order.tracking_number}
-                </p>
+            {(order.tracking_number || order.shipping_carrier) && (
+              <div className="mt-4 pt-4 border-t border-[var(--color-earth-100)] space-y-2">
+                {order.shipping_carrier && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--color-earth-700)] font-medium">
+                      Transportadora
+                    </p>
+                    <p className="text-sm text-[var(--color-leaf-900)] mt-0.5">
+                      {getCarrierLabel(order.shipping_carrier) ?? order.shipping_carrier}
+                    </p>
+                  </div>
+                )}
+                {order.tracking_number && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-[var(--color-earth-700)] font-medium">
+                      Guía
+                    </p>
+                    <p className="text-sm text-[var(--color-leaf-900)] font-mono mt-0.5">
+                      {order.tracking_number}
+                    </p>
+                    {trackingDeepLink && (
+                      <a
+                        href={trackingDeepLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-block mt-1.5 text-xs text-[var(--color-iris-700)] hover:underline"
+                      >
+                        Abrir tracking →
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </article>

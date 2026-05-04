@@ -7,6 +7,12 @@ import { requireRole } from "@/lib/admin-auth";
 import { sendEmail } from "@/lib/email/client";
 import { OrderShipped } from "@/lib/email/templates/order-shipped";
 import { trackOrderShipped, trackOrderRefunded } from "@/lib/events/track";
+import {
+  CARRIER_SLUGS,
+  type CarrierSlug,
+  getCarrierLabel,
+  buildTrackingUrl,
+} from "@/lib/shipping/carriers";
 
 export type AdminActionResult =
   | { ok: true; message?: string }
@@ -45,13 +51,17 @@ export async function markOrderProcessing(
 }
 
 /**
- * Marcar pedido como "shipped" + capturar tracking + carrier opcional.
+ * Marcar pedido como "shipped" + capturar tracking + carrier.
  * Side effect: email "Pedido enviado" al cliente + evento Klaviyo (stub).
  */
 const ShipSchema = z.object({
   orderId: z.string().uuid(),
   trackingNumber: z.string().trim().max(100).optional().or(z.literal("")),
-  carrier: z.string().trim().max(60).optional().or(z.literal("")),
+  carrier: z
+    .enum(CARRIER_SLUGS as [CarrierSlug, ...CarrierSlug[]])
+    .optional(),
+  /** Texto libre cuando carrier === "other" */
+  carrierOther: z.string().trim().max(60).optional().or(z.literal("")),
 });
 
 export async function markOrderShipped(
@@ -64,7 +74,7 @@ export async function markOrderShipped(
     return { ok: false, error: "Datos inválidos" };
   }
 
-  const { orderId, trackingNumber, carrier } = parsed.data;
+  const { orderId, trackingNumber, carrier, carrierOther } = parsed.data;
   const supabase = await createClient();
 
   // Cargar la orden completa para envío de email
@@ -85,7 +95,17 @@ export async function markOrderShipped(
   }
 
   const trackingClean = trackingNumber?.trim() || null;
-  const carrierClean = carrier?.trim() || null;
+  const carrierSlug = carrier ?? null;
+  // Si carrier es "other", guardamos el texto libre en notas (NO en carrier
+  // slug) para no perder la info que escribió el admin. Si carrier es uno
+  // conocido, el `carrierOther` se ignora.
+  const carrierLabelForEmail = (() => {
+    if (!carrierSlug) return null;
+    if (carrierSlug === "other") return carrierOther?.trim() || null;
+    return getCarrierLabel(carrierSlug);
+  })();
+  const trackingUrl = buildTrackingUrl(carrierSlug, trackingClean);
+
   const now = new Date().toISOString();
 
   const { error: updateErr } = await supabase
@@ -94,6 +114,7 @@ export async function markOrderShipped(
       status: "shipped",
       fulfillment_status: "fulfilled",
       tracking_number: trackingClean,
+      shipping_carrier: carrierSlug,
       shipped_at: now,
       updated_at: now,
     })
@@ -106,7 +127,6 @@ export async function markOrderShipped(
 
   // Side effects: email + tracking. Si fallan, NO revertimos el cambio de
   // estado — el pedido SÍ está enviado, solo perdimos la notificación.
-  // Log explícito para que admin pueda reenviar manualmente si hace falta.
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co";
   const emailRes = await sendEmail({
     to: order.customer_email,
@@ -115,7 +135,8 @@ export async function markOrderShipped(
       customerName: order.customer_name,
       orderNumber: order.order_number,
       trackingNumber: trackingClean,
-      carrier: carrierClean,
+      carrier: carrierLabelForEmail,
+      carrierTrackingUrl: trackingUrl,
       shippingAddress: {
         recipient: order.shipping_recipient,
         street: order.shipping_street,
@@ -123,7 +144,7 @@ export async function markOrderShipped(
         city: order.shipping_city,
         department: order.shipping_department,
       },
-      trackingUrl: `${baseUrl}/mi-cuenta/pedido/${order.order_number}`,
+      orderUrl: `${baseUrl}/mi-cuenta/pedido/${order.order_number}`,
     }),
     tags: [
       { name: "type", value: "order_shipped" },
@@ -144,7 +165,7 @@ export async function markOrderShipped(
     customer_name: order.customer_name,
     total_cop: order.total_cop,
     tracking_number: trackingClean,
-    carrier: carrierClean,
+    carrier: carrierLabelForEmail,
     shipping: {
       city: order.shipping_city,
       department: order.shipping_department,
