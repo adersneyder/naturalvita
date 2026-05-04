@@ -43,13 +43,21 @@ export type BoldWebhookPayload = {
 
 /**
  * Mapeo de eventos de Bold a transiciones de estado en nuestra orden.
+ *
+ * IMPORTANTE: los valores deben respetar los CHECK constraints de la
+ * tabla `orders` en Supabase:
+ *   - `status` valido: pending, paid, processing, shipped, delivered, cancelled, refunded
+ *   - `payment_status` valido: pending, paid, failed, refunded, partially_refunded
+ *
+ * Si agregas un evento nuevo de Bold, verifica primero que los valores
+ * que escribes coincidan con esos enums o agrega los nuevos al CHECK.
  */
-export const BOLD_EVENT_TO_STATUS: Record<
+export const BOLD_EVENT_TO_STATUS: Record
   BoldWebhookEvent,
   { payment_status: string; status: string }
 > = {
-  SALE_APPROVED: { payment_status: "paid", status: "confirmed" },
-  SALE_REJECTED: { payment_status: "rejected", status: "cancelled" },
+  SALE_APPROVED: { payment_status: "paid", status: "paid" },
+  SALE_REJECTED: { payment_status: "failed", status: "cancelled" },
   VOID_APPROVED: { payment_status: "refunded", status: "refunded" },
-  VOID_REJECTED: { payment_status: "refund_failed", status: "confirmed" },
+  VOID_REJECTED: { payment_status: "failed", status: "cancelled" },
 };
