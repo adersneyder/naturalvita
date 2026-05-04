@@ -11,10 +11,7 @@ import {
 import { formatCop } from "@/lib/format/currency";
 import { StatusBadge } from "@/components/orders/StatusBadge";
 import { OrderTimeline } from "@/components/orders/OrderTimeline";
-import {
-  buildTrackingUrl,
-  getCarrierLabel,
-} from "@/lib/shipping/carriers";
+import { TrackingChip } from "@/components/orders/TrackingChip";
 
 export const metadata: Metadata = {
   title: "Detalle del pedido",
@@ -41,12 +38,6 @@ export default async function CustomerOrderDetailPage({
   const timeline = buildOrderTimeline(order);
   const isCancelled = order.status === "cancelled";
   const isRefunded = order.status === "refunded";
-
-  const trackingDeepLink = buildTrackingUrl(
-    order.shipping_carrier,
-    order.tracking_number,
-  );
-  const carrierLabel = getCarrierLabel(order.shipping_carrier);
   const isShippedOrLater =
     order.status === "shipped" || order.status === "delivered";
 
@@ -90,54 +81,13 @@ export default async function CustomerOrderDetailPage({
               Estado del pedido
             </h2>
             <OrderTimeline stages={timeline} />
-            {isShippedOrLater && order.tracking_number && (
+            {isShippedOrLater && (
               <div className="mt-5 pt-5 border-t border-[var(--color-earth-100)]">
-                <div className="flex items-baseline justify-between gap-3 flex-wrap">
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider font-semibold text-[var(--color-earth-700)]">
-                      Número de guía
-                    </p>
-                    <p className="font-mono text-sm text-[var(--color-leaf-900)] mt-1">
-                      {order.tracking_number}
-                    </p>
-                  </div>
-                  {carrierLabel && (
-                    <div className="text-right">
-                      <p className="text-[10px] uppercase tracking-wider font-semibold text-[var(--color-earth-700)]">
-                        Transportadora
-                      </p>
-                      <p className="text-sm text-[var(--color-leaf-900)] mt-1">
-                        {carrierLabel}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {trackingDeepLink ? (
-                  <a
-                    href={trackingDeepLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-4 w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-[var(--color-iris-700)] text-white text-sm font-medium hover:bg-[var(--color-iris-600)] transition-colors"
-                  >
-                    Rastrear con {carrierLabel}
-                    <span aria-hidden>↗</span>
-                  </a>
-                ) : carrierLabel ? (
-                  <p className="mt-3 text-xs text-[var(--color-earth-700)] leading-relaxed bg-[var(--color-earth-50)] rounded-lg p-3">
-                    Para rastrear el envío, copia el número de guía y búscalo
-                    en la página de {carrierLabel}.
-                  </p>
-                ) : null}
-              </div>
-            )}
-            {/* Caso edge: shipped sin tracking_number aún */}
-            {isShippedOrLater && !order.tracking_number && carrierLabel && (
-              <div className="mt-5 pt-5 border-t border-[var(--color-earth-100)]">
-                <p className="text-xs text-[var(--color-earth-700)]">
-                  Tu pedido fue despachado por {carrierLabel}. La guía de
-                  rastreo se actualizará pronto.
-                </p>
+                <TrackingChip
+                  trackingNumber={order.tracking_number}
+                  shippingCarrier={order.shipping_carrier}
+                  variant="card"
+                />
               </div>
             )}
           </article>

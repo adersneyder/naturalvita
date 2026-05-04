@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatCop } from "@/lib/format/currency";
 import { StatusBadge } from "@/components/orders/StatusBadge";
+import { TrackingChip } from "@/components/orders/TrackingChip";
 import type { CustomerOrderRow } from "@/lib/checkout/customer-orders";
 
 export default function OrdersListPanel({
@@ -54,38 +55,51 @@ export default function OrdersListPanel({
         <span aria-hidden />
       </div>
       <ul className="divide-y divide-[var(--color-earth-100)]">
-        {orders.map((order) => (
-          <li key={order.order_number}>
-            <Link
-              href={`/mi-cuenta/pedido/${order.order_number}`}
-              className="block md:grid md:grid-cols-[1.4fr_1fr_1.2fr_1fr_auto] md:gap-4 md:items-center px-4 py-4 hover:bg-[var(--color-earth-50)] transition-colors group"
-            >
-              <div>
-                <p className="text-sm font-medium text-[var(--color-leaf-900)] tabular-nums">
-                  {order.order_number}
-                </p>
-                <p className="text-xs text-[var(--color-earth-700)] mt-0.5">
-                  {order.items_count} {order.items_count === 1 ? "producto" : "productos"}
-                </p>
-              </div>
-              <p className="text-xs text-[var(--color-earth-700)] tabular-nums mt-1 md:mt-0">
-                {formatDate(order.created_at)}
-              </p>
-              <div className="mt-2 md:mt-0">
-                <StatusBadge kind="payment" value={order.payment_status} />
-              </div>
-              <p className="text-sm font-medium text-[var(--color-leaf-900)] tabular-nums mt-2 md:mt-0 md:text-right">
-                {formatCop(order.total_cop)}
-              </p>
-              <span
-                aria-hidden
-                className="hidden md:inline text-[var(--color-earth-500)] group-hover:text-[var(--color-leaf-700)] transition-colors"
+        {orders.map((order) => {
+          const isShippedOrLater =
+            order.status === "shipped" || order.status === "delivered";
+          return (
+            <li key={order.order_number} className="px-4 py-4 hover:bg-[var(--color-earth-50)] transition-colors group">
+              <Link
+                href={`/mi-cuenta/pedido/${order.order_number}`}
+                className="block md:grid md:grid-cols-[1.4fr_1fr_1.2fr_1fr_auto] md:gap-4 md:items-center"
               >
-                ›
-              </span>
-            </Link>
-          </li>
-        ))}
+                <div>
+                  <p className="text-sm font-medium text-[var(--color-leaf-900)] tabular-nums">
+                    {order.order_number}
+                  </p>
+                  <p className="text-xs text-[var(--color-earth-700)] mt-0.5">
+                    {order.items_count} {order.items_count === 1 ? "producto" : "productos"}
+                  </p>
+                </div>
+                <p className="text-xs text-[var(--color-earth-700)] tabular-nums mt-1 md:mt-0">
+                  {formatDate(order.created_at)}
+                </p>
+                <div className="mt-2 md:mt-0">
+                  <StatusBadge kind="payment" value={order.payment_status} />
+                </div>
+                <p className="text-sm font-medium text-[var(--color-leaf-900)] tabular-nums mt-2 md:mt-0 md:text-right">
+                  {formatCop(order.total_cop)}
+                </p>
+                <span
+                  aria-hidden
+                  className="hidden md:inline text-[var(--color-earth-500)] group-hover:text-[var(--color-leaf-700)] transition-colors"
+                >
+                  ›
+                </span>
+              </Link>
+              {isShippedOrLater && (
+                <div className="mt-2 md:pl-0">
+                  <TrackingChip
+                    trackingNumber={order.tracking_number}
+                    shippingCarrier={order.shipping_carrier}
+                    variant="inline"
+                  />
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

@@ -10,6 +10,8 @@ export type CustomerOrderRow = {
   paid_at: string | null;
   shipped_at: string | null;
   delivered_at: string | null;
+  shipping_carrier: string | null;
+  tracking_number: string | null;
   items_count: number;
 };
 
@@ -56,6 +58,7 @@ export async function listCustomerOrders(
     .select(
       `order_number, status, payment_status, fulfillment_status, total_cop,
        created_at, paid_at, shipped_at, delivered_at,
+       shipping_carrier, tracking_number,
        items:order_items!order_id(quantity)`,
     )
     .eq("customer_id", customerId)
@@ -80,6 +83,8 @@ export async function listCustomerOrders(
     paid_at: row.paid_at,
     shipped_at: row.shipped_at,
     delivered_at: row.delivered_at,
+    shipping_carrier: row.shipping_carrier,
+    tracking_number: row.tracking_number,
     items_count: row.items.reduce((acc, i) => acc + i.quantity, 0),
   }));
 }
