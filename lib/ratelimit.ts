@@ -41,3 +41,14 @@ export function getClientIp(req: Request): string {
   const fwd = req.headers.get("x-forwarded-for");
   return fwd?.split(",")[0]?.trim() ?? "127.0.0.1";
 }
+
+/**
+ * Versión para usar en server actions que no tienen acceso a Request.
+ * Usa next/headers().
+ */
+export async function getClientIpFromHeaders(): Promise<string> {
+  const { headers } = await import("next/headers");
+  const h = await headers();
+  const fwd = h.get("x-forwarded-for");
+  return fwd?.split(",")[0]?.trim() ?? "127.0.0.1";
+}

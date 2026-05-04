@@ -32,6 +32,13 @@ export type SendEmailParams = {
   template: ReactElement;
   /** Tags para tracking en Resend dashboard. */
   tags?: Array<{ name: string; value: string }>;
+  /**
+   * Override del reply-to. Por defecto usamos `pedidos@naturalvita.co`
+   * (vía env var RESEND_REPLY_TO). Se override en casos como el form
+   * de contacto interno: el inquiry llega a pedidos@ pero al "Responder"
+   * queremos ir directo al cliente que escribió, no a pedidos@ otra vez.
+   */
+  replyTo?: string;
 };
 
 export async function sendEmail(
@@ -45,7 +52,7 @@ export async function sendEmail(
   const from =
     process.env.RESEND_FROM_EMAIL ?? "NaturalVita <info@naturalvita.co>";
   const replyTo =
-    process.env.RESEND_REPLY_TO ?? "pedidos@naturalvita.co";
+    params.replyTo ?? process.env.RESEND_REPLY_TO ?? "pedidos@naturalvita.co";
 
   try {
     const html = await render(params.template);

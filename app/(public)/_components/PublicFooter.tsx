@@ -111,19 +111,35 @@ export default function PublicFooter() {
           <ul className="space-y-2 text-sm">
             <li>
               <Link
+                href="/sobre-nosotros"
+                className="text-white/85 hover:text-white"
+              >
+                Sobre nosotros
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/preguntas-frecuentes"
+                className="text-white/85 hover:text-white"
+              >
+                Preguntas frecuentes
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/contacto"
+                className="text-white/85 hover:text-white"
+              >
+                Contacto
+              </Link>
+            </li>
+            <li>
+              <Link
                 href="/legal/envios"
                 className="text-white/85 hover:text-white"
               >
                 Envíos y devoluciones
               </Link>
-            </li>
-            <li>
-              <a
-                href={`mailto:${COMPANY.publicEmail}`}
-                className="text-white/85 hover:text-white"
-              >
-                Contáctanos
-              </a>
             </li>
             <li className="text-white/60 text-xs pt-1 leading-relaxed">
               {COMPANY.publicEmail}
