@@ -19,7 +19,7 @@ export const COMPANY = {
 
   // Identificación tributaria
   // [TODO] Confirmar NIT real de Everlife Colombia.
-  nit: "[NIT pendiente]",
+  nit: "901717753-4",
 
   // Contacto operativo
   // Email donde el cliente puede escribirnos. Se muestra en footer y emails.
@@ -31,9 +31,9 @@ export const COMPANY = {
 
   // Dirección física (para footer + facturación)
   // [TODO] Dirección de las oficinas / bodega de Everlife
-  addressStreet: "[Dirección pendiente]",
-  addressCity: "Bogotá",
-  addressDepartment: "Cundinamarca",
+  addressStreet: "Carrera 51C # 78 11",
+  addressCity: "Medellín",
+  addressDepartment: "Antioquia",
   addressCountry: "Colombia",
 
   // Dominio
