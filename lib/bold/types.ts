@@ -1,10 +1,3 @@
-/**
- * Tipos del payload de webhook de Bold.
- *
- * Estructura simplificada; Bold envia mas campos pero estos son los que
- * usamos. Documentacion: https://developers.bold.co/webhook
- */
-
 export type BoldWebhookEvent =
   | "SALE_APPROVED"
   | "SALE_REJECTED"
@@ -31,18 +24,9 @@ export type BoldWebhookPayload = {
   };
 };
 
-/**
- * Mapeo de eventos de Bold a transiciones de estado en nuestra orden.
- *
- * IMPORTANTE: los valores deben respetar los CHECK constraints de la
- * tabla orders en Supabase:
- *   - status valido: pending, paid, processing, shipped, delivered, cancelled, refunded
- *   - payment_status valido: pending, paid, failed, refunded, partially_refunded
- */
-export const BOLD_EVENT_TO_STATUS: Record
-  BoldWebhookEvent,
-  { payment_status: string; status: string }
-> = {
+type StatusTransition = { payment_status: string; status: string };
+
+export const BOLD_EVENT_TO_STATUS: Record<BoldWebhookEvent, StatusTransition> = {
   SALE_APPROVED: { payment_status: "paid", status: "paid" },
   SALE_REJECTED: { payment_status: "failed", status: "cancelled" },
   VOID_APPROVED: { payment_status: "refunded", status: "refunded" },
