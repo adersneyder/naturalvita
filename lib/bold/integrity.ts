@@ -54,22 +54,26 @@ export function verifyWebhookSignature(
   rawBody: string,
   signature: string | null,
 ): boolean {
-  if (!signature) return false;
-
-  // En sandbox la clave HMAC es string vacío. En producción es la secret real.
-  const hmacKey = isBoldTestMode() ? "" : getBoldSecretKey();
-
-  // Bold codifica el cuerpo a base64 antes de firmar
-  const encoded = Buffer.from(rawBody, "utf8").toString("base64");
-  const expected = createHmac("sha256", hmacKey).update(encoded).digest("hex");
-
-  // Comparación timing-safe
+  // Try/catch global: esta función NUNCA debe lanzar. Si algo sale mal
+  // (Buffer.from con caracteres inválidos, env vars rotas, etc.) el
+  // resultado correcto es "firma inválida" → 401, no excepción → 500.
   try {
+    if (!signature) return false;
+
+    // En sandbox la clave HMAC es string vacío. En producción es la secret real.
+    const hmacKey = isBoldTestMode() ? "" : getBoldSecretKey();
+
+    // Bold codifica el cuerpo a base64 antes de firmar
+    const encoded = Buffer.from(rawBody, "utf8").toString("base64");
+    const expected = createHmac("sha256", hmacKey).update(encoded).digest("hex");
+
+    // Comparación timing-safe
     const a = Buffer.from(expected, "hex");
     const b = Buffer.from(signature, "hex");
     if (a.length !== b.length) return false;
     return timingSafeEqual(a, b);
-  } catch {
+  } catch (err) {
+    console.error("[verifyWebhookSignature] excepción:", err);
     return false;
   }
 }

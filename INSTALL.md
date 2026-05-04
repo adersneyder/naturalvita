@@ -1,325 +1,228 @@
-# NaturalVita · Hito 2 Sesión A · Confianza pre-lanzamiento
+# NaturalVita · Patch · Webhook Bold blindado contra timeouts y excepciones
 
-Páginas y plumbing necesarios para que un cliente nuevo confíe en
-NaturalVita el día del lanzamiento. Sin Klaviyo todavía (esa va en
-Sesión B cuando tengas cuenta activa). Sin cupones (mejor cuando ya
-haya tráfico para optimizar).
+Refactor del receptor de webhooks de Bold aplicando las recomendaciones
+oficiales del soporte Bold (Jhonathan, 4 mayo 2026) para eliminar los
+errores 500 vistos en los intentos 1 y 2 (5:12 y 5:27).
 
-12 archivos. Sin migraciones SQL. Build verde con **44 rutas**, 0
-warnings, 0 errores TS.
-
----
-
-## Por qué este alcance
-
-Te prometí en mi mensaje anterior un alcance que incluía Klaviyo full
-y banner de cupón. **Recorté.** Razones honestas:
-
-1. **Klaviyo full** depende de que tengas cuenta Klaviyo activa,
-   plantillas creadas y API key. Sin eso, hago stub muerto. Mejor
-   separarlo en Sesión B donde el trabajo sea entregable y validable.
-
-2. **Cupón de bienvenida** sin tráfico real es ruido. Cuando tengamos
-   visitantes que veamos en Clarity, sabremos qué tipo de cupón
-   convierte.
-
-3. **Confianza pre-compra** sí es bloqueante para lanzar. Un cliente
-   nuevo que llega a NaturalVita.co necesita ver: "quiénes son" /
-   "cómo funcionan" / "puedo escribirles" antes de poner su tarjeta.
+2 archivos modificados. Sin migraciones SQL ni variables nuevas.
+Build verde, 0 errores TS.
 
 ---
 
-## Estructura del ZIP
+## Diagnóstico del problema original
+
+Bold confirmó por correo:
+- Intento 1 a las 05:12 → respondió 500
+- Intento 2 a las 05:27 → respondió 500
+- Intento 3 a las 06:14 → respondió 200 ✓
+
+**Causa probable principal**: el handler hacía `await sendEmail(...)` de
+Resend ANTES de responder 200. Resend recién verificado puede tardar
+2-5 segundos. Bold tiene timeout de ~5 segundos. Si el envío tardaba
+más, Bold cerraba la conexión y registraba como 500.
+
+**Causa secundaria**: si algún side effect (email, stock, parseo de payload)
+lanzaba excepción, Next.js retornaba 500 implícito sin log útil. Sin
+try/catch global, no había forma de saber qué falló.
+
+---
+
+## Cambios aplicados
+
+### `lib/bold/integrity.ts`
+
+**Cambio**: `verifyWebhookSignature` ahora tiene try/catch GLOBAL que
+envuelve toda la lógica. Si cualquier cosa rompe (caracteres inválidos
+en signature, env vars rotas, lo que sea), retorna `false` en lugar de
+lanzar excepción.
+
+**Efecto**: si Bold envía signature malformada por algún motivo, el
+webhook responde 401 (firma inválida) en lugar de 500 (server error).
+Bold sabe que hizo algo mal, no reintenta infinito.
+
+### `app/api/webhooks/bold/route.ts`
+
+**Refactor completo** aplicando 4 mejoras:
+
+#### 1. Patrón ack-temprano
+
+Esto fue lo que recomendó Bold textualmente: *"al recibir webhook,
+primero valida la firma y guarda info, responde 200 de inmediato. Si
+tu servidor tarda mucho procesando lógica de negocio antes de
+responder, nuestro sistema podría marcarlo como error por timeout"*.
+
+**Antes** (bloqueante, todo dentro del response window):
+```
+1. Validar firma
+2. UPDATE orders en BD
+3. Decrementar stock
+4. Enviar email via Resend ← podía tardar 3-5 seg
+5. Responder 200
+```
+
+**Ahora** (ack rápido + side effects diferidos):
+```
+1. Validar firma
+2. UPDATE orders en BD              ← críticos, dentro del window
+3. Decrementar stock                 ← críticos, dentro del window
+4. Programar envío email via after() ← diferido, NO bloquea
+5. Responder 200 (Bold ya lo recibe)
+6. (Después del 200) Resend procesa el email
+```
+
+`after()` es API estable de Next.js 15 que ejecuta callbacks DESPUÉS
+de que se envió la respuesta. Vercel mantiene la lambda viva hasta que
+completen, pero Bold ya tiene su 200 OK.
+
+**Resultado esperado**: tiempo de respuesta del webhook de ~3-5
+segundos a sub-segundo. Eliminación total de timeouts.
+
+#### 2. Try/catch global del handler
+
+Todo el cuerpo del handler está envuelto en try/catch. Si CUALQUIER
+cosa rompe (parseo, BD, lo que sea), capturamos la excepción, la
+logueamos con todo el contexto y respondemos 500 con info del error.
+**Nunca más** un 500 sin información en logs.
+
+#### 3. Try/catch aislado en stock
+
+Si decrementStock falla (raro pero posible si Supabase está saturado),
+el código NO retorna 500 — el pago YA está confirmado en BD, lo único
+que falla es el descuento de stock. Logueamos para que el admin lo
+revise manualmente, pero respondemos 200 al webhook (sino Bold
+reintenta y duplica el flujo).
+
+#### 4. Logging estructurado con request ID
+
+Cada webhook ahora genera un `request_id` corto (8 chars) que aparece
+como prefijo en cada log relacionado. Ejemplo de logs en Vercel:
 
 ```
-nv-hito-2-sesion-a/
-├── INSTALL.md
-├── app/
-│   ├── (public)/
-│   │   ├── sobre-nosotros/page.tsx        ← NUEVO
-│   │   ├── preguntas-frecuentes/page.tsx  ← NUEVO
-│   │   ├── contacto/
-│   │   │   ├── page.tsx                   ← NUEVO
-│   │   │   ├── _ContactForm.tsx           ← NUEVO (client component)
-│   │   │   └── actions.ts                 ← NUEVO (server action)
-│   │   └── _components/
-│   │       └── PublicFooter.tsx           ← MODIFICADO (links nuevos)
-│   ├── not-found.tsx                      ← NUEVO (404 global)
-│   └── sitemap.ts                         ← MODIFICADO (incluye páginas nuevas)
-└── lib/
-    ├── email/
-    │   ├── client.ts                      ← MODIFICADO (replyTo opcional)
-    │   └── templates/
-    │       ├── contact-inquiry.tsx        ← NUEVO (email a pedidos@)
-    │       └── contact-confirmation.tsx   ← NUEVO (email al cliente)
-    └── ratelimit.ts                       ← MODIFICADO (helper headers)
+[bold-webhook abc12def +0ms] inicio
+[bold-webhook abc12def +12ms] body leído { bytes: 542 }
+[bold-webhook abc12def +18ms] firma válida
+[bold-webhook abc12def +20ms] payload parseado { eventType: 'SALE_APPROVED', orderNumber: 'NV-...', paymentId: 'XYZ' }
+[bold-webhook abc12def +145ms] orden encontrada { id: '...', current_status: 'pending' }
+[bold-webhook abc12def +312ms] UPDATE orders exitoso { payment_status: 'paid', status: 'paid' }
+[bold-webhook abc12def +480ms] respondiendo 200
+[bold-webhook abc12def after +0ms] enviando email order-paid
+[bold-webhook abc12def after +1830ms] email order-paid enviado
 ```
+
+Cada paso queda timestamped. Si vuelve a haber un 500, el log nos dice
+exactamente en qué milisegundo de qué paso falló.
+
+El `request_id` se devuelve también en el JSON de respuesta:
+```json
+{ "ok": true, "request_id": "abc12def" }
+```
+
+Si Bold reporta error, podemos pedirles el request_id y buscarlo
+directo en logs Vercel.
 
 ---
 
 ## Aplicar
 
-Sube los 12 archivos a sus rutas exactas. Vercel deploy automático
-~1 minuto. Sin variables de entorno nuevas para que el form funcione
-(usa Resend que ya tienes configurado).
+1. Sube los 2 archivos al repo en sus rutas exactas:
+   - `app/api/webhooks/bold/route.ts`
+   - `lib/bold/integrity.ts`
+
+2. Vercel hará deploy automático ~1-2 minutos.
+
+3. Verifica en Vercel → Deployments que el último build esté **Ready**
+   (verde). No requiere variables nuevas.
 
 ---
 
-## Lo que quedó implementado
+## Validación con prueba real
 
-### `/sobre-nosotros`
+Esta es la parte importante. Después de aplicar el fix:
 
-Página de marca para clientes nuevos:
-- Hero con la propuesta: "Conectamos laboratorios colombianos con tu
-  bienestar diario".
-- Misión + visión en cards lado a lado.
-- "Cómo trabajamos" en 3 pasos numerados (selección de laboratorios,
-  curaduría, entrega directa).
-- "Por qué puedes confiar en nosotros" con 4 puntos: INVIMA, pagos
-  Bold, datos protegidos, atención humana.
-- Datos legales (NIT, dirección, correo) lectores de
-  `lib/legal/company-info.ts` — cuando llenes los TODOs ahí, se
-  actualizan solos.
-- CTA final hacia /tienda con bg leaf-900 y botón blanco.
+### Antes de comprar
 
-Estática (`○`), SEO-friendly, OpenGraph metadata para compartir en redes.
+1. Abre **Vercel** → proyecto naturalvita → pestaña **Logs** (Runtime).
+2. Filtra por path: `/api/webhooks/bold`.
+3. Deja la pestaña abierta — vas a ver logs en tiempo real.
 
-### `/preguntas-frecuentes`
+### Durante la compra
 
-20 preguntas en accordion HTML nativo (`<details>`/`<summary>`, cero
-JS, perfecto para SEO):
+4. En otra pestaña, ve a `naturalvita.co` y haz una compra de prueba
+   pequeña. Sugiero un solo producto barato (ej: aceite de árbol de té
+   $1.500) para minimizar el monto a reembolsar después.
+5. Completa el pago real con tu tarjeta en Bold.
+6. Verás la página de éxito haciendo polling.
 
-- 3 sobre pedidos y compra.
-- 4 sobre pagos.
-- 4 sobre envíos.
-- 3 sobre devoluciones.
-- 4 sobre productos (incluye disclaimer médico apropiado).
-- 2 sobre cuenta y datos.
+### Inmediatamente después del pago
 
-**Bonus SEO**: la página inyecta `application/ld+json` con schema
-[FAQPage](https://schema.org/FAQPage). Cuando Google indexe esta
-URL, mostrará rich snippets con preguntas expandibles directamente
-en los resultados de búsqueda. Esto puede aumentar CTR notablemente
-en queries tipo "naturalvita devoluciones".
+7. Vuelve a la pestaña de Vercel Logs. En segundos deberías ver:
+   - Una request POST a `/api/webhooks/bold` con status **200** ✓
+   - Una serie de logs con prefijo `[bold-webhook XXXX +Xms]` mostrando
+     cada paso del procesamiento.
+   - Logs adicionales `[bold-webhook XXXX after +Xms]` mostrando el
+     envío del email (después del 200).
 
-Las respuestas son honestas, no prometen tiempos imposibles, no
-hacen claims médicos que el INVIMA no respalde.
+### Esperado: NO debe haber 500s
 
-### `/contacto`
+Si aparece algún 500, **el log estructurado nos dice exactamente qué
+falló**. Mándame el bloque completo de logs con el `request_id` y
+diagnostico el bug específico.
 
-Página con formulario funcional:
-- Nombre, correo, teléfono opcional, asunto, mensaje.
-- Validación cliente y server con Zod (mismos errores en ambos lados).
-- **Honeypot anti-bot**: campo `website` invisible. Bots lo llenan,
-  humanos no. Si llega con valor, fingimos éxito sin enviar.
-- **Rate limit por IP**: 30 envíos por minuto (vía Upstash existente).
-  Si Upstash no está configurado, falla abierto sin romper el form.
-- Sidebar con datos de contacto directo, horario de atención, link a
-  FAQ y nota sobre incluir número de pedido.
+### Validación de correo
 
-**Flujo de email cuando alguien envía**:
-1. **Email interno** a `pedidos@naturalvita.co` con todos los datos
-   del cliente. Reply-to setado al email del cliente: cuando das
-   "Responder" en Gmail, va directo a él.
-2. **Email automático de confirmación** al cliente con plantilla
-   "Recibimos tu mensaje" estándar.
+8. Abre tu Gmail. Deberías recibir el email "Pago confirmado · pedido
+   NV-...".
+9. Si NO llega en 30 segundos, revisa los logs `after +...` —
+   posiblemente Resend reportó algo.
 
-Si el email interno falla, el form muestra error y NO confirma. Si
-solo falla la confirmación al cliente, el form sí confirma (su
-mensaje SÍ llegó al equipo, solo perdió la notificación). Decisión
-deliberada: el equipo nunca pierde un mensaje.
+### Recordar reembolsar
 
-### 404 personalizada (`app/not-found.tsx`)
-
-Reemplaza la 404 default de Next.js (página fea con texto plano).
-Ahora muestra:
-- Título grande "No encontramos esta página".
-- 3 CTAs: ir a tienda, buscar productos, contacto.
-- Pregunta amable: "¿Llegaste aquí desde un enlace que enviamos
-  nosotros?" con link a contacto.
-
-Estática para no penalizar performance cuando un crawler hace
-millones de requests a URLs aleatorias.
-
-### Footer actualizado
-
-Bloque "Soporte" del footer ahora incluye en orden:
-1. Sobre nosotros
-2. Preguntas frecuentes
-3. Contacto
-4. Envíos y devoluciones
-5. Email de contacto al final
-
-### Sitemap actualizado
-
-Las nuevas páginas aparecen en `/sitemap.xml` con prioridades
-correctas:
-- `/sobre-nosotros` priority 0.7
-- `/preguntas-frecuentes` priority 0.6
-- `/contacto` priority 0.5
-- Páginas legales 0.3
-
-Cuando hagas resubmit del sitemap a Google Search Console (ver
-guía operativa abajo), Google las indexará rápido.
+Después de validar todo, vuelve al panel Bold (o pídele a Jhonathan en
+el correo) y reembolsa la transacción de prueba. Cuando Bold procese,
+debería disparar webhook `VOID_APPROVED` que también ahora procesa
+correctamente. Ese sería el segundo punto de validación: el flujo
+completo de reembolso end-to-end.
 
 ---
 
-## Decisiones de diseño documentadas
+## Cambios sutiles que es bueno saber
 
-**Por qué `<details>` HTML en FAQ y no un componente React**: el
-accordion nativo no requiere JavaScript, funciona con teclado por
-defecto, es accesible por screen readers, y Google lo entiende
-perfectamente. Cero cliente JS = mejor performance + mejor SEO.
+**El email puede llegar 1-3 segundos DESPUÉS del 200.** Antes el cliente
+veía la página de éxito + recibía email casi simultáneo. Ahora el 200
+es instantáneo pero el email tarda un poquito más en llegar (medio
+segundo a 3 segundos). Para el cliente es indistinguible — sigue
+pareciendo "inmediato".
 
-**Por qué el reply-to del email de contacto va al cliente**: cuando
-un colaborador del equipo abre Gmail y ve el inquiry, puede dar
-"Responder" sin tener que copiar el correo del cliente al campo
-"para". Reduce fricción operativa y errores. El cliente recibe la
-respuesta desde `info@naturalvita.co` (configurado en Resend) y
-puede responder de vuelta — eso vuelve a `pedidos@`.
+**Los logs en Vercel ahora son más verbosos.** Cada webhook genera ~10
+líneas de log en lugar de 1-2. Esto puede ser ruidoso si tienes
+muchísimo tráfico, pero a este nivel (lanzamiento) es invaluable para
+diagnóstico. Si en el futuro queremos reducir verbosidad, basta cambiar
+los `console.log` a verificar un flag de DEBUG.
 
-**Por qué honeypot en lugar de captcha**: el captcha agrega fricción
-real al usuario humano y los bots modernos los pasan. El honeypot es
-invisible para humanos, agarra el 95% de bots simples, y si pasa
-algún bot sofisticado el rate limit lo contiene.
-
-**Por qué validar Zod en server además de client**: nunca confiar en
-input del cliente. La validación cliente es UX, la del servidor es
-seguridad.
-
-**Por qué mantener TODOs en company-info.ts**: cuando llenes el NIT
-real, dirección, etc, se actualizan automáticamente en footer +
-sobre-nosotros + emails + páginas legales. Single source of truth.
+**El `request_id` se expone en el response.** Eso significa que Bold
+puede ver el ID en sus logs. No es información sensible (es random
+alfanumérico de 8 chars), pero lo menciono por transparencia.
 
 ---
 
-## Validación post-deploy
+## Si AÚN ves 500 después del fix
 
-1. **Subir el ZIP** y esperar ~1 minuto a que Vercel despliegue.
-2. **`/sobre-nosotros`**: cargar la página. Debe verse el hero, los
-   3 pasos, los 4 puntos de confianza, datos legales (con TODOs
-   visibles si no los has llenado), CTA final.
-3. **`/preguntas-frecuentes`**: cargar la página. Click en cada
-   accordion debe expandir/colapsar suavemente. Verificar tu navegador
-   permite teclado (Tab + Enter sobre cada pregunta).
-4. **`/contacto`**: enviar un mensaje de prueba. Debe:
-   - Llegar email a `pedidos@naturalvita.co` con datos del form.
-   - Llegar email de confirmación a la dirección que pusiste en el form.
-   - Mostrar mensaje verde "Mensaje enviado" en la página.
-5. **404**: visitar `/algo-que-no-existe` (ej:
-   `https://naturalvita.co/blah`). Debe verse la 404 nueva.
-6. **Footer**: en cualquier página, ver el bloque Soporte con los 4
-   nuevos links.
-7. **Sitemap**: visitar `https://naturalvita.co/sitemap.xml`. Debe
-   incluir las URLs nuevas.
+Improbable, pero si pasa:
+
+1. Captura el `request_id` del log o del response Bold.
+2. Busca en Vercel Logs el bloque completo con ese ID.
+3. Mándame ese bloque.
+
+Con el log estructurado tendremos en segundos qué línea falló y
+podemos hacer un fix puntual.
 
 ---
 
-## GUÍA OPERATIVA
+## Siguiente paso recomendado
 
-Tres tareas de configuración externa que hacen falta. Te las dejo
-detalladas porque ya está todo el plumbing en código — solo es
-configuración.
+Después de validar el fix con la prueba real:
 
-### 1. Activar Microsoft Clarity
+**Si todo verde**: Hito 2 Sesión B (Klaviyo + newsletter + cupón
+bienvenida) o Hito 1.3 (admins con invitaciones), tú decides.
 
-Clarity es una herramienta gratuita de Microsoft que muestra heatmaps
-y session replay (videos de sesiones reales de usuarios navegando).
-Útil para entender por qué la gente abandona el carrito o no termina
-el checkout.
-
-**Pasos**:
-
-1. Ir a `clarity.microsoft.com` y crear cuenta gratis con tu correo.
-2. Click "+ New project". Nombre: "NaturalVita". Sitio:
-   `https://naturalvita.co`.
-3. Una vez creado, ir a Settings → Setup. Verás un script de
-   instalación con un ID similar a `abc12def34`.
-4. Solo copia el ID, NO el script (mi código ya genera el snippet).
-5. En Vercel → naturalvita → Settings → Environment Variables, agregar:
-   - Name: `NEXT_PUBLIC_CLARITY_ID`
-   - Value: el ID del paso 3
-   - Environments: Production, Preview, Development
-   - NO marcar Sensitive (es público de todos modos al inyectarse en HTML)
-6. Redeploy desde Vercel para que la variable se aplique.
-7. Visita `naturalvita.co`, **acepta analytics** en el banner de
-   Habeas Data, navega un par de páginas.
-8. Vuelve a Clarity → Dashboard. En 5-10 minutos verás tu primera
-   sesión grabada.
-
-**Nota crítica**: Clarity solo se carga si el usuario aceptó analytics
-en el banner Habeas Data. Esto es por la ley 1581 colombiana. Las
-sesiones que rechazaron analytics NO se graban — es lo correcto. No
-es bug.
-
-### 2. Configurar Google Search Console
-
-Search Console te dice qué queries están llegando a tu sitio, qué
-páginas indexa Google, y si hay errores de crawl. Esencial.
-
-**Pasos**:
-
-1. Ir a `search.google.com/search-console` con cuenta de Google.
-2. "Add property" → "Domain property" → escribir `naturalvita.co`
-   (sin https, sin www).
-3. Google te dará un registro DNS TXT a agregar.
-4. Ir a Hostinger → tu dominio → DNS Records → Add Record:
-   - Type: TXT
-   - Name: @ (o vacío, según Hostinger)
-   - Value: el string que Google te dio (algo como `google-site-verification=ABCXYZ`)
-5. Volver a Search Console → "Verify". Puede tardar minutos a horas.
-6. Una vez verificado, ir a "Sitemaps" en sidebar.
-7. Submit: `https://naturalvita.co/sitemap.xml`.
-8. Esperar 24-72 horas para que Google empiece a indexar.
-
-**Después**: revisa cada semana en "Performance" qué queries traen
-clicks. Eso te dice qué contenido producir. En "Coverage" revisa que
-no haya errores de indexación.
-
-### 3. Llenar TODOs operativos
-
-Edita `lib/legal/company-info.ts` y reemplaza los `[TODO]`:
-
-- `nit`: NIT real de Everlife Colombia S.A.S. con dígito verificación
-  (formato `9001234567-8`).
-- `publicPhone`, `publicWhatsapp`: si tienes línea de atención.
-  Si NO tienes, déjalos en `[…]` — el código detecta el `[` inicial
-  y oculta la fila en /contacto.
-- `addressStreet`: dirección física exacta de oficinas o bodega.
-- `instagramUrl`, `facebookUrl`, `tiktokUrl`: URLs reales si ya creaste
-  los perfiles. Si no, déjalos como están (placeholders muertos).
-- `REGULATORY.invimaImporterRegistration`: solo si Everlife tiene
-  registro como importador/comercializador. Si no aplica para tu
-  modelo de intermediación, déjalo vacío y el footer no lo muestra.
-
----
-
-## Lo que NO incluye este Sesión A
-
-**Klaviyo integración real** — Sesión B. Necesitas:
-- Cuenta Klaviyo (free tier soporta hasta 250 contactos/500 emails al mes).
-- Lista creada (ej: "Newsletter NaturalVita").
-- API key.
-Cuando tengas eso, en Sesión B reemplazo los stubs de
-`lib/events/track.ts` con llamadas reales y agrego newsletter en footer.
-
-**Cupón de bienvenida** — depende de Klaviyo + tabla coupons en BD.
-Cuando lleguemos a Sesión B/C lo agregamos.
-
-**Páginas de blog/contenido** — útil para SEO long-tail, no urgente
-para lanzar. Cuando ya tengas tráfico podemos planear contenido
-basado en queries reales que veas en Search Console.
-
----
-
-## Próximos pasos sugeridos
-
-Mi voto fuerte: **lanzar oficialmente** con lo que tienes. Llenar
-TODOs operativos, configurar Clarity y GSC, y empezar a recibir
-tráfico real.
-
-Si todo va bien con tráfico inicial:
-- **Sesión B**: Klaviyo + newsletter + cupón bienvenida + email
-  carrito abandonado.
-- **Sesión C** (Hito 1.3 retomar): admins con invitaciones cuando
-  necesites ampliar el equipo.
+**Si encuentras algún detalle**: lo arreglamos antes de avanzar.

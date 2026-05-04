@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { verifyWebhookSignature } from "@/lib/bold/integrity";
 import {
@@ -11,24 +12,34 @@ import { OrderRejected } from "@/lib/email/templates/order-rejected";
 import { OrderRefunded } from "@/lib/email/templates/order-refunded";
 
 /**
- * Webhook receptor de Bold.
+ * Webhook receptor de Bold (refactor 2026-05-04 patrón ack-temprano).
  *
  * Bold envía POST a esta URL con cuatro tipos de eventos:
- *   - SALE_APPROVED → marca orden como pagada, descuenta stock, envía email
- *   - SALE_REJECTED → marca como rechazada, envía email con CTA reintentar
+ *   - SALE_APPROVED → marca orden pagada, descuenta stock, envía email
+ *   - SALE_REJECTED → marca rechazada, envía email con CTA reintentar
  *   - VOID_APPROVED → reembolso confirmado, repone stock, envía email
  *   - VOID_REJECTED → log para auditoría, no afecta cliente
  *
- * Seguridad:
- *   1. Verifica firma HMAC-SHA256 con `x-bold-signature`. Sin firma válida,
- *      respondemos 401 sin tocar BD.
- *   2. Idempotencia: usamos `bold_payment_id` como deduplicación. Si ya
- *      procesamos ese payment_id con el mismo evento, respondemos 200 sin
- *      reejecutar. Bold puede reintentar.
+ * Diseño anti-timeout (recomendado por Bold):
+ *   1. Operaciones críticas DENTRO del response window:
+ *      - Validar firma HMAC.
+ *      - Validar idempotencia.
+ *      - UPDATE orders en Supabase.
+ *      - decrementStock/incrementStock (transaccional).
+ *   2. Operaciones diferidas via `after()` (ejecutan POST-response, sin
+ *      bloquear el ack a Bold):
+ *      - sendEmail al cliente.
+ *      - Tracking events (futuro Klaviyo).
  *
- * Cliente service role: usamos createClient con SERVICE_ROLE_KEY (no anon)
- * porque el webhook se ejecuta sin sesión de usuario y necesita actualizar
- * `orders` y `products.stock` saltándose RLS.
+ * Esto reduce el tiempo de respuesta del webhook de potencialmente 3-5
+ * segundos (esperando a Resend) a sub-segundo, eliminando timeouts.
+ *
+ * Try/catch global: si CUALQUIER cosa rompe, capturamos, logueamos y
+ * respondemos 500 con info del error. Bold reintenta automáticamente.
+ *
+ * Cliente service role: usamos SERVICE_ROLE_KEY porque el webhook se
+ * ejecuta sin sesión y necesita actualizar `orders` y `products.stock`
+ * saltándose RLS.
  */
 
 export const dynamic = "force-dynamic";
@@ -38,141 +49,248 @@ function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
-    throw new Error("Supabase service role no configurado");
+    throw new Error(
+      "Supabase service role no configurado (NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY ausente)",
+    );
   }
   return createServiceClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
 
+/**
+ * Generador de request ID corto para correlacionar logs de un mismo
+ * webhook. Aparece como prefijo en cada log relacionado con esa request.
+ */
+function newRequestId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
 export async function POST(req: Request) {
-  // 1. Leer raw body para verificar firma sin perder el formato original
-  let rawBody: string;
-  try {
-    rawBody = await req.text();
-  } catch {
-    return NextResponse.json(
-      { error: "Cannot read body" },
-      { status: 400 },
-    );
-  }
-
-  // 2. Verificar firma
-  const signature = req.headers.get("x-bold-signature");
-  if (!verifyWebhookSignature(rawBody, signature)) {
-    console.warn("[bold-webhook] firma inválida");
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-  }
-
-  // 3. Parsear
-  let payload: BoldWebhookPayload;
-  try {
-    payload = JSON.parse(rawBody);
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-
-  const eventType = payload.type;
-  const orderNumber = payload.data?.metadata?.reference;
-  const paymentId = payload.data?.payment_id;
-
-  if (!orderNumber || !paymentId) {
-    console.warn("[bold-webhook] payload sin reference o payment_id");
-    return NextResponse.json(
-      { error: "Missing reference or payment_id" },
-      { status: 400 },
-    );
-  }
-
-  if (!BOLD_EVENT_TO_STATUS[eventType]) {
-    console.log(`[bold-webhook] evento ignorado: ${eventType}`);
-    return NextResponse.json({ ok: true, ignored: true });
-  }
-
-  const supabase = getServiceClient();
-
-  // 4. Buscar la orden por order_number
-  const { data: order } = await supabase
-    .from("orders")
-    .select(
-      `id, order_number, customer_email, customer_name, customer_phone,
-       subtotal_cop, shipping_cop, tax_cop, total_cop, payment_status,
-       bold_payment_id,
-       shipping_recipient, shipping_street, shipping_details,
-       shipping_city, shipping_department,
-       items:order_items!order_id(product_id, product_name, quantity, subtotal_cop, unit_price_cop)`,
-    )
-    .eq("order_number", orderNumber)
-    .maybeSingle();
-
-  if (!order) {
-    console.warn(`[bold-webhook] orden no encontrada: ${orderNumber}`);
-    // Devolvemos 200 igualmente para que Bold no reintente eternamente
-    return NextResponse.json({ ok: true, not_found: true });
-  }
-
-  // 5. Idempotencia: si ya procesamos este payment_id con un estado terminal,
-  //    no reejecutamos. Bold puede reintentar webhooks.
-  const newStatus = BOLD_EVENT_TO_STATUS[eventType];
-  if (
-    order.bold_payment_id === paymentId &&
-    order.payment_status === newStatus.payment_status
-  ) {
-    console.log(
-      `[bold-webhook] orden ${orderNumber} ya está en estado ${newStatus.payment_status}, idempotente`,
-    );
-    return NextResponse.json({ ok: true, idempotent: true });
-  }
-
-  // 6. Transición de estado en orden
-  const updateData: Record<string, unknown> = {
-    payment_status: newStatus.payment_status,
-    status: newStatus.status,
-    bold_payment_id: paymentId,
-    updated_at: new Date().toISOString(),
+  const reqId = newRequestId();
+  const t0 = Date.now();
+  const log = (msg: string, extra?: Record<string, unknown>) => {
+    const elapsed = Date.now() - t0;
+    if (extra) {
+      console.log(`[bold-webhook ${reqId} +${elapsed}ms] ${msg}`, extra);
+    } else {
+      console.log(`[bold-webhook ${reqId} +${elapsed}ms] ${msg}`);
+    }
   };
-  if (eventType === "SALE_APPROVED") {
-    updateData.paid_at = new Date().toISOString();
-  }
+  const logErr = (msg: string, err: unknown) => {
+    const elapsed = Date.now() - t0;
+    console.error(`[bold-webhook ${reqId} +${elapsed}ms ERROR] ${msg}`, err);
+  };
 
-  const { error: updateErr } = await supabase
-    .from("orders")
-    .update(updateData)
-    .eq("id", order.id);
+  // Try/catch global: nada debe escapar como excepción no manejada.
+  try {
+    log("inicio");
 
-  if (updateErr) {
-    console.error("[bold-webhook] error actualizando orden:", updateErr);
-    return NextResponse.json({ error: "DB update failed" }, { status: 500 });
-  }
+    // 1. Leer raw body
+    let rawBody: string;
+    try {
+      rawBody = await req.text();
+    } catch (err) {
+      logErr("no se pudo leer body", err);
+      return NextResponse.json({ error: "Cannot read body" }, { status: 400 });
+    }
+    log("body leído", { bytes: rawBody.length });
 
-  // 7. Side effects según evento
-  if (eventType === "SALE_APPROVED") {
-    await decrementStock(supabase, order.items as Array<{ product_id: string; quantity: number }>);
-    await sendOrderPaidEmail(order);
-  } else if (eventType === "SALE_REJECTED") {
-    await sendOrderRejectedEmail(order, payload.data?.user_message);
-  } else if (eventType === "VOID_APPROVED") {
-    await incrementStock(supabase, order.items as Array<{ product_id: string; quantity: number }>);
-    await sendOrderRefundedEmail(order);
-  }
-  // VOID_REJECTED: solo logueamos
-  if (eventType === "VOID_REJECTED") {
-    console.warn(
-      `[bold-webhook] reembolso rechazado para ${orderNumber}: ${payload.data?.user_message}`,
+    // 2. Verificar firma HMAC
+    const signature = req.headers.get("x-bold-signature");
+    if (!verifyWebhookSignature(rawBody, signature)) {
+      log("firma inválida o ausente, rechazando 401");
+      return NextResponse.json(
+        { error: "Invalid signature" },
+        { status: 401 },
+      );
+    }
+    log("firma válida");
+
+    // 3. Parsear payload JSON
+    let payload: BoldWebhookPayload;
+    try {
+      payload = JSON.parse(rawBody);
+    } catch (err) {
+      logErr("JSON inválido", err);
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+
+    const eventType = payload.type;
+    const orderNumber = payload.data?.metadata?.reference;
+    const paymentId = payload.data?.payment_id;
+
+    log("payload parseado", {
+      eventType,
+      orderNumber,
+      paymentId,
+    });
+
+    if (!orderNumber || !paymentId) {
+      log("payload sin reference o payment_id, rechazando 400");
+      return NextResponse.json(
+        { error: "Missing reference or payment_id" },
+        { status: 400 },
+      );
+    }
+
+    if (!BOLD_EVENT_TO_STATUS[eventType]) {
+      log(`evento ignorado: ${eventType}`);
+      return NextResponse.json({ ok: true, ignored: true });
+    }
+
+    // 4. Buscar la orden por order_number
+    const supabase = getServiceClient();
+    const { data: order, error: queryErr } = await supabase
+      .from("orders")
+      .select(
+        `id, order_number, customer_email, customer_name, customer_phone,
+         subtotal_cop, shipping_cop, tax_cop, total_cop, payment_status,
+         bold_payment_id,
+         shipping_recipient, shipping_street, shipping_details,
+         shipping_city, shipping_department,
+         items:order_items!order_id(product_id, product_name, quantity, subtotal_cop, unit_price_cop)`,
+      )
+      .eq("order_number", orderNumber)
+      .maybeSingle();
+
+    if (queryErr) {
+      logErr("query orders falló", queryErr);
+      return NextResponse.json({ error: "DB query failed" }, { status: 500 });
+    }
+
+    if (!order) {
+      log(`orden no encontrada: ${orderNumber} (responde 200 para no reintentar)`);
+      // 200 deliberado: si la orden no existe en BD (raro), no queremos
+      // que Bold reintente eternamente. Logueamos y damos por procesado.
+      return NextResponse.json({ ok: true, not_found: true });
+    }
+    log("orden encontrada", { id: order.id, current_status: order.payment_status });
+
+    // 5. Idempotencia
+    const newStatus = BOLD_EVENT_TO_STATUS[eventType];
+    if (
+      order.bold_payment_id === paymentId &&
+      order.payment_status === newStatus.payment_status
+    ) {
+      log("idempotente, ya procesado");
+      return NextResponse.json({ ok: true, idempotent: true });
+    }
+
+    // 6. UPDATE orders (CRÍTICO, dentro del response window)
+    const updateData: Record<string, unknown> = {
+      payment_status: newStatus.payment_status,
+      status: newStatus.status,
+      bold_payment_id: paymentId,
+      updated_at: new Date().toISOString(),
+    };
+    if (eventType === "SALE_APPROVED") {
+      updateData.paid_at = new Date().toISOString();
+    }
+
+    const { error: updateErr } = await supabase
+      .from("orders")
+      .update(updateData)
+      .eq("id", order.id);
+
+    if (updateErr) {
+      logErr("UPDATE orders falló", updateErr);
+      return NextResponse.json({ error: "DB update failed" }, { status: 500 });
+    }
+    log("UPDATE orders exitoso", {
+      payment_status: newStatus.payment_status,
+      status: newStatus.status,
+    });
+
+    // 7. Stock (dentro del response window porque es transaccional crítico).
+    //    Si el webhook responde 200 sin descontar stock y la lambda muere,
+    //    otro cliente podría comprar el mismo item ya vendido.
+    const items = order.items as Array<{
+      product_id: string;
+      product_name: string;
+      quantity: number;
+      unit_price_cop: number;
+      subtotal_cop: number;
+    }>;
+
+    if (eventType === "SALE_APPROVED") {
+      try {
+        await decrementStock(supabase, items, log);
+      } catch (err) {
+        // Si el stock falla, NO retornamos 500 — el pago ya está confirmado
+        // en BD y el cliente debe recibir su email. Logueamos para alertar
+        // al admin que revise stock manualmente.
+        logErr("decrementStock falló (continuando, pago ya confirmado)", err);
+      }
+    } else if (eventType === "VOID_APPROVED") {
+      try {
+        await incrementStock(supabase, items, log);
+      } catch (err) {
+        logErr("incrementStock falló (continuando, reembolso ya marcado)", err);
+      }
+    }
+
+    // 8. Side effects diferidos via `after()`. Estos NO bloquean la
+    //    respuesta a Bold. Vercel mantiene la lambda viva hasta que
+    //    completen, pero Bold ya tiene su 200 OK desde antes.
+    after(async () => {
+      const sideT0 = Date.now();
+      const sideLog = (msg: string) =>
+        console.log(
+          `[bold-webhook ${reqId} after +${Date.now() - sideT0}ms] ${msg}`,
+        );
+
+      try {
+        if (eventType === "SALE_APPROVED") {
+          sideLog("enviando email order-paid");
+          await sendOrderPaidEmail(order as OrderForEmail);
+          sideLog("email order-paid enviado");
+        } else if (eventType === "SALE_REJECTED") {
+          sideLog("enviando email order-rejected");
+          await sendOrderRejectedEmail(
+            order as OrderForEmail,
+            payload.data?.user_message,
+          );
+          sideLog("email order-rejected enviado");
+        } else if (eventType === "VOID_APPROVED") {
+          sideLog("enviando email order-refunded");
+          await sendOrderRefundedEmail(order as OrderForEmail);
+          sideLog("email order-refunded enviado");
+        } else if (eventType === "VOID_REJECTED") {
+          sideLog(
+            `reembolso rechazado para ${orderNumber}: ${payload.data?.user_message}`,
+          );
+        }
+      } catch (err) {
+        // No retropropagar — el response ya se mandó. Solo logueamos.
+        console.error(
+          `[bold-webhook ${reqId} after ERROR] side effect falló:`,
+          err,
+        );
+      }
+    });
+
+    // 9. ACK 200 (Bold lo recibe ya, sin esperar emails)
+    log("respondiendo 200");
+    return NextResponse.json({ ok: true, request_id: reqId });
+  } catch (err) {
+    // Catch global: cualquier excepción no manejada termina aquí.
+    logErr("excepción no manejada en handler", err);
+    return NextResponse.json(
+      { error: "Internal error", request_id: reqId },
+      { status: 500 },
     );
   }
-
-  return NextResponse.json({ ok: true });
 }
 
 /**
  * Decrementar stock de productos con track_stock=true.
- * Si el stock queda negativo (oversell por simultaneidad), lo dejamos en 0
- * y marcamos la orden con nota — el admin lo revisa manualmente.
+ * Si el stock queda negativo (oversell por simultaneidad), lo dejamos en 0.
  */
 async function decrementStock(
   supabase: ReturnType<typeof getServiceClient>,
   items: Array<{ product_id: string; quantity: number }>,
+  log: (msg: string, extra?: Record<string, unknown>) => void,
 ) {
   for (const item of items) {
     const { data: product } = await supabase
@@ -192,8 +310,8 @@ async function decrementStock(
       .eq("id", item.product_id);
 
     if (currentStock < item.quantity) {
-      console.warn(
-        `[bold-webhook] oversell en ${item.product_id}: vendido ${item.quantity}, había ${currentStock}`,
+      log(
+        `oversell en ${item.product_id}: vendido ${item.quantity}, había ${currentStock}`,
       );
     }
   }
@@ -202,6 +320,7 @@ async function decrementStock(
 async function incrementStock(
   supabase: ReturnType<typeof getServiceClient>,
   items: Array<{ product_id: string; quantity: number }>,
+  log: (msg: string, extra?: Record<string, unknown>) => void,
 ) {
   for (const item of items) {
     const { data: product } = await supabase
@@ -215,6 +334,7 @@ async function incrementStock(
       .from("products")
       .update({ stock: currentStock + item.quantity })
       .eq("id", item.product_id);
+    log(`stock repuesto en ${item.product_id}: +${item.quantity}`);
   }
 }
 
