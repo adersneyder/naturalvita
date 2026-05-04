@@ -22,7 +22,9 @@ export const COMPANY = {
   nit: "[NIT pendiente]",
 
   // Contacto operativo
-  publicEmail: "info@naturalvita.co",
+  // Email donde el cliente puede escribirnos. Se muestra en footer y emails.
+  // Es la bandeja monitoreada que recibe respuestas de los emails transaccionales.
+  publicEmail: "pedidos@naturalvita.co",
   // [TODO] Teléfono / WhatsApp de atención al cliente
   publicPhone: "[Teléfono pendiente]",
   publicWhatsapp: "[WhatsApp pendiente]",
@@ -60,12 +62,20 @@ export const REGULATORY = {
 /**
  * Para emails transaccionales en Hito 1.7 Sesión C.
  *
- * Estos valores son los defaults hardcoded en `lib/email/client.ts`. En
- * producción los valores reales vienen de las variables de entorno
- * `RESEND_FROM_EMAIL` y `RESEND_REPLY_TO` configuradas en Vercel.
+ * Convención de cuentas de correo:
+ *   - info@naturalvita.co → bandeja de envío automatizado (FROM). Los
+ *     emails transaccionales y de auth Supabase salen desde aquí.
+ *     No es bandeja monitoreada, solo emite.
+ *   - pedidos@naturalvita.co → bandeja de recepción humana (REPLY-TO).
+ *     Cuando un cliente responde un email transaccional o escribe desde
+ *     el footer del sitio, su mensaje cae aquí. Se debe monitorear.
+ *
+ * Estos defaults aplican si no están las variables de entorno
+ * `RESEND_FROM_EMAIL` y `RESEND_REPLY_TO` configuradas en Vercel
+ * (en producción siempre deberían estarlo).
  */
 export const EMAIL = {
   fromName: "NaturalVita",
-  fromAddress: "pedidos@naturalvita.co",
-  replyTo: "info@naturalvita.co",
+  fromAddress: "info@naturalvita.co",
+  replyTo: "pedidos@naturalvita.co",
 } as const;

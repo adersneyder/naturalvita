@@ -120,7 +120,7 @@ export function EmailLayout({
               >
                 NaturalVita es una marca de Everlife Colombia S.A.S.
                 <br />
-                Bogotá, Colombia · info@naturalvita.co
+                Bogotá, Colombia · pedidos@naturalvita.co
               </Text>
               <Text
                 style={{

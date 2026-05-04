@@ -119,7 +119,7 @@ export default function LoginForm() {
 function translateError(code: string | null): string {
   if (!code) return "";
   if (code === "onboarding_failed")
-    return "No pudimos crear tu cuenta. Intenta de nuevo o escríbenos a info@naturalvita.co.";
+    return "No pudimos crear tu cuenta. Intenta de nuevo o escríbenos a pedidos@naturalvita.co.";
   if (code === "no_code") return "Enlace inválido. Solicita uno nuevo.";
   if (code === "not_authorized")
     return "Tu cuenta no tiene acceso. Contacta al administrador.";

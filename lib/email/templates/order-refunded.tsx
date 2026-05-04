@@ -68,7 +68,7 @@ export function OrderRefunded({
           margin: 0,
         }}
       >
-        Si tienes alguna duda, escríbenos a info@naturalvita.co citando el
+        Si tienes alguna duda, escríbenos a pedidos@naturalvita.co citando el
         número de pedido.
       </Text>
     </EmailLayout>
