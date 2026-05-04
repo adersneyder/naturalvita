@@ -12,6 +12,15 @@ function formatCOP(value: number): string {
 export default async function DashboardPage() {
   const supabase = await createClient();
 
+  // Calcular inicio del día en hora Colombia para los KPIs "hoy"
+  const colombiaTodayStart = new Date();
+  // Bogotá es UTC-5: ajustamos a medianoche local en términos UTC
+  colombiaTodayStart.setUTCHours(5, 0, 0, 0);
+  if (colombiaTodayStart > new Date()) {
+    colombiaTodayStart.setUTCDate(colombiaTodayStart.getUTCDate() - 1);
+  }
+  const todayIso = colombiaTodayStart.toISOString();
+
   const [
     { count: productsDraft },
     { count: productsActive },
@@ -19,6 +28,9 @@ export default async function DashboardPage() {
     { count: taxRatesCount },
     { count: laboratoriesCount },
     { count: dataSourcesCount },
+    { count: ordersToday },
+    { data: ordersTodayPaid },
+    { count: pendingOrdersCount },
   ] = await Promise.all([
     supabase.from("products").select("*", { count: "exact", head: true }).eq("status", "draft"),
     supabase.from("products").select("*", { count: "exact", head: true }).eq("status", "active"),
@@ -26,13 +38,48 @@ export default async function DashboardPage() {
     supabase.from("tax_rates").select("*", { count: "exact", head: true }).eq("is_active", true),
     supabase.from("laboratories").select("*", { count: "exact", head: true }).eq("is_active", true),
     supabase.from("data_sources").select("*", { count: "exact", head: true }).eq("is_active", true),
+    supabase
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .gte("created_at", todayIso),
+    supabase
+      .from("orders")
+      .select("total_cop")
+      .eq("payment_status", "paid")
+      .gte("created_at", todayIso),
+    supabase
+      .from("orders")
+      .select("*", { count: "exact", head: true })
+      .eq("payment_status", "paid")
+      .in("status", ["paid", "processing"]),
   ]);
+
+  const salesToday = (ordersTodayPaid ?? []).reduce(
+    (acc, o: { total_cop: number }) => acc + o.total_cop,
+    0,
+  );
 
   return (
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-5">
-        <KpiCard label="Ventas hoy" value={formatCOP(0)} delta="Sin pedidos aún" />
-        <KpiCard label="Pedidos hoy" value="0" delta="Primer pedido pendiente" />
+        <KpiCard
+          label="Ventas hoy"
+          value={formatCOP(salesToday)}
+          delta={
+            (ordersTodayPaid?.length ?? 0) === 0
+              ? "Sin pedidos pagados aún"
+              : `${ordersTodayPaid?.length ?? 0} pedidos pagados`
+          }
+        />
+        <KpiCard
+          label="Pedidos hoy"
+          value={String(ordersToday ?? 0)}
+          delta={
+            (ordersToday ?? 0) === 0
+              ? "Aún no hay pedidos"
+              : `${pendingOrdersCount ?? 0} requieren acción`
+          }
+        />
         <KpiCard label="Visitantes hoy" value="0" delta="Tracking pendiente" />
         <KpiCard
           label="Productos activos"
@@ -86,6 +133,11 @@ export default async function DashboardPage() {
             Requieren atención
           </p>
           <AttentionRow
+            title="Pedidos por despachar"
+            description="Pagados, sin enviar"
+            count={pendingOrdersCount ?? 0}
+          />
+          <AttentionRow
             title="Productos sin aprobar"
             description="De scraping reciente"
             count={productsDraft ?? 0}
@@ -94,11 +146,6 @@ export default async function DashboardPage() {
           <AttentionRow
             title="Carritos abandonados"
             description="Últimas 24h"
-            count={0}
-          />
-          <AttentionRow
-            title="Mensajes del chatbot"
-            description="Sin resolver"
             count={0}
           />
         </div>
