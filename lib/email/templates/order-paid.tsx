@@ -17,6 +17,10 @@ export type OrderPaidProps = {
   shipping: number;
   tax: number;
   total: number;
+  /** COP descontados por cupón. 0 si no se aplicó cupón. */
+  discount?: number;
+  /** Código del cupón aplicado para mostrar al cliente. */
+  couponCode?: string | null;
   shippingAddress: {
     recipient: string;
     street: string;
@@ -41,6 +45,8 @@ export function OrderPaid({
   shipping,
   tax,
   total,
+  discount = 0,
+  couponCode,
   shippingAddress,
   trackingUrl,
 }: OrderPaidProps) {
@@ -173,6 +179,32 @@ export function OrderPaid({
             {shipping === 0 ? "Gratis" : formatCopForEmail(shipping)}
           </Text>
         </Section>
+        {discount > 0 && (
+          <Section
+            style={{ display: "flex", justifyContent: "space-between" }}
+          >
+            <Text
+              style={{
+                fontSize: "12px",
+                color: C.leaf700,
+                margin: "2px 0",
+              }}
+            >
+              Descuento{couponCode ? ` (${couponCode})` : ""}
+            </Text>
+            <Text
+              style={{
+                fontSize: "12px",
+                color: C.leaf700,
+                margin: "2px 0",
+                fontVariantNumeric: "tabular-nums",
+                fontWeight: 600,
+              }}
+            >
+              −{formatCopForEmail(discount)}
+            </Text>
+          </Section>
+        )}
 
         <Hr style={{ borderColor: C.earth100, margin: "12px 0 8px" }} />
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { COMPANY, REGULATORY } from "@/lib/legal/company-info";
+import { NewsletterForm } from "./NewsletterForm";
 
 export default function PublicFooter() {
   const year = new Date().getFullYear();
@@ -178,6 +179,22 @@ export default function PublicFooter() {
               </Link>
             </li>
           </ul>
+        </div>
+      </div>
+
+      {/* Newsletter signup */}
+      <div className="border-t border-white/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+          <div className="md:max-w-md">
+            <h3 className="font-serif text-lg mb-1">
+              Recibe novedades y ofertas
+            </h3>
+            <p className="text-xs text-white/65 leading-relaxed">
+              Suscríbete y recibe un cupón de bienvenida para tu primera
+              compra. Sin spam, puedes cancelar cuando quieras.
+            </p>
+          </div>
+          <NewsletterForm />
         </div>
       </div>
 

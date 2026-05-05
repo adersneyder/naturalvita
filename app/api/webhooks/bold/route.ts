@@ -145,7 +145,8 @@ export async function POST(req: Request) {
       .from("orders")
       .select(
         `id, order_number, customer_email, customer_name, customer_phone,
-         subtotal_cop, shipping_cop, tax_cop, total_cop, payment_status,
+         subtotal_cop, shipping_cop, tax_cop, total_cop, discount_cop, coupon_code,
+         payment_status,
          bold_payment_id,
          shipping_recipient, shipping_street, shipping_details,
          shipping_city, shipping_department,
@@ -346,6 +347,8 @@ type OrderForEmail = {
   shipping_cop: number;
   tax_cop: number;
   total_cop: number;
+  discount_cop: number | null;
+  coupon_code: string | null;
   shipping_recipient: string;
   shipping_street: string;
   shipping_details: string | null;
@@ -375,6 +378,8 @@ async function sendOrderPaidEmail(order: OrderForEmail) {
       shipping: order.shipping_cop,
       tax: order.tax_cop,
       total: order.total_cop,
+      discount: order.discount_cop ?? 0,
+      couponCode: order.coupon_code,
       shippingAddress: {
         recipient: order.shipping_recipient,
         street: order.shipping_street,

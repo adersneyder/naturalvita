@@ -44,9 +44,16 @@ const COLORS = {
 export function EmailLayout({
   preview,
   children,
+  unsubscribeUrl,
 }: {
   preview: string;
   children: ReactNode;
+  /**
+   * Si se proporciona, agrega link "Cancelar suscripción" al footer.
+   * Solo necesario en emails de marketing (newsletter, campañas).
+   * Los transaccionales (orden, envío) lo omiten.
+   */
+  unsubscribeUrl?: string;
 }) {
   return (
     <Html>
@@ -130,7 +137,22 @@ export function EmailLayout({
                   margin: "8px 0 0",
                 }}
               >
-                Este es un correo transaccional sobre tu pedido.
+                {unsubscribeUrl ? (
+                  <>
+                    ¿Ya no quieres recibir nuestros correos?{" "}
+                    <a
+                      href={unsubscribeUrl}
+                      style={{
+                        color: COLORS.earth700,
+                        textDecoration: "underline",
+                      }}
+                    >
+                      Cancelar suscripción
+                    </a>
+                  </>
+                ) : (
+                  "Este es un correo transaccional sobre tu pedido."
+                )}
               </Text>
             </Section>
           </Container>

@@ -4,12 +4,15 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useCart } from "@/lib/cart/use-cart";
 import { formatCop } from "@/lib/format/currency";
+import CouponInput from "./_CouponInput";
 
 type Props = {
   /** Departamento de la dirección seleccionada. null = no calcular envío. */
   shippingDepartment: string | null;
   /** Notifica al padre el quote calculado para que pueda usarlo al confirmar. */
   onQuoteChange?: (quote: ShippingQuote | null) => void;
+  /** Notifica cambios de cupón al padre */
+  onCouponChange?: (code: string | null, discountCop: number) => void;
 };
 
 type ShippingQuote = {
@@ -33,6 +36,7 @@ type ShippingQuote = {
 export default function OrderSummarySidebar({
   shippingDepartment,
   onQuoteChange,
+  onCouponChange,
 }: Props) {
   const { items, subtotal, quantity } = useCart();
 
@@ -74,7 +78,25 @@ export default function OrderSummarySidebar({
     return () => controller.abort();
   }, [shippingDepartment, subtotalBruto, onQuoteChange]);
 
-  const total = subtotalBruto + (quote?.cost_cop ?? 0);
+  const [couponState, setCouponState] = useState<{
+    code: string;
+    discount_cop: number;
+  } | null>(null);
+
+  const handleCouponChange = (code: string | null, discountCop: number) => {
+    if (code && discountCop > 0) {
+      setCouponState({ code, discount_cop: discountCop });
+    } else {
+      setCouponState(null);
+    }
+    onCouponChange?.(code, discountCop);
+  };
+
+  const discountCop = couponState?.discount_cop ?? 0;
+  const total = Math.max(
+    0,
+    subtotalBruto + (quote?.cost_cop ?? 0) - discountCop,
+  );
 
   return (
     <aside className="lg:sticky lg:top-24 lg:self-start">
@@ -162,6 +184,30 @@ export default function OrderSummarySidebar({
               envío te sale gratis.
             </p>
           )}
+
+        {/* Input de cupón */}
+        <div className="mt-4 pt-4 border-t border-[var(--color-earth-100)]">
+          <CouponInput
+            subtotalCop={subtotalBruto}
+            onApply={(code, discount) => handleCouponChange(code, discount)}
+            onRemove={() => handleCouponChange(null, 0)}
+          />
+        </div>
+
+        {/* Línea de descuento si hay cupón */}
+        {discountCop > 0 && couponState && (
+          <div className="mt-3 flex justify-between text-sm text-[var(--color-leaf-700)]">
+            <dt className="flex items-center gap-1.5">
+              <span>Descuento</span>
+              <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-[var(--color-leaf-100)] text-[var(--color-leaf-900)]">
+                {couponState.code}
+              </span>
+            </dt>
+            <dd className="tabular-nums font-medium">
+              −{formatCop(discountCop)}
+            </dd>
+          </div>
+        )}
 
         <div className="mt-4 pt-4 border-t border-[var(--color-earth-100)] flex justify-between items-baseline">
           <span className="text-sm text-[var(--color-earth-700)]">Total</span>

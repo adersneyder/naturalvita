@@ -216,6 +216,12 @@ export default function CheckoutClient({
     };
   } | null>(null);
 
+  // Cupón aplicado en el sidebar (preview). Se re-valida server-side al confirmar.
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discount_cop: number;
+  } | null>(null);
+
   async function handleStartCheckout() {
     setGlobalError(null);
     if (!selectedAddressFull) {
@@ -229,6 +235,7 @@ export default function CheckoutClient({
           quantity: it.quantity,
         })),
         address_id: selectedAddressFull.id,
+        coupon_code: appliedCoupon?.code ?? null,
       });
       if (!res.ok) {
         setGlobalError(res.error);
@@ -720,6 +727,13 @@ export default function CheckoutClient({
       {/* Columna derecha: resumen sticky */}
       <OrderSummarySidebar
         shippingDepartment={selectedAddressFull?.department ?? null}
+        onCouponChange={(code, discountCop) => {
+          if (code && discountCop > 0) {
+            setAppliedCoupon({ code, discount_cop: discountCop });
+          } else {
+            setAppliedCoupon(null);
+          }
+        }}
       />
     </div>
   );
