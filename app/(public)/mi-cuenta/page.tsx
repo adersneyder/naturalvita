@@ -9,7 +9,11 @@ import SummaryPanel from "./_SummaryPanel";
 import OrdersListPanel from "./_OrdersListPanel";
 import AddressesPanel, { type SavedAddressDTO } from "./_AddressesPanel";
 import DataPanel from "./_DataPanel";
+import WishlistPanel from "./_WishlistPanel";
+import CustomerReviewsPanel from "./_CustomerReviewsPanel";
 import type { ContactInput } from "@/lib/checkout/schemas";
+import { getWishlistItems } from "@/lib/wishlist/queries";
+import { getCustomerReviews } from "@/lib/reviews/queries";
 
 export const metadata: Metadata = {
   title: "Mi cuenta",
@@ -32,7 +36,7 @@ export default async function MiCuentaPage({
 
   const supabase = await createClient();
 
-  const [orders, addressesResp] = await Promise.all([
+  const [orders, addressesResp, wishlistItems, customerReviews] = await Promise.all([
     listCustomerOrders(customer.id),
     supabase
       .from("addresses")
@@ -42,6 +46,8 @@ export default async function MiCuentaPage({
       .eq("customer_id", customer.id)
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: false }),
+    getWishlistItems(),
+    getCustomerReviews(),
   ]);
 
   const addresses = (addressesResp.data ?? []) as SavedAddressDTO[];
@@ -103,6 +109,8 @@ export default async function MiCuentaPage({
           />
         )}
         {activeTab === "pedidos" && <OrdersListPanel orders={orders} />}
+        {activeTab === "favoritos" && <WishlistPanel items={wishlistItems} />}
+        {activeTab === "reseñas" && <CustomerReviewsPanel reviews={customerReviews} />}
         {activeTab === "direcciones" && (
           <AddressesPanel addresses={addresses} />
         )}

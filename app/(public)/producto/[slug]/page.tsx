@@ -6,9 +6,14 @@ import Breadcrumbs from "../../_components/Breadcrumbs";
 import PriceTag from "../../_components/PriceTag";
 import StockBadge from "../../_components/StockBadge";
 import AddToCartButtons from "../../_components/AddToCartButtons";
+import WishlistButton from "../../_components/WishlistButton";
+import StarRating from "../../_components/StarRating";
+import ProductReviews from "../../_components/ProductReviews";
 import RelatedProducts from "./_RelatedProducts";
 import ProductGallery from "./_ProductGallery";
 import ProductInfoTabs from "./_ProductInfoTabs";
+import { getProductReviews, getProductReviewStats, checkReviewEligibility } from "@/lib/reviews/queries";
+import { getWishlistProductIds } from "@/lib/wishlist/queries";
 
 type Params = Promise<{ slug: string }>;
 
@@ -115,6 +120,17 @@ export default async function ProductPage({ params }: { params: Params }) {
     })
     .filter((x) => x.attr?.show_in_card);
 
+  // Datos de reviews y wishlist en paralelo (no bloqueantes entre sí)
+  const [reviews, reviewStats, reviewEligibility, wishlistIds] =
+    await Promise.all([
+      getProductReviews(product.id),
+      getProductReviewStats(product.id),
+      checkReviewEligibility(product.id),
+      getWishlistProductIds(),
+    ]);
+
+  const isInWishlist = wishlistIds.has(product.id);
+
   // JSON-LD schema.org Product para SEO enriquecido en Google
   const productJsonLd = {
     "@context": "https://schema.org/",
@@ -136,6 +152,18 @@ export default async function ProductPage({ params }: { params: Params }) {
         ? "https://schema.org/InStock"
         : "https://schema.org/OutOfStock",
     },
+    // AggregateRating: solo se incluye si hay reseñas (requerido por Google)
+    ...(reviewStats && reviewStats.review_count > 0
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: reviewStats.average_rating,
+            reviewCount: reviewStats.review_count,
+            bestRating: 5,
+            worstRating: 1,
+          },
+        }
+      : {}),
   };
 
   const breadcrumbsJsonLd = {
@@ -199,13 +227,38 @@ export default async function ProductPage({ params }: { params: Params }) {
                 {product.laboratory.name}
               </Link>
             )}
-            <h1 className="font-serif text-3xl md:text-4xl text-[var(--color-leaf-900)] mt-2 mb-2 leading-tight">
-              {product.name}
-            </h1>
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="font-serif text-3xl md:text-4xl text-[var(--color-leaf-900)] mt-2 mb-2 leading-tight">
+                {product.name}
+              </h1>
+              <WishlistButton
+                productId={product.id}
+                initialInWishlist={isInWishlist}
+                size={24}
+                className="mt-3 shrink-0"
+              />
+            </div>
             {product.presentation && (
-              <p className="text-sm text-[var(--color-earth-700)] m-0 mb-4">
+              <p className="text-sm text-[var(--color-earth-700)] m-0 mb-2">
                 {product.presentation}
               </p>
+            )}
+
+            {/* Rating resumido si hay reseñas */}
+            {reviewStats && reviewStats.review_count > 0 && (
+              <div className="flex items-center gap-2 mb-3">
+                <StarRating
+                  rating={reviewStats.average_rating}
+                  size={14}
+                />
+                <span className="text-sm text-[var(--color-earth-700)]">
+                  {reviewStats.average_rating.toFixed(1)}
+                </span>
+                <span className="text-sm text-[var(--color-earth-400)]">
+                  ({reviewStats.review_count}{" "}
+                  {reviewStats.review_count === 1 ? "reseña" : "reseñas"})
+                </span>
+              </div>
             )}
 
             <div className="flex items-center gap-3 mb-4">
@@ -272,6 +325,16 @@ export default async function ProductPage({ params }: { params: Params }) {
             categoryName={product.category.name}
           />
         )}
+
+        {/* RESEÑAS */}
+        <ProductReviews
+          productId={product.id}
+          reviews={reviews}
+          stats={reviewStats}
+          canReview={reviewEligibility.canReview}
+          eligibleOrderId={reviewEligibility.orderId}
+          alreadyReviewed={reviewEligibility.alreadyReviewed}
+        />
       </div>
     </>
   );

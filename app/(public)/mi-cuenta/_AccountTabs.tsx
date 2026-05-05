@@ -13,6 +13,8 @@ type Tab = {
 const TABS: Tab[] = [
   { key: "resumen", label: "Resumen" },
   { key: "pedidos", label: "Pedidos" },
+  { key: "favoritos", label: "Favoritos" },
+  { key: "reseñas", label: "Reseñas" },
   { key: "direcciones", label: "Direcciones" },
   { key: "datos", label: "Mis datos" },
 ];
