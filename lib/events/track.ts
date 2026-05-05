@@ -1,29 +1,23 @@
 /**
- * Tracking de eventos del e-commerce.
+ * Tracking de eventos del e-commerce vía Klaviyo.
  *
- * Hoy: stub que loguea a console (suficiente para QA).
- * Mañana (Hito 2): se reemplaza el cuerpo de cada función por una
- * llamada al API HTTP de Klaviyo. El resto del código del proyecto
- * NO cambia — los call sites siguen llamando `trackOrderPaid(...)`
- * sin enterarse del cambio.
+ * API pública igual que el stub anterior — los call sites NO cambian.
+ * Solo cambia la implementación interna: en lugar de console.log,
+ * ahora dispara eventos reales a Klaviyo.
  *
- * Diseño:
- *   - Una función por evento de negocio (semántica clara).
- *   - Payloads tipados, con la información mínima útil.
- *   - Nunca tira excepción al consumidor: tracking fallido NO debe
- *     romper el flujo principal (pago, envío, etc.).
- *   - Sin dependencias de framework (importable desde server actions,
- *     route handlers, edge functions, scripts CLI).
+ * Diseño defensivo heredado del stub:
+ *   - Nunca lanza excepción al consumidor.
+ *   - Si Klaviyo falla, loguea y sigue. El flujo de negocio no se rompe.
+ *   - En dev sin KLAVIYO_PRIVATE_API_KEY, solo hace console.log.
  *
- * Convención de nombres de evento Klaviyo (cuando se active):
- *   - "Placed Order"     → trackOrderPlaced
- *   - "Ordered Product"  → trackOrderPaid (uno por línea)
- *   - "Fulfilled Order"  → trackOrderShipped
- *   - "Refunded Order"   → trackOrderRefunded
- *   Todos en inglés siguiendo la convención estándar del ecommerce
- *   trackingsystems para que después funcione con cualquier reporte
- *   pre-armado de Klaviyo o herramientas tipo segment.
+ * Convención de nombres de evento (Klaviyo Commerce):
+ *   - "Placed Order"     → pedido creado (al confirmar checkout)
+ *   - "Ordered Product"  → por cada línea del pedido (al confirmar pago)
+ *   - "Fulfilled Order"  → pedido enviado (al marcar shipped en admin)
+ *   - "Refunded Order"   → reembolso completado
  */
+
+import { trackEvent, identifyProfile, subscribeToList } from "@/lib/klaviyo/client";
 
 export type TrackedAddress = {
   city: string;
@@ -51,33 +45,138 @@ export type OrderShippedEvent = OrderEventBase & {
   carrier?: string | null;
 };
 
-async function logEvent(name: string, payload: unknown): Promise<void> {
-  // Tracking nunca debe romper el flujo principal.
-  // Cuando entre Klaviyo, el try/catch sigue protegiendo igual.
-  try {
-    if (process.env.NODE_ENV !== "production") {
-      console.log(`[track] ${name}`, JSON.stringify(payload));
-      return;
-    }
-    // Log mínimo en producción para auditoría sin spam.
-    console.log(`[track] ${name} order=${(payload as { order_number?: string }).order_number ?? "?"}`);
-  } catch {
-    // ignored
-  }
+function copToUsdApprox(cop: number): number {
+  return Math.round((cop / 4100) * 100) / 100;
+}
+
+function buildItems(items: TrackedItem[]) {
+  return items.map((item) => ({
+    ProductID: item.product_id,
+    ProductName: item.product_name,
+    Quantity: item.quantity,
+    ItemPrice: item.unit_price_cop / 100,
+    RowTotal: (item.unit_price_cop * item.quantity) / 100,
+    Currency: "COP",
+  }));
 }
 
 export async function trackOrderPlaced(payload: OrderEventBase): Promise<void> {
-  await logEvent("Placed Order", payload);
+  try {
+    const nameParts = payload.customer_name.trim().split(" ");
+    await identifyProfile({
+      email: payload.customer_email,
+      firstName: nameParts[0] ?? null,
+      lastName: nameParts.slice(1).join(" ") || null,
+    });
+    await trackEvent({
+      email: payload.customer_email,
+      eventName: "Placed Order",
+      uniqueId: `placed-${payload.order_number}`,
+      valueCop: payload.total_cop,
+      properties: {
+        OrderId: payload.order_number,
+        $value: copToUsdApprox(payload.total_cop),
+        ItemNames: payload.items.map((i) => i.product_name),
+        Items: buildItems(payload.items),
+        ShippingCity: payload.shipping.city,
+        ShippingDepartment: payload.shipping.department,
+        Currency: "COP",
+      },
+    });
+  } catch (err) {
+    console.error("[track] trackOrderPlaced falló:", err);
+  }
 }
 
 export async function trackOrderPaid(payload: OrderEventBase): Promise<void> {
-  await logEvent("Ordered Product", payload);
+  try {
+    await Promise.all(
+      payload.items.map((item) =>
+        trackEvent({
+          email: payload.customer_email,
+          eventName: "Ordered Product",
+          uniqueId: `ordered-${payload.order_number}-${item.product_id}`,
+          valueCop: item.unit_price_cop * item.quantity,
+          properties: {
+            OrderId: payload.order_number,
+            $value: copToUsdApprox(item.unit_price_cop * item.quantity),
+            ProductID: item.product_id,
+            ProductName: item.product_name,
+            Quantity: item.quantity,
+            ItemPrice: item.unit_price_cop / 100,
+            RowTotal: (item.unit_price_cop * item.quantity) / 100,
+            Currency: "COP",
+          },
+        }),
+      ),
+    );
+  } catch (err) {
+    console.error("[track] trackOrderPaid falló:", err);
+  }
 }
 
 export async function trackOrderShipped(payload: OrderShippedEvent): Promise<void> {
-  await logEvent("Fulfilled Order", payload);
+  try {
+    await trackEvent({
+      email: payload.customer_email,
+      eventName: "Fulfilled Order",
+      uniqueId: `shipped-${payload.order_number}`,
+      valueCop: payload.total_cop,
+      properties: {
+        OrderId: payload.order_number,
+        $value: copToUsdApprox(payload.total_cop),
+        TrackingNumber: payload.tracking_number ?? undefined,
+        Carrier: payload.carrier ?? undefined,
+        Items: buildItems(payload.items),
+        Currency: "COP",
+      },
+    });
+  } catch (err) {
+    console.error("[track] trackOrderShipped falló:", err);
+  }
 }
 
 export async function trackOrderRefunded(payload: OrderEventBase): Promise<void> {
-  await logEvent("Refunded Order", payload);
+  try {
+    await trackEvent({
+      email: payload.customer_email,
+      eventName: "Refunded Order",
+      uniqueId: `refunded-${payload.order_number}`,
+      valueCop: payload.total_cop,
+      properties: {
+        OrderId: payload.order_number,
+        $value: copToUsdApprox(payload.total_cop),
+        Items: buildItems(payload.items),
+        Currency: "COP",
+      },
+    });
+  } catch (err) {
+    console.error("[track] trackOrderRefunded falló:", err);
+  }
+}
+
+export async function trackNewsletterSubscribed(params: {
+  email: string;
+  source: string;
+  couponCode?: string;
+}): Promise<void> {
+  try {
+    const listId = process.env.KLAVIYO_NEWSLETTER_LIST_ID;
+    if (!listId) {
+      console.warn("[track] KLAVIYO_NEWSLETTER_LIST_ID no configurado");
+      return;
+    }
+    await subscribeToList(params.email, listId, params.source);
+    await trackEvent({
+      email: params.email,
+      eventName: "Newsletter Subscribed",
+      uniqueId: `newsletter-sub-${params.email}-${Date.now()}`,
+      properties: {
+        Source: params.source,
+        CouponCode: params.couponCode ?? "WELCOME10",
+      },
+    });
+  } catch (err) {
+    console.error("[track] trackNewsletterSubscribed falló:", err);
+  }
 }

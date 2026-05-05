@@ -242,10 +242,41 @@ export async function POST(req: Request) {
         );
 
       try {
+        const typedItems = items as Array<{
+          product_id: string;
+          product_name: string;
+          quantity: number;
+          unit_price_cop: number;
+          subtotal_cop: number;
+        }>;
+
+        const trackPayload = {
+          order_number: orderNumber,
+          customer_email: (order as OrderForEmail).customer_email,
+          customer_name: (order as OrderForEmail).customer_name,
+          total_cop: (order as OrderForEmail).total_cop,
+          shipping: {
+            city: (order as OrderForEmail).shipping_city,
+            department: (order as OrderForEmail).shipping_department,
+          },
+          items: typedItems.map((i) => ({
+            product_id: i.product_id,
+            product_name: i.product_name,
+            quantity: i.quantity,
+            unit_price_cop: i.unit_price_cop,
+          })),
+        };
+
         if (eventType === "SALE_APPROVED") {
-          sideLog("enviando email order-paid");
-          await sendOrderPaidEmail(order as OrderForEmail);
-          sideLog("email order-paid enviado");
+          sideLog("enviando email order-paid + tracking Klaviyo");
+          await Promise.allSettled([
+            sendOrderPaidEmail(order as OrderForEmail),
+            (async () => {
+              const { trackOrderPaid } = await import("@/lib/events/track");
+              await trackOrderPaid(trackPayload);
+            })(),
+          ]);
+          sideLog("email order-paid + Klaviyo OK");
         } else if (eventType === "SALE_REJECTED") {
           sideLog("enviando email order-rejected");
           await sendOrderRejectedEmail(
@@ -254,9 +285,15 @@ export async function POST(req: Request) {
           );
           sideLog("email order-rejected enviado");
         } else if (eventType === "VOID_APPROVED") {
-          sideLog("enviando email order-refunded");
-          await sendOrderRefundedEmail(order as OrderForEmail);
-          sideLog("email order-refunded enviado");
+          sideLog("enviando email order-refunded + tracking Klaviyo");
+          await Promise.allSettled([
+            sendOrderRefundedEmail(order as OrderForEmail),
+            (async () => {
+              const { trackOrderRefunded } = await import("@/lib/events/track");
+              await trackOrderRefunded(trackPayload);
+            })(),
+          ]);
+          sideLog("email order-refunded + Klaviyo OK");
         } else if (eventType === "VOID_REJECTED") {
           sideLog(
             `reembolso rechazado para ${orderNumber}: ${payload.data?.user_message}`,

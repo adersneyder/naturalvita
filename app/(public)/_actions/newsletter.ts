@@ -62,13 +62,12 @@ export async function subscribeNewsletterAction(
   }
 
   // Solo enviar email de bienvenida si es suscripción NUEVA o reactivación.
-  // Si ya estaba suscrito, no spammeamos.
   if (result.created) {
     const baseUrl =
       process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co";
     const unsubscribeUrl = `${baseUrl}/newsletter/desuscribir/${result.unsubscribe_token}`;
 
-    // Disparar email pero NO bloqueamos la respuesta si Resend tarda
+    // Email bienvenida via Resend (no bloqueante)
     sendEmail({
       to: email,
       subject: "Bienvenido a NaturalVita · cupón WELCOME10 dentro",
@@ -87,6 +86,19 @@ export async function subscribeNewsletterAction(
     }).catch((err) => {
       console.error("[newsletter-action] error enviando welcome:", err);
     });
+
+    // Suscribir a lista Klaviyo + evento (no bloqueante, falla silenciosa)
+    import("@/lib/events/track")
+      .then(({ trackNewsletterSubscribed }) =>
+        trackNewsletterSubscribed({
+          email,
+          source: "footer",
+          couponCode: "WELCOME10",
+        }),
+      )
+      .catch((err) => {
+        console.error("[newsletter-action] error en trackNewsletterSubscribed:", err);
+      });
   }
 
   return {
