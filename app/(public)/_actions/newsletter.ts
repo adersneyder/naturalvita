@@ -1,110 +1,138 @@
 "use server";
 
-import { subscribeToNewsletter } from "@/lib/newsletter/queries";
+import { after } from "next/server";
+import {
+  subscribeToNewsletter,
+  isValidEmail,
+} from "@/lib/newsletter/queries";
+import {
+  publicApiRatelimit,
+  getClientIpFromHeaders,
+} from "@/lib/ratelimit";
 import { sendEmail } from "@/lib/email/client";
 import { NewsletterWelcome } from "@/lib/email/templates/newsletter-welcome";
-import { publicApiRatelimit, getClientIpFromHeaders } from "@/lib/ratelimit";
 
-export type NewsletterSignupState = {
+export type SubscribeState = {
   ok: boolean;
   message: string;
 };
 
 /**
- * Server action para suscribir email al newsletter desde el footer.
+ * Server action de suscripción al newsletter desde el footer.
  *
- * Validación stack:
- *   1. Honeypot field (campo oculto que solo bots llenan).
- *   2. Validación formato email.
- *   3. Rate limit por IP (Upstash, 30 req/min).
- *   4. subscribeToNewsletter() valida duplicados y reactiva si necesario.
- *   5. Si es nueva suscripción real, dispara email de bienvenida con cupón.
+ * Diseño:
+ *   1. Honeypot anti-bot (campo "website" debe estar vacío).
+ *   2. Validación de email.
+ *   3. Rate limit por IP.
+ *   4. Insert en BD propia (newsletter_subscribers).
+ *   5. Side effects en after() para garantizar ejecución post-response:
+ *      - Email Resend con cupón WELCOME10.
+ *      - Suscripción a lista Klaviyo + evento.
  *
- * Retorna state plano con mensaje para useActionState() en el cliente.
+ * after() garantiza que el código se ejecute DESPUÉS de enviar el
+ * response al cliente pero ANTES de freezing de la lambda en Vercel.
+ * Esto evita los delays de minutos típicos del patrón fire-and-forget.
  */
-export async function subscribeNewsletterAction(
-  _prevState: NewsletterSignupState,
+export async function subscribeToNewsletterAction(
+  _prev: SubscribeState,
   formData: FormData,
-): Promise<NewsletterSignupState> {
-  // Honeypot: si está lleno, es bot. Fingimos éxito para no dar pistas.
+): Promise<SubscribeState> {
+  // 1. Honeypot
   const honeypot = formData.get("website")?.toString() ?? "";
-  if (honeypot.trim() !== "") {
-    return { ok: true, message: "¡Listo! Revisa tu correo." };
+  if (honeypot) {
+    // Bot detectado — respondemos OK fingido para no revelar el honeypot
+    return { ok: true, message: "¡Gracias por suscribirte!" };
   }
 
-  const email = formData.get("email")?.toString().trim() ?? "";
+  // 2. Validación
+  const email = formData.get("email")?.toString().trim().toLowerCase() ?? "";
   if (!email) {
-    return { ok: false, message: "Ingresa un correo electrónico" };
+    return { ok: false, message: "Por favor ingresa tu correo" };
+  }
+  if (!isValidEmail(email)) {
+    return { ok: false, message: "Por favor ingresa un correo válido" };
   }
 
-  // Rate limit
+  // 3. Rate limit
   try {
     const ip = await getClientIpFromHeaders();
-    const { success } = await publicApiRatelimit.limit(`newsletter:${ip}`);
+    const { success } = await publicApiRatelimit.limit(
+      `newsletter-sub:${ip}`,
+    );
     if (!success) {
       return {
         ok: false,
-        message: "Demasiadas solicitudes. Intenta en unos minutos.",
+        message: "Demasiadas solicitudes. Espera unos minutos.",
       };
     }
   } catch (err) {
-    // Si Upstash falla, no bloqueamos al usuario legítimo
     console.warn("[newsletter-action] ratelimit no disponible:", err);
   }
 
-  const result = await subscribeToNewsletter({
-    email,
-    source: "footer",
-  });
+  // 4. Insert en BD
+  const result = await subscribeToNewsletter({ email, source: "footer" });
 
   if (!result.ok) {
-    return { ok: false, message: result.error };
+    return {
+      ok: false,
+      message: "No pudimos suscribirte. Intenta de nuevo en unos minutos.",
+    };
   }
 
-  // Solo enviar email de bienvenida si es suscripción NUEVA o reactivación.
+  // 5. Side effects vía after() — solo si suscripción es nueva
   if (result.created) {
     const baseUrl =
       process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co";
     const unsubscribeUrl = `${baseUrl}/newsletter/desuscribir/${result.unsubscribe_token}`;
 
-    // Email bienvenida via Resend (no bloqueante)
-    sendEmail({
-      to: email,
-      subject: "Bienvenido a NaturalVita · cupón WELCOME10 dentro",
-      template: NewsletterWelcome({
-        customerName: null,
-        couponCode: "WELCOME10",
-        couponDescription:
-          "10% en tu primera compra · mínimo $30.000 · descuento máximo $50.000",
-        shopUrl: `${baseUrl}/tienda`,
-        unsubscribeUrl,
-      }),
-      tags: [
-        { name: "type", value: "newsletter_welcome" },
-        { name: "source", value: "footer" },
-      ],
-    }).catch((err) => {
-      console.error("[newsletter-action] error enviando welcome:", err);
-    });
+    after(async () => {
+      // Email de bienvenida con cupón (Resend)
+      try {
+        await sendEmail({
+          to: email,
+          subject: "Bienvenido a NaturalVita · cupón WELCOME10 dentro",
+          template: NewsletterWelcome({
+            customerName: null,
+            couponCode: "WELCOME10",
+            couponDescription:
+              "10% en tu primera compra · mínimo $30.000 · descuento máximo $50.000",
+            shopUrl: `${baseUrl}/tienda`,
+            unsubscribeUrl,
+          }),
+          tags: [
+            { name: "type", value: "newsletter_welcome" },
+            { name: "source", value: "footer" },
+          ],
+        });
+      } catch (err) {
+        console.error(
+          "[newsletter-action after] error enviando welcome:",
+          err,
+        );
+      }
 
-    // Suscribir a lista Klaviyo + evento (no bloqueante, falla silenciosa)
-    import("@/lib/events/track")
-      .then(({ trackNewsletterSubscribed }) =>
-        trackNewsletterSubscribed({
+      // Suscribir a lista Klaviyo + evento "Newsletter Subscribed"
+      try {
+        const { trackNewsletterSubscribed } = await import(
+          "@/lib/events/track"
+        );
+        await trackNewsletterSubscribed({
           email,
           source: "footer",
           couponCode: "WELCOME10",
-        }),
-      )
-      .catch((err) => {
-        console.error("[newsletter-action] error en trackNewsletterSubscribed:", err);
-      });
+        });
+      } catch (err) {
+        console.error(
+          "[newsletter-action after] error en trackNewsletterSubscribed:",
+          err,
+        );
+      }
+    });
   }
 
   return {
     ok: true,
-    message: result.created
-      ? "¡Bienvenido! Revisa tu correo, te enviamos un cupón de bienvenida."
-      : "Ya estás suscrito. Revisa tu bandeja para más novedades.",
+    message:
+      "¡Gracias por suscribirte! Te enviamos tu cupón WELCOME10 al correo.",
   };
 }
