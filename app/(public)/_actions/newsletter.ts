@@ -128,6 +128,6 @@ export async function subscribeNewsletterAction(
   return {
     ok: true,
     message:
-      "¡Gracias por suscribirte! Te enviamos tu cupón WELCOME10 al correo.",
+      "¡Gracias por suscribirte! Te enviamos tu cupón al correo.",
   };
 }
