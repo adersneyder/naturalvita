@@ -198,70 +198,62 @@ export async function trackEvent(
  * Suscribe un perfil a una lista en Klaviyo con consent explícito.
  * Crea el perfil si no existe.
  *
- * @param email Email a suscribir
- * @param listId ID de la lista en Klaviyo (se obtiene desde la UI de Klaviyo)
- * @param source Texto libre de origen de la suscripción (aparece en historial)
+ * Usa el endpoint bulk-subscribe que es el correcto para suscripción
+ * con consent. La estructura del body sigue exactamente JSON:API spec
+ * de Klaviyo v2024-10-15.
+ *
+ * @param email   Email a suscribir.
+ * @param listId  ID de la lista en Klaviyo (6 caracteres, case-sensitive).
+ * @param source  Texto libre que aparece en el historial del perfil.
  */
 export async function subscribeToList(
   email: string,
   listId: string,
   source: string,
 ): Promise<{ ok: boolean }> {
-  // 1. Asegurarse que el perfil existe
+  // 1. Asegurar que el perfil exista (idempotente)
   await identifyProfile({ email });
 
-  // 2. Suscribir con consent email marketing
+  // 2. Suscribir con consent y asociar a la lista
   const res = await privateRequest(
     "POST",
-    `/api/lists/${listId}/relationships/profiles/`,
+    "/api/profile-subscription-bulk-create-jobs/",
     {
-      data: [
-        {
-          type: "profile",
-          attributes: {
-            email: email.toLowerCase().trim(),
-            subscriptions: {
-              email: {
-                marketing: {
-                  consent: "SUBSCRIBED",
-                  consented_at: new Date().toISOString(),
-                },
-              },
-            },
-          },
-        },
-      ],
-    },
-  );
-
-  if (!res.ok) {
-    // Fallback: intentar con el endpoint bulk-subscribe que es más permisivo
-    const fallback = await privateRequest(
-      "POST",
-      "/api/profile-subscription-bulk-create-jobs/",
-      {
-        data: {
-          type: "profile-subscription-bulk-create-job",
-          attributes: {
-            historical_import: false,
-            list_id: listId,
-            subscriptions: [
+      data: {
+        type: "profile-subscription-bulk-create-job",
+        attributes: {
+          profiles: {
+            data: [
               {
-                channels: {
-                  email: ["MARKETING"],
+                type: "profile",
+                attributes: {
+                  email: email.toLowerCase().trim(),
+                  subscriptions: {
+                    email: {
+                      marketing: {
+                        consent: "SUBSCRIBED",
+                      },
+                    },
+                  },
                 },
-                email: email.toLowerCase().trim(),
-                custom_source: source,
               },
             ],
           },
+          custom_source: source,
+          historical_import: false,
+        },
+        relationships: {
+          list: {
+            data: {
+              type: "list",
+              id: listId,
+            },
+          },
         },
       },
-    );
-    return { ok: fallback.ok };
-  }
+    },
+  );
 
   return { ok: res.ok };
 }
-
 export { getPublicKey };
