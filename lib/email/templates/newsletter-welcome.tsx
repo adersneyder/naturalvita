@@ -50,18 +50,17 @@ export function NewsletterWelcome({
       >
         {greeting}
       </Text>
-      <Text
-        style={{
-          fontSize: "14px",
-          color: C.earth700,
-          lineHeight: 1.6,
-          margin: "0 0 24px",
-        }}
-      >
-        Gracias por sumarte a nuestra comunidad. Aquí seleccionamos productos
-        naturales y suplementos de laboratorios colombianos verificados, todos
-        con registro INVIMA al día.
-      </Text>
+     <Text
+  style={{
+    fontSize: "14px",
+    color: C.earth700,
+    lineHeight: 1.6,
+    margin: "0 0 24px",
+  }}
+>
+  Gracias por sumarte a nuestra comunidad. Aquí seleccionamos suplementos y productos naturales de
+  laboratorios verificados para acompañar tu bienestar cada día.
+</Text>
 
       {/* Bloque del cupón — visualmente destacado */}
       <Section
