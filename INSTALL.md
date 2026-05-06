@@ -1,194 +1,199 @@
-# NaturalVita · Hito 2 · Sesión C — Wishlist y Reviews
+# NaturalVita · Fase 1 — Auth Multi-método
 
-Build verde · 50 rutas (sin cambio) · 0 errores TS · 12 archivos.
+Build verde · 0 errores TS · 6 archivos.
 
----
-
-## Migraciones SQL
-
-YA APLICADAS en producción vía MCP. No necesitas correrlas.
-
-**`wishlist_and_reviews`**: crea 2 tablas + 1 vista.
-
-`wishlist_items` — favoritos por cliente:
-- `customer_id UUID` FK a customers (= auth.uid()).
-- `product_id UUID` FK a products.
-- UNIQUE (customer_id, product_id) — sin duplicados.
-- RLS: cada cliente ve/modifica solo sus propios. Admins lectura.
-
-`product_reviews` — reseñas 1-5 estrellas:
-- `rating SMALLINT` con CHECK 1-5.
-- `title TEXT` (máx 120 chars), `body TEXT` (máx 2000 chars).
-- `status` con CHECK 'pending'/'approved'/'rejected'. Auto-approved para
-  clientes con compra entregada.
-- `order_id` FK opcional a orders (para asociar la reseña a la compra).
-- UNIQUE (customer_id, product_id) — un cliente reseña un producto una vez.
-- RLS: aprobadas son públicas; clientes escriben las propias; admins todo.
-
-`product_review_stats` — VIEW con stats por producto:
-- `review_count`, `average_rating`, `count_1..5`.
-- Solo cuenta reseñas `status='approved'`.
-- Se usa en schema.org AggregateRating y en el resumen de estrellas.
+Esta fase activa **Google OAuth + email/password + magic link** en `/iniciar-sesion` y `/crear-cuenta`. El cliente elige el método que prefiera.
 
 ---
 
 ## Variables de entorno
 
-Sin variables nuevas. Usa las existentes.
+**Sin variables nuevas en Vercel**. La configuración de OAuth Google vive en Supabase, no en el código del proyecto.
+
+Lo que ya configuraste:
+- ✓ Client ID de Google en Supabase Auth → Providers → Google.
+- ✓ Client Secret de Google en Supabase Auth → Providers → Google.
+- ✓ Callback URL `https://qheynvhdjdnqywyaekpq.supabase.co/auth/v1/callback` registrada en Google Cloud Console.
 
 ---
 
 ## Archivos · qué hace cada uno
 
-### Libs nuevas
+### `app/(public)/iniciar-sesion/_actions/auth.ts` (NUEVO)
 
-**`lib/wishlist/queries.ts`** — 4 funciones:
-- `getWishlistItems()` carga wishlist del usuario autenticado con datos del producto (nombre, slug, precio, imagen). Usado en `/mi-cuenta?tab=favoritos`.
-- `getWishlistProductIds()` retorna Set de product_ids en wishlist. Usado en ficha de producto para saber si mostrar corazón lleno o vacío.
-- `toggleWishlistItem(productId)` agrega si no está, quita si está. Retorna `{ok, inWishlist}`.
+Server actions de auth. Exporta 6 funciones:
 
-**`lib/reviews/queries.ts`** — 6 funciones:
-- `getProductReviews(productId)` lista reseñas aprobadas con nombre del cliente.
-- `getProductReviewStats(productId)` retorna stats desde la VIEW (count, avg, distribución).
-- `checkReviewEligibility(productId)` verifica si el cliente autenticado puede dejar reseña: debe tener un pedido con ese producto en `fulfillment_status='delivered'` y no haber reseñado antes. Retorna `{canReview, orderId, alreadyReviewed}`.
-- `submitReview(input)` inserta la reseña con re-validación server-side de elegibilidad.
-- `getCustomerReviews()` lista las reseñas que el cliente ha escrito. Usado en `/mi-cuenta?tab=reseñas`.
+- **`signInWithGoogleAction`**: genera URL OAuth con scopes mínimos (`email`, `profile`). Redirige al usuario a Google. Después del consentimiento, Google redirige a `/auth/callback`. Param `prompt=select_account` fuerza el chooser de Google (útil si el usuario tiene múltiples cuentas).
 
-### Server actions
+- **`signInWithPasswordAction`**: login con email + password. Mensaje de error genérico ("Correo o contraseña incorrectos") para no revelar si el email existe (defensa contra enumeración). Rate limit 30/min por IP.
 
-**`app/(public)/_actions/wishlist.ts`** — `toggleWishlistAction(productId)`:
-- Llama `toggleWishlistItem` y `revalidatePath("/mi-cuenta")`.
-- Retorna `{ok, inWishlist, error?}` para que el cliente actualice UI.
+- **`signUpWithPasswordAction`**: registro con nombre + email + password. Validación: password ≥ 10 caracteres, nombre ≥ 2 caracteres. Si Supabase tiene "Confirm email" ON (recomendado), retorna mensaje "revisa tu correo" en lugar de redirigir. Detecta caso "ya registrado" con mensaje específico.
 
-**`app/(public)/_actions/reviews.ts`** — `submitReviewAction(prev, formData)`:
-- Compatible con `useActionState`.
-- Valida campos, llama `submitReview`, `revalidatePath` del producto y de `/mi-cuenta`.
+- **`signInWithMagicLinkAction`**: el flow original sigue funcionando como fallback. Útil para clientes que no quieren contraseña.
 
-### Componentes nuevos
+- **`requestPasswordResetAction`**: genera link de reset y manda email. **Siempre responde "ok" aunque el email no exista** (anti-enumeración). Rate limit más estricto (anti-abuse).
 
-**`app/(public)/_components/WishlistButton.tsx`** — botón corazón:
-- Estado optimista: UI actualiza inmediatamente, server action confirma.
-- Si no hay sesión → redirige a `/iniciar-sesion?next=<ruta actual>`.
-- Si server action falla → revierte el estado.
-- `aria-pressed` para accesibilidad.
+- **`resetPasswordAction`**: cambia password después de hacer click en el email. Usa la sesión recovery que Supabase crea automáticamente. Valida que `password === password_confirm`.
 
-**`app/(public)/_components/StarRating.tsx`** — estrellas SVG:
-- Server component puro (sin estado).
-- Soporta medias estrellas con gradiente lineal SVG.
-- `aria-label` para accesibilidad.
-- Reutilizable en ficha de producto, resumen de reviews, tarjeta producto, `/mi-cuenta`.
+### `app/(public)/iniciar-sesion/_LoginForm.tsx` (REEMPLAZADO)
 
-**`app/(public)/_components/ProductReviews.tsx`** — bloque completo de reseñas:
-- Resumen con número grande + barras de distribución por estrella.
-- Formulario interactivo con selector de estrellas hover/click.
-- Lista de reseñas con fecha, nombre, respuesta admin si hay.
-- Mensaje de estado post-envío.
-- Se muestra en `/producto/[slug]` abajo de los productos relacionados.
+Form rediseñado con jerarquía visual:
+1. Botón Google grande arriba (CTA principal).
+2. Separador "o con tu correo".
+3. Form email + password con link "¿La olvidaste?".
+4. Switch "Prefiero recibir un enlace por correo" → muestra form magic link.
 
-### Paneles `/mi-cuenta`
+Maneja errores de OAuth callback vía `?error=mensaje` en URL.
 
-**`app/(public)/mi-cuenta/_WishlistPanel.tsx`** — grid de favoritos:
-- Grid 2/3/4 columnas responsive.
-- Cada tarjeta tiene botón `<WishlistButton>` para quitar directamente.
-- Estado vacío con CTA a `/tienda`.
+### `app/(public)/iniciar-sesion/_GoogleButton.tsx` (NUEVO)
 
-**`app/(public)/mi-cuenta/_CustomerReviewsPanel.tsx`** — lista de reseñas escritas:
-- Link al producto reseñado.
-- Stars + título + extracto del cuerpo.
-- Estado vacío con CTA a `/mi-cuenta?tab=pedidos`.
+Botón "Continuar con Google" siguiendo guidelines visuales oficiales de Google Identity: fondo blanco, borde sutil, logo SVG multicolor a la izquierda. Reutilizable en login y signup.
 
-### Archivos modificados
+### `app/(public)/crear-cuenta/_SignupForm.tsx` (REEMPLAZADO)
 
-**`app/(public)/mi-cuenta/_AccountTabs.tsx`** — agrega tabs "Favoritos" y "Reseñas".
+Form simétrico al de login con campos extra para signup:
+- Google OAuth.
+- Email + password + nombre completo + check de términos.
+- Magic link (sin password).
 
-**`app/(public)/mi-cuenta/page.tsx`** — carga `getWishlistItems()` y `getCustomerReviews()` en paralelo con los otros queries. Renderiza `<WishlistPanel>` y `<CustomerReviewsPanel>` en los tabs correspondientes.
+Link al final: "¿Ya tienes cuenta? Iniciar sesión".
 
-**`app/(public)/producto/[slug]/page.tsx`** — 5 cambios:
-1. Carga reviews + wishlistIds en paralelo (`Promise.all`).
-2. `<WishlistButton>` junto al `<h1>` del producto.
-3. Rating resumido (stars + promedio + conteo) debajo del título si hay reseñas.
-4. `<ProductReviews>` al final de la página.
-5. Schema.org `aggregateRating` incluido en el JSON-LD cuando hay reseñas.
+### `app/(public)/recuperar-contrasena/_RecoverForm.tsx` (REEMPLAZADO)
+
+Form simple con un solo campo: email. Mensaje genérico de éxito (anti-enumeración).
+
+### `app/(public)/restablecer-contrasena/_ResetForm.tsx` (REEMPLAZADO)
+
+Form de cambio de password (después de hacer click en el email):
+- Nueva contraseña.
+- Confirmar contraseña.
+- Validación local: ambas iguales, mínimo 10 chars.
+
+---
+
+## Cómo se conectan los métodos
+
+**Una identidad por email**. Si Juan se registra con `juan@gmail.com` + password, y después intenta loguearse con Google `juan@gmail.com`, Supabase **vincula automáticamente** las dos identidades al mismo `auth.users.id`. La fila en `public.customers` se mantiene única.
+
+**Auto-onboarding sin cambios**. `lib/auth/customer-auth.ts` ya soporta crear fila customer en el primer login con cualquier método, leyendo `user_metadata.full_name` que Google pasa automáticamente al hacer OAuth.
+
+**Callback unificado**. `/auth/callback/route.ts` ya intercambia el `code` por sesión sin importar si viene de OAuth o magic link. Sin cambios necesarios.
+
+---
+
+## Flujo OAuth completo (lo que verá el cliente)
+
+1. Cliente click "Continuar con Google" en `/iniciar-sesion`.
+2. Browser redirige a Google con la URL de OAuth.
+3. Cliente elige cuenta de Google y aprueba el consentimiento.
+4. Google redirige a `https://qheynvhdjdnqywyaekpq.supabase.co/auth/v1/callback?code=XXX`.
+5. Supabase procesa el code, crea/actualiza user, redirige a `https://naturalvita.co/auth/callback?code=YYY&next=/mi-cuenta`.
+6. Nuestra ruta `/auth/callback` intercambia el code por sesión.
+7. Redirige a `/mi-cuenta`.
+8. `requireCustomer()` detecta la sesión, busca customer en BD, no existe → crea fila usando metadata de Google (nombre, email).
+9. Cliente queda logueado, ve su dashboard.
+
+Tiempo total: ~3-5 segundos.
 
 ---
 
 ## Aplicación
 
-1. Sube los 12 archivos al repo en sus rutas exactas.
-2. Vercel hará deploy automático ~1-2 min. Sin variables nuevas.
-3. Verifica build verde en Vercel → Deployments.
+1. Sube los 6 archivos al repo en sus rutas exactas.
+2. Vercel hará deploy automático ~1-2 min.
+3. Verifica build verde en Deployments.
 
 ---
 
 ## Validación end-to-end
 
-### Flujo 1: wishlist
+### Flujo 1: Google OAuth (modo Testing)
 
-1. Entra al sitio con tu cuenta de cliente.
-2. Ve a cualquier ficha de producto.
-3. Verás un icono de corazón junto al nombre del producto (arriba a la derecha del h1).
-4. Click → corazón se llena rojo (estado optimista inmediato).
-5. Ve a `/mi-cuenta?tab=favoritos` (nuevo tab en la barra de navegación).
-6. El producto aparece en el grid.
-7. Click en el corazón dentro del grid → desaparece de favoritos.
+**Importante**: Google Auth Platform está en modo "Pruebas". Solo los emails que agregaste como "usuarios de prueba" podrán loguearse. Los demás verán pantalla de error.
 
-### Flujo 2: reviews (requiere pedido entregado)
+1. Abre `naturalvita.co/iniciar-sesion` en ventana **incógnito**.
+2. Click "Continuar con Google".
+3. Google muestra el chooser de cuenta. Elige `pedidos@naturalvita.co` o tu personal (los que registraste como tester).
+4. Acepta el consentimiento OAuth.
+5. Te redirige de vuelta a `/mi-cuenta` con sesión activa.
+6. Verifica en BD: `SELECT * FROM public.customers WHERE email='X'` — debe haber una fila con `full_name` de Google.
 
-Para probar reviews necesitas marcar uno de tus pedidos como "entregado"
-desde el admin. Ve a `/admin/pedidos` → abre el pedido → botón
-"Marcar como entregado" (fulfillment_status = 'delivered').
+### Flujo 2: registro con email + password
 
-Después:
-1. Como cliente, ve a la ficha de un producto que estaba en ese pedido.
-2. Abajo, debajo de "Productos relacionados", verás la sección "Reseñas".
-3. Si nunca has reseñado ese producto, verás el formulario "Deja tu reseña".
-4. Selecciona estrellas (hover muestra preview), llena título y cuerpo opcionales.
-5. Click "Publicar reseña".
-6. La reseña aparece en la lista inmediatamente (auto-aprobada).
-7. El resumen de estrellas aparece arriba del formulario.
-8. Ve a `/mi-cuenta?tab=reseñas` → la reseña aparece en tu historial.
+1. `naturalvita.co/crear-cuenta`.
+2. Switch al form de password (debe estar por defecto).
+3. Llena nombre, email NUEVO (no usado antes), password ≥ 10 chars.
+4. Click "Crear cuenta".
+5. Mensaje: "Te enviamos un correo para confirmar tu cuenta".
+6. Revisa la bandeja del email usado.
+7. Click en el link de confirmación.
+8. Te lleva a `/mi-cuenta` con sesión activa.
 
-### Flujo 3: schema.org AggregateRating (SEO)
+### Flujo 3: recuperar password
 
-Después de tener al menos 1 reseña en un producto:
-1. Abre DevTools → Network → busca el request del HTML de la ficha.
-2. O ve directamente a: `/producto/tu-slug` y haz Ctrl+U (ver código fuente).
-3. Busca `"aggregateRating"` en el JSON-LD del `<script type="application/ld+json">`.
-4. Debe contener `ratingValue`, `reviewCount`, `bestRating: 5`, `worstRating: 1`.
+1. `naturalvita.co/recuperar-contrasena`.
+2. Ingresa email registrado en flow 2.
+3. Click "Enviar enlace".
+4. Revisa bandeja. Llega email con link.
+5. Click en link → te lleva a `/restablecer-contrasena`.
+6. Ingresa nueva contraseña + confirmación.
+7. Click "Cambiar contraseña".
+8. Te redirige a `/mi-cuenta?reset=ok` con sesión activa.
 
-Esto es lo que Google indexa para mostrar las estrellas directamente en
-los resultados de búsqueda (rich snippets). Requiere 1+ reseñas y que
-Google recrawlee la página (días a semanas después de publicar).
+### Flujo 4: vinculación automática de identidades
+
+Esta es la magia del diseño. Para validarla:
+
+1. Registro inicial: usa Flow 2 con email `tucorreo+test@gmail.com` y password.
+2. Logout.
+3. Vuelve a `/iniciar-sesion`. Click "Continuar con Google".
+4. Loguéate con la cuenta Google de **el mismo email** `tucorreo@gmail.com` (Gmail ignora el `+test`).
+5. Supabase reconoce el email, vincula la identidad Google al user existente.
+6. Verifica en BD:
+
+```sql
+SELECT u.email, array_agg(i.provider) FROM auth.users u
+JOIN auth.identities i ON i.user_id = u.id
+WHERE u.email = 'tucorreo@gmail.com'
+GROUP BY u.email;
+```
+
+Debe mostrar `['email', 'google']` — un solo user con múltiples providers.
 
 ---
 
-## Pendientes operativos antes de lanzamiento
+## Pendientes de Fase 2 (siguiente entrega)
 
-1. **`KLAVIYO_NEWSLETTER_LIST_ID`**: crear lista en Klaviyo UI → copiar ID → agregar variable en Vercel → redeploy. Sin esto la suscripción al newsletter se guarda en BD local pero no llega a Klaviyo.
+1. **Guest checkout**: permitir comprar sin sesión.
+2. **Detección automática de email en checkout**: si el email tiene cuenta, ofrecer login inline.
+3. **Link discreto en `/carrito`**: "¿Ya tienes cuenta? Iniciar sesión".
+4. **Reclamación de pedidos guest**: cuando alguien se registra con email que tenía pedidos guest, vinculación automática.
 
-2. **Reembolso B8XV** ($13.500) en panel Bold. Cuando se procese, el webhook VOID_APPROVED también actualiza el estado en BD automáticamente.
+## Pendientes de Fase 3
 
-3. **Sitemap GSC**: reintentar mañana en Google Search Console.
-
-4. **Flows Klaviyo UI** (sesión guiada ~30 min): Welcome Series + Abandoned Cart. Solo se hace después de que `KLAVIYO_NEWSLETTER_LIST_ID` esté configurado.
+1. **Card "Crea tu cuenta" post-compra**: en página de éxito del pedido, ofrecer 3 métodos de auth con datos pre-rellenados.
+2. **Tracking de conversión guest → cuenta**: evento Klaviyo "Account Created Post Purchase".
 
 ---
 
-## Hito 2 completo
+## Antes de publicar a producción (cuando quieras lanzar)
 
-Esta sesión cierra el Hito 2 completo:
+Mientras la app esté en modo "Pruebas" en Google Auth Platform, **solo los testers que agregaste pueden loguearse con Google**. Los demás verán "esta app no está verificada".
 
-| Sesión | Entrega | Estado |
-|---|---|---|
-| Sesión A | Páginas confianza + contacto + 404 | ✓ En producción |
-| Sesión B | Newsletter + cupones | ✓ ZIP entregado |
-| Sprint Klaviyo | Integración eventos | ✓ ZIP entregado |
-| Sesión C | Wishlist + reviews + schema.org | ✓ Este ZIP |
+Para abrir a todos los usuarios:
 
-El siguiente hito es **Hito 1.3 — Admins con invitaciones** (la tabla
-`admin_invitations` ya existe en BD, falta el CRUD en UI) o
-directamente **lanzamiento soft** invitando tus primeros 5-10 usuarios
-reales para alimentar Clarity y GSC con datos de tráfico humano.
+1. Ve a Google Cloud Console → Google Auth Platform → **Audiencia** (o "Público").
+2. Sección "Estado de publicación" → click **"Publicar app"**.
+3. Como solo pides scopes `email` y `profile` (no-sensibles), Google publica **inmediatamente**, sin proceso de revisión de 4-6 semanas.
+4. Confirmación: la app pasa de "Pruebas" a "En producción".
 
-Mi recomendación: lanzamiento soft primero. Con tráfico real en 1 semana
-tendrás datos para priorizar inteligentemente qué desarrollar después.
+**Hazlo justo antes del lanzamiento real**, no antes. Mientras tanto, en modo Pruebas estás protegido contra clientes reales que entren por error.
+
+---
+
+## Pendientes operativos vivos
+
+- Crear lista "Newsletter NaturalVita" en Klaviyo + variable `KLAVIYO_NEWSLETTER_LIST_ID`.
+- Reembolso B8XV ($13.500) en panel Bold.
+- Reintentar sitemap GSC.
+- Activar 2FA en cuenta Google `pedidos@naturalvita.co` (si no lo hiciste ya).
