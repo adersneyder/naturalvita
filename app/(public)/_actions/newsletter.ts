@@ -1,9 +1,7 @@
 "use server";
 
 import { after } from "next/server";
-import {
-  subscribeToNewsletter,
-} from "@/lib/newsletter/queries";
+import { subscribeToNewsletter } from "@/lib/newsletter/queries";
 import {
   publicApiRatelimit,
   getClientIpFromHeaders,
@@ -21,8 +19,7 @@ export type NewsletterSignupState = {
  *
  * Diseño:
  *   1. Honeypot anti-bot (campo "website" debe estar vacío).
- *   2. Validación de email mínima (la validación de formato la hace
- *      subscribeToNewsletter internamente).
+ *   2. Validación de email mínima (formato lo valida queries.ts).
  *   3. Rate limit por IP.
  *   4. Insert en BD propia (newsletter_subscribers).
  *   5. Side effects en after() para garantizar ejecución post-response:
@@ -31,8 +28,7 @@ export type NewsletterSignupState = {
  *
  * after() de Next.js 15 garantiza que el código se ejecute DESPUÉS de
  * enviar el response al cliente pero ANTES de freezing de la lambda en
- * Vercel. Esto evita los delays de minutos típicos del patrón
- * fire-and-forget (.catch sin await).
+ * Vercel. Esto evita los delays de minutos del patrón fire-and-forget.
  */
 export async function subscribeNewsletterAction(
   _prev: NewsletterSignupState,
@@ -41,7 +37,6 @@ export async function subscribeNewsletterAction(
   // 1. Honeypot
   const honeypot = formData.get("website")?.toString() ?? "";
   if (honeypot) {
-    // Bot detectado — respondemos OK fingido para no revelar el honeypot
     return { ok: true, message: "¡Gracias por suscribirte!" };
   }
 
@@ -67,7 +62,7 @@ export async function subscribeNewsletterAction(
     console.warn("[newsletter-action] ratelimit no disponible:", err);
   }
 
-  // 4. Insert en BD (subscribeToNewsletter valida formato internamente)
+  // 4. Insert en BD
   const result = await subscribeToNewsletter({ email, source: "footer" });
 
   if (!result.ok) {
@@ -109,3 +104,30 @@ export async function subscribeNewsletterAction(
           "[newsletter-action after] error enviando welcome:",
           err,
         );
+      }
+
+      // Suscribir a lista Klaviyo + evento "Newsletter Subscribed"
+      try {
+        const { trackNewsletterSubscribed } = await import(
+          "@/lib/events/track"
+        );
+        await trackNewsletterSubscribed({
+          email,
+          source: "footer",
+          couponCode: "WELCOME10",
+        });
+      } catch (err) {
+        console.error(
+          "[newsletter-action after] error en trackNewsletterSubscribed:",
+          err,
+        );
+      }
+    });
+  }
+
+  return {
+    ok: true,
+    message:
+      "¡Gracias por suscribirte! Te enviamos tu cupón WELCOME10 al correo.",
+  };
+}
