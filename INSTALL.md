@@ -1,199 +1,366 @@
-# NaturalVita · Fase 1 — Auth Multi-método
+# NaturalVita · Sprint 1 · Migración AWS SES + GEO base
 
-Build verde · 0 errores TS · 6 archivos.
-
-Esta fase activa **Google OAuth + email/password + magic link** en `/iniciar-sesion` y `/crear-cuenta`. El cliente elige el método que prefiera.
+Guía de instalación e integración. Sigue los pasos **en orden**.
 
 ---
 
-## Variables de entorno
+## Contexto
 
-**Sin variables nuevas en Vercel**. La configuración de OAuth Google vive en Supabase, no en el código del proyecto.
+Este ZIP implementa:
 
-Lo que ya configuraste:
-- ✓ Client ID de Google en Supabase Auth → Providers → Google.
-- ✓ Client Secret de Google en Supabase Auth → Providers → Google.
-- ✓ Callback URL `https://qheynvhdjdnqywyaekpq.supabase.co/auth/v1/callback` registrada en Google Cloud Console.
-
----
-
-## Archivos · qué hace cada uno
-
-### `app/(public)/iniciar-sesion/_actions/auth.ts` (NUEVO)
-
-Server actions de auth. Exporta 6 funciones:
-
-- **`signInWithGoogleAction`**: genera URL OAuth con scopes mínimos (`email`, `profile`). Redirige al usuario a Google. Después del consentimiento, Google redirige a `/auth/callback`. Param `prompt=select_account` fuerza el chooser de Google (útil si el usuario tiene múltiples cuentas).
-
-- **`signInWithPasswordAction`**: login con email + password. Mensaje de error genérico ("Correo o contraseña incorrectos") para no revelar si el email existe (defensa contra enumeración). Rate limit 30/min por IP.
-
-- **`signUpWithPasswordAction`**: registro con nombre + email + password. Validación: password ≥ 10 caracteres, nombre ≥ 2 caracteres. Si Supabase tiene "Confirm email" ON (recomendado), retorna mensaje "revisa tu correo" en lugar de redirigir. Detecta caso "ya registrado" con mensaje específico.
-
-- **`signInWithMagicLinkAction`**: el flow original sigue funcionando como fallback. Útil para clientes que no quieren contraseña.
-
-- **`requestPasswordResetAction`**: genera link de reset y manda email. **Siempre responde "ok" aunque el email no exista** (anti-enumeración). Rate limit más estricto (anti-abuse).
-
-- **`resetPasswordAction`**: cambia password después de hacer click en el email. Usa la sesión recovery que Supabase crea automáticamente. Valida que `password === password_confirm`.
-
-### `app/(public)/iniciar-sesion/_LoginForm.tsx` (REEMPLAZADO)
-
-Form rediseñado con jerarquía visual:
-1. Botón Google grande arriba (CTA principal).
-2. Separador "o con tu correo".
-3. Form email + password con link "¿La olvidaste?".
-4. Switch "Prefiero recibir un enlace por correo" → muestra form magic link.
-
-Maneja errores de OAuth callback vía `?error=mensaje` en URL.
-
-### `app/(public)/iniciar-sesion/_GoogleButton.tsx` (NUEVO)
-
-Botón "Continuar con Google" siguiendo guidelines visuales oficiales de Google Identity: fondo blanco, borde sutil, logo SVG multicolor a la izquierda. Reutilizable en login y signup.
-
-### `app/(public)/crear-cuenta/_SignupForm.tsx` (REEMPLAZADO)
-
-Form simétrico al de login con campos extra para signup:
-- Google OAuth.
-- Email + password + nombre completo + check de términos.
-- Magic link (sin password).
-
-Link al final: "¿Ya tienes cuenta? Iniciar sesión".
-
-### `app/(public)/recuperar-contrasena/_RecoverForm.tsx` (REEMPLAZADO)
-
-Form simple con un solo campo: email. Mensaje genérico de éxito (anti-enumeración).
-
-### `app/(public)/restablecer-contrasena/_ResetForm.tsx` (REEMPLAZADO)
-
-Form de cambio de password (después de hacer click en el email):
-- Nueva contraseña.
-- Confirmar contraseña.
-- Validación local: ambas iguales, mínimo 10 chars.
+1. **Migración completa de Resend a AWS SES**: `lib/email/client.ts` se reescribe para usar `@aws-sdk/client-sesv2`. La interfaz pública `sendEmail()` no cambia, así que las plantillas y server actions existentes siguen funcionando sin modificación.
+2. **Nuevo modelo de correos**: emails transaccionales salen desde `notificaciones@naturalvita.co`, marketing desde `hola@news.naturalvita.co`, ambos con `Reply-To: info@naturalvita.co`.
+3. **Webhook SNS** para procesar bounces y complaints automáticamente.
+4. **GEO base** (Generative Engine Optimization): `/llms.txt`, `/llms-full.txt`, `robots.txt` extendido con permisos explícitos para bots de IA.
+5. **Schema.org Organization** sin NIT ni teléfono según política del proyecto.
+6. **Adapter stub de Savia** para Sprint 2.
 
 ---
 
-## Cómo se conectan los métodos
+## 1 · Estructura de archivos a copiar
 
-**Una identidad por email**. Si Juan se registra con `juan@gmail.com` + password, y después intenta loguearse con Google `juan@gmail.com`, Supabase **vincula automáticamente** las dos identidades al mismo `auth.users.id`. La fila en `public.customers` se mantiene única.
+Copia el contenido del ZIP al raíz del repo `naturalvita`. Estructura:
 
-**Auto-onboarding sin cambios**. `lib/auth/customer-auth.ts` ya soporta crear fila customer en el primer login con cualquier método, leyendo `user_metadata.full_name` que Google pasa automáticamente al hacer OAuth.
-
-**Callback unificado**. `/auth/callback/route.ts` ya intercambia el `code` por sesión sin importar si viene de OAuth o magic link. Sin cambios necesarios.
-
----
-
-## Flujo OAuth completo (lo que verá el cliente)
-
-1. Cliente click "Continuar con Google" en `/iniciar-sesion`.
-2. Browser redirige a Google con la URL de OAuth.
-3. Cliente elige cuenta de Google y aprueba el consentimiento.
-4. Google redirige a `https://qheynvhdjdnqywyaekpq.supabase.co/auth/v1/callback?code=XXX`.
-5. Supabase procesa el code, crea/actualiza user, redirige a `https://naturalvita.co/auth/callback?code=YYY&next=/mi-cuenta`.
-6. Nuestra ruta `/auth/callback` intercambia el code por sesión.
-7. Redirige a `/mi-cuenta`.
-8. `requireCustomer()` detecta la sesión, busca customer en BD, no existe → crea fila usando metadata de Google (nombre, email).
-9. Cliente queda logueado, ve su dashboard.
-
-Tiempo total: ~3-5 segundos.
-
----
-
-## Aplicación
-
-1. Sube los 6 archivos al repo en sus rutas exactas.
-2. Vercel hará deploy automático ~1-2 min.
-3. Verifica build verde en Deployments.
-
----
-
-## Validación end-to-end
-
-### Flujo 1: Google OAuth (modo Testing)
-
-**Importante**: Google Auth Platform está en modo "Pruebas". Solo los emails que agregaste como "usuarios de prueba" podrán loguearse. Los demás verán pantalla de error.
-
-1. Abre `naturalvita.co/iniciar-sesion` en ventana **incógnito**.
-2. Click "Continuar con Google".
-3. Google muestra el chooser de cuenta. Elige `pedidos@naturalvita.co` o tu personal (los que registraste como tester).
-4. Acepta el consentimiento OAuth.
-5. Te redirige de vuelta a `/mi-cuenta` con sesión activa.
-6. Verifica en BD: `SELECT * FROM public.customers WHERE email='X'` — debe haber una fila con `full_name` de Google.
-
-### Flujo 2: registro con email + password
-
-1. `naturalvita.co/crear-cuenta`.
-2. Switch al form de password (debe estar por defecto).
-3. Llena nombre, email NUEVO (no usado antes), password ≥ 10 chars.
-4. Click "Crear cuenta".
-5. Mensaje: "Te enviamos un correo para confirmar tu cuenta".
-6. Revisa la bandeja del email usado.
-7. Click en el link de confirmación.
-8. Te lleva a `/mi-cuenta` con sesión activa.
-
-### Flujo 3: recuperar password
-
-1. `naturalvita.co/recuperar-contrasena`.
-2. Ingresa email registrado en flow 2.
-3. Click "Enviar enlace".
-4. Revisa bandeja. Llega email con link.
-5. Click en link → te lleva a `/restablecer-contrasena`.
-6. Ingresa nueva contraseña + confirmación.
-7. Click "Cambiar contraseña".
-8. Te redirige a `/mi-cuenta?reset=ok` con sesión activa.
-
-### Flujo 4: vinculación automática de identidades
-
-Esta es la magia del diseño. Para validarla:
-
-1. Registro inicial: usa Flow 2 con email `tucorreo+test@gmail.com` y password.
-2. Logout.
-3. Vuelve a `/iniciar-sesion`. Click "Continuar con Google".
-4. Loguéate con la cuenta Google de **el mismo email** `tucorreo@gmail.com` (Gmail ignora el `+test`).
-5. Supabase reconoce el email, vincula la identidad Google al user existente.
-6. Verifica en BD:
-
-```sql
-SELECT u.email, array_agg(i.provider) FROM auth.users u
-JOIN auth.identities i ON i.user_id = u.id
-WHERE u.email = 'tucorreo@gmail.com'
-GROUP BY u.email;
+```
+naturalvita/
+├── app/
+│   ├── api/webhooks/aws-sns/route.ts           [NUEVO]
+│   ├── llms.txt/route.ts                        [NUEVO]
+│   ├── llms-full.txt/route.ts                   [NUEVO]
+│   └── robots.txt/route.ts                      [NUEVO o reemplaza]
+├── components/
+│   └── schema/OrganizationSchema.tsx            [NUEVO]
+├── lib/
+│   ├── email/client.ts                          [REEMPLAZA versión Resend]
+│   ├── legal/company-info.ts                    [REEMPLAZA con nuevos emails]
+│   └── savia/transport/ses.ts                   [NUEVO]
+├── migrations/
+│   └── 20260512_create_email_suppressions.sql   [APLICAR en Supabase]
+└── .env.example                                 [REEMPLAZA]
 ```
 
-Debe mostrar `['email', 'google']` — un solo user con múltiples providers.
+---
+
+## 2 · Dependencias npm
+
+### Instalar
+
+```bash
+npm install @aws-sdk/client-sesv2@^3.700.0
+```
+
+### Desinstalar
+
+```bash
+npm uninstall resend
+```
+
+Verifica que `package.json` ya no tenga `resend` en `dependencies` después del uninstall.
+
+### Verificación
+
+```bash
+npm list @aws-sdk/client-sesv2
+# Debe mostrar versión instalada
+
+npm list resend
+# Debe responder "(empty)"
+```
 
 ---
 
-## Pendientes de Fase 2 (siguiente entrega)
+## 3 · Variables de entorno
 
-1. **Guest checkout**: permitir comprar sin sesión.
-2. **Detección automática de email en checkout**: si el email tiene cuenta, ofrecer login inline.
-3. **Link discreto en `/carrito`**: "¿Ya tienes cuenta? Iniciar sesión".
-4. **Reclamación de pedidos guest**: cuando alguien se registra con email que tenía pedidos guest, vinculación automática.
+### En Vercel (ya configuradas)
 
-## Pendientes de Fase 3
+| Variable | Valor |
+|---|---|
+| `AWS_REGION` | `us-east-1` |
+| `AWS_ACCESS_KEY_ID` | (de IAM user `naturalvita-ses-sender`) |
+| `AWS_SECRET_ACCESS_KEY` | (de IAM user `naturalvita-ses-sender`) |
+| `SES_FROM_TRANSACTIONAL` | `NaturalVita <notificaciones@naturalvita.co>` |
+| `SES_FROM_MARKETING` | `NaturalVita <hola@news.naturalvita.co>` |
+| `SES_REPLY_TO` | `info@naturalvita.co` |
 
-1. **Card "Crea tu cuenta" post-compra**: en página de éxito del pedido, ofrecer 3 métodos de auth con datos pre-rellenados.
-2. **Tracking de conversión guest → cuenta**: evento Klaviyo "Account Created Post Purchase".
+### En `.env.local` (desarrollo)
 
----
+Replicar las mismas variables. Para desarrollo local, **puedes** usar las mismas credenciales del IAM user de producción, o crear un IAM user separado `naturalvita-ses-sender-dev` con misma política. Recomendado lo segundo para auditoría más limpia.
 
-## Antes de publicar a producción (cuando quieras lanzar)
+### Eliminadas
 
-Mientras la app esté en modo "Pruebas" en Google Auth Platform, **solo los testers que agregaste pueden loguearse con Google**. Los demás verán "esta app no está verificada".
-
-Para abrir a todos los usuarios:
-
-1. Ve a Google Cloud Console → Google Auth Platform → **Audiencia** (o "Público").
-2. Sección "Estado de publicación" → click **"Publicar app"**.
-3. Como solo pides scopes `email` y `profile` (no-sensibles), Google publica **inmediatamente**, sin proceso de revisión de 4-6 semanas.
-4. Confirmación: la app pasa de "Pruebas" a "En producción".
-
-**Hazlo justo antes del lanzamiento real**, no antes. Mientras tanto, en modo Pruebas estás protegido contra clientes reales que entren por error.
+- `RESEND_API_KEY` (eliminada en Vercel ✅)
+- `RESEND_FROM_EMAIL`
+- Cualquier otra `RESEND_*`
 
 ---
 
-## Pendientes operativos vivos
+## 4 · Migración SQL en Supabase
 
-- Crear lista "Newsletter NaturalVita" en Klaviyo + variable `KLAVIYO_NEWSLETTER_LIST_ID`.
-- Reembolso B8XV ($13.500) en panel Bold.
-- Reintentar sitemap GSC.
-- Activar 2FA en cuenta Google `pedidos@naturalvita.co` (si no lo hiciste ya).
+Aplica la migración `migrations/20260512_create_email_suppressions.sql` vía Supabase MCP o pega el SQL en el SQL Editor de Supabase.
+
+Esto crea:
+- Tabla `email_suppressions` con índices y RLS
+- Función `is_email_suppressed(email)` para consulta rápida
+- Trigger `updated_at` automático
+
+### Verificación
+
+```sql
+-- Debe devolver la fila de definición
+SELECT * FROM email_suppressions LIMIT 1;
+
+-- Debe devolver false para email no suprimido
+SELECT is_email_suppressed('test@example.com');
+```
+
+---
+
+## 5 · Actualizar plantillas de email transaccionales
+
+El cliente `sendEmail()` migrado a SES funciona igual, pero conviene revisar las plantillas existentes para asegurar consistencia con el nuevo modelo:
+
+### Archivos a revisar
+
+```
+emails/_layout.tsx
+emails/order-paid.tsx
+emails/order-shipped.tsx
+emails/order-rejected.tsx
+emails/order-refunded.tsx
+emails/newsletter-welcome.tsx
+emails/contact-inquiry.tsx
+emails/contact-confirmation.tsx
+```
+
+### Cambios necesarios en cada uno
+
+**Buscar y reemplazar** (usando find/replace global del editor):
+
+| Buscar | Reemplazar |
+|---|---|
+| `pedidos@naturalvita.co` | `info@naturalvita.co` |
+| `From: 'pedidos@'` (en código) | El nuevo modelo lo gestiona el cliente automáticamente — eliminar líneas `from:` hardcodeadas de las llamadas a `sendEmail()` |
+
+### En el footer de cada email
+
+Verificar que aparezca:
+
+- Email de contacto: `info@naturalvita.co`
+- Dirección: la generada por `getFormattedAddress()` desde `company-info.ts`
+- Línea legal: `NaturalVita es una marca de Everlife Colombia S.A.S.`
+
+### Otros lugares en el repo que pueden mencionar `pedidos@`
+
+Búsqueda global recomendada:
+
+```bash
+grep -r "pedidos@naturalvita" --include="*.ts" --include="*.tsx" .
+```
+
+Resultados típicos a actualizar:
+- `app/(public)/iniciar-sesion/_LoginForm.tsx` (mensajes de error)
+- `app/contacto/page.tsx` (formulario de contacto)
+- `components/Footer.tsx` (footer del sitio)
+- Cualquier hardcoded copy del sitio
+
+Reemplazar todo `pedidos@naturalvita.co` por `info@naturalvita.co` para alinear con el nuevo modelo.
+
+---
+
+## 6 · Inyectar Schema.org Organization en el layout
+
+En `app/layout.tsx` (o `app/(public)/layout.tsx` según la estructura del repo), importa e incluye los componentes de schema en el `<head>`:
+
+```tsx
+import { OrganizationSchema, WebSiteSchema } from "@/components/schema/OrganizationSchema";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="es">
+      <head>
+        <OrganizationSchema isMainEntity />
+        <WebSiteSchema />
+      </head>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+`isMainEntity` solo en el layout que envuelve la home — para otras páginas no es necesario.
+
+### Validación
+
+Tras deploy a producción, validar con:
+
+- Google Rich Results Test: https://search.google.com/test/rich-results?url=https://naturalvita.co
+- Debe detectar `Organization` y `WebSite` sin errores
+
+---
+
+## 7 · Deploy a Vercel
+
+```bash
+git add .
+git commit -m "feat(sprint-1): migración AWS SES + GEO base + nuevo modelo de correos"
+git push origin main
+```
+
+Vercel desplegará automáticamente. Espera a que el build esté en verde.
+
+### Verificación post-deploy
+
+| Check | URL | Resultado esperado |
+|---|---|---|
+| robots.txt | `https://naturalvita.co/robots.txt` | Texto plano con bots IA permitidos |
+| llms.txt | `https://naturalvita.co/llms.txt` | Markdown con descripción NaturalVita |
+| llms-full.txt | `https://naturalvita.co/llms-full.txt` | Markdown extendido con productos |
+| schema.org | View source de home | Bloque `<script type="application/ld+json">` con Organization |
+
+---
+
+## 8 · Configurar SNS Subscription (DESPUÉS del deploy)
+
+Este paso solo se hace cuando el webhook ya esté desplegado en producción.
+
+### 8.1 · Crear Configuration Set en SES
+
+1. AWS Console → SES → sidebar → **Configuration sets**
+2. Click **Create set**
+3. Configuración:
+   - **Name:** `naturalvita-default`
+   - **Reputation tracking:** Enabled
+   - **Sending status:** Enabled
+4. Click **Create set**
+
+### 8.2 · Añadir Event Destination apuntando al SNS topic
+
+1. Dentro del Configuration Set → pestaña **Event destinations** → **Add destination**
+2. Configuración:
+   - **Event types:** marca `Bounces`, `Complaints`, `Deliveries`, `Rejects`
+   - **Destination name:** `sns-naturalvita-events`
+   - **Destination type:** Amazon SNS
+   - **SNS topic:** selecciona `naturalvita-ses-events`
+3. Click **Add destination**
+
+### 8.3 · Asociar Configuration Set a las identidades
+
+Para cada identidad (`naturalvita.co` y `news.naturalvita.co`):
+
+1. SES → Configuración → Identidades → click sobre la identidad
+2. Pestaña **Configuration set** (o **Default configuration set**) → **Edit**
+3. Selecciona `naturalvita-default` como default
+4. Save changes
+
+### 8.4 · Crear Suscripción HTTPS
+
+1. AWS Console → SNS → Topics → click sobre `naturalvita-ses-events`
+2. Pestaña **Subscriptions** → **Create subscription**
+3. Configuración:
+   - **Protocol:** HTTPS
+   - **Endpoint:** `https://naturalvita.co/api/webhooks/aws-sns`
+   - **Enable raw message delivery:** **NO marcar**
+4. Click **Create subscription**
+
+AWS hace POST inmediato al webhook con `SubscriptionConfirmation`. El código en `route.ts` confirma automáticamente.
+
+### 8.5 · Verificar que la suscripción quedó confirmada
+
+En SNS → Topics → `naturalvita-ses-events` → pestaña Subscriptions: debe aparecer la suscripción con status **Confirmed** (no "Pending confirmation").
+
+Si quedó pendiente, revisar logs de Vercel → Functions → buscar errores en `/api/webhooks/aws-sns`.
+
+---
+
+## 9 · Validación end-to-end
+
+### 9.1 · Enviar email transaccional de prueba (estando aún en sandbox)
+
+Mientras AWS aprueba la salida del sandbox, solo puedes enviar a `dev@naturalvita.co`. Hacer un test:
+
+```typescript
+// En cualquier server action o API route temporal
+import { sendEmail } from "@/lib/email/client";
+
+const result = await sendEmail({
+  to: "dev@naturalvita.co",
+  subject: "Test SES NaturalVita",
+  html: "<h1>Funciona</h1><p>Email enviado desde AWS SES.</p>",
+});
+
+console.log(result);
+// Esperado: { success: true, messageId: "..." }
+```
+
+Revisa la bandeja de `dev@naturalvita.co` en webmail Hostinger. Debe llegar el email.
+
+### 9.2 · Cuando AWS apruebe salida del sandbox
+
+Recibirás email de AWS confirmando producción. A partir de ahí puedes enviar a cualquier destinatario.
+
+### 9.3 · Mail-tester score
+
+Crear cuenta gratuita en https://mail-tester.com → te dan una dirección única. Envía un test desde el sitio (welcome, order confirmation) a esa dirección. Score esperado: **≥9/10**.
+
+Si score <9, revisar:
+- DKIM passes
+- SPF aligned
+- DMARC passes
+- No imágenes pesadas sin alt
+- Ratio html/text correcto
+
+---
+
+## 10 · Limpieza final (después de validación)
+
+### 10.1 · Eliminar registros DNS de Resend (opcional, después de 30 días sin uso)
+
+En Hostinger DNS, después de confirmar que SES funciona en producción durante 30 días, eliminar:
+
+```
+TXT  resend._domainkey   ...   (DKIM Resend antiguo)
+MX   send                10    feedback-smtp.sa-east-1.amazonses.com
+TXT  send                      "v=spf1 include:amazonses.com ~all"
+```
+
+**Importante:** estos registros son los que Resend usaba internamente (Resend envía vía AWS SES sa-east-1 por debajo). No los elimines antes de validar que el nuevo flujo (us-east-1 directo) funciona en producción durante un tiempo prudencial.
+
+### 10.2 · Eliminar referencias a Resend en el código
+
+```bash
+grep -r "resend" --include="*.ts" --include="*.tsx" -i .
+```
+
+Debe devolver vacío (excepto comentarios históricos si los hay).
+
+---
+
+## Troubleshooting
+
+### Error: "Email address is not verified"
+
+Estás en sandbox. Solo puedes enviar a direcciones verificadas. Espera aprobación AWS de salida del sandbox (24-72h) o verifica el destinatario manualmente en SES → Identidades → Crear identidad → tipo Email.
+
+### Error: "Could not connect to SES"
+
+Verificar variables `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` en Vercel. Si están bien, validar que el IAM user `naturalvita-ses-sender` tenga política `AmazonSESFullAccess`.
+
+### Webhook SNS no recibe eventos
+
+1. Verificar que la suscripción quedó **Confirmed** (no Pending)
+2. Verificar que el Configuration Set está asociado a la identidad de dominio
+3. Verificar logs Vercel → Functions → `/api/webhooks/aws-sns`
+4. Si los logs muestran "Invalid signature", verificar que `expectedTopicArnPattern` en el código coincida con el ARN real del topic (debería empezar con `arn:aws:sns:us-east-1:<account-id>:naturalvita-ses-`)
+
+---
+
+## Estado al cerrar Sprint 1
+
+- ✅ Resend removido completamente del stack
+- ✅ AWS SES como ESP único para transaccional + marketing
+- ✅ Modelo de correos limpio: `info@` público, `notificaciones@` transaccional, `hola@news` marketing
+- ✅ Webhook automático de bounces y complaints
+- ✅ GEO base operativo: llms.txt, robots.txt, schema.org
+- ✅ Base lista para Sprint 2 · Savia núcleo
+
+Próximo: Sprint 2 · construcción del engine de Savia, flows de welcome y carrito abandonado, dashboard `/admin/savia`.
