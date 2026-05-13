@@ -44,7 +44,7 @@ async function sendOrderReceivedEmail(orderNumber: string) {
     await sendEmail({
       to: data.customer_email,
       subject: `Recibimos tu pedido ${orderNumber}`,
-      template: OrderReceived({
+      react: OrderReceived({
         customerName: data.customer_name,
         orderNumber,
         totalCop: data.total_cop,
