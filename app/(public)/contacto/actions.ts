@@ -77,7 +77,7 @@ export async function submitContactForm(
   const receivedAt = new Date().toISOString();
 
   // 4. Enviar email interno a pedidos@ con reply-to al cliente
-  const internalEmail = COMPANY.publicEmail;
+  const internalEmail = COMPANY.email.public;
   const inquiryRes = await sendEmail({
     to: internalEmail,
     subject: `Contacto: ${data.subject}`,
