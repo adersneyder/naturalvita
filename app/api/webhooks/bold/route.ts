@@ -459,7 +459,7 @@ async function sendOrderRefundedEmail(order: OrderForEmail) {
   await sendEmail({
     to: order.customer_email,
     subject: `Reembolso procesado · pedido ${order.order_number}`,
-    template: OrderRefunded({
+    react: OrderRefunded({
       customerName: order.customer_name,
       orderNumber: order.order_number,
       totalCop: order.total_cop,
