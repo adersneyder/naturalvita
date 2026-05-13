@@ -53,10 +53,13 @@ export function OrganizationSchema({
       availableLanguage: ["Spanish", "es-CO"],
       areaServed: "CO",
     },
-    sameAs: [
-      // Cuando se creen redes sociales de NaturalVita, añadir aquí.
-      // Por ahora vacío para no apuntar a perfiles inexistentes.
-    ].filter(Boolean),
+   sameAs: [
+  COMPANY.social.instagram,
+  COMPANY.social.facebook,
+  COMPANY.social.tiktok,
+  COMPANY.social.youtube,
+  COMPANY.social.linkedin,
+].filter(Boolean) as string[],
     knowsAbout: [
       "Suplementos alimenticios",
       "Vitaminas",
