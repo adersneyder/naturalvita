@@ -109,7 +109,7 @@ export async function submitContactForm(
   const confirmRes = await sendEmail({
     to: data.email,
     subject: "Recibimos tu mensaje — NaturalVita",
-    template: ContactConfirmation({
+    react: ContactConfirmation({
       customerName: data.name,
       subject: data.subject,
     }),
