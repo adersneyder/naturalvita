@@ -99,8 +99,13 @@ export interface SendEmailInput {
 }
 
 export interface SendEmailResult {
+  /** Indica si el envío fue exitoso (nombre nuevo, preferido) */
   success: boolean;
+  /** Alias retro-compatible de success para código existente */
+  ok: boolean;
+  /** ID del mensaje en SES si el envío fue exitoso */
   messageId?: string;
+  /** Mensaje de error si el envío falló */
   error?: string;
 }
 
@@ -141,13 +146,17 @@ export async function sendEmail(
   try {
     // Validación mínima
     if (!input.to || (Array.isArray(input.to) && input.to.length === 0)) {
-      return { success: false, error: "Destinatario requerido" };
+      return { success: false, ok: false, error: "Destinatario requerido" };
     }
     if (!input.subject) {
-      return { success: false, error: "Asunto requerido" };
+      return { success: false, ok: false, error: "Asunto requerido" };
     }
     if (!input.html && !input.text && !input.react) {
-      return { success: false, error: "Contenido HTML, texto o React requerido" };
+      return {
+        success: false,
+        ok: false,
+        error: "Contenido HTML, texto o React requerido",
+      };
     }
 
     // Resolver contenido HTML y texto
@@ -214,6 +223,7 @@ export async function sendEmail(
 
     return {
       success: true,
+      ok: true,
       messageId: result.MessageId,
     };
   } catch (error) {
@@ -221,6 +231,7 @@ export async function sendEmail(
 
     return {
       success: false,
+      ok: false,
       error:
         error instanceof Error
           ? error.message
