@@ -131,7 +131,7 @@ export async function markOrderShipped(
   const emailRes = await sendEmail({
     to: order.customer_email,
     subject: `Tu pedido ${order.order_number} va en camino`,
-    template: OrderShipped({
+    react: OrderShipped({
       customerName: order.customer_name,
       orderNumber: order.order_number,
       trackingNumber: trackingClean,
