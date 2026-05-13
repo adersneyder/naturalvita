@@ -30,13 +30,13 @@ const URL = "https://naturalvita.co";
 const NIT = "901.717.753-4";
 
 // ============================================================
-// WhatsApp público
+// Teléfono y WhatsApp públicos
 // Placeholder en formato [+57 ___ ___ ____] hasta configurar
-// número real de WhatsApp Business. El código que lo consume
-// detecta el placeholder por su startsWith("[") y oculta el bloque.
+// números reales. El código que los consume detecta el placeholder
+// por su startsWith("[") y oculta el bloque automáticamente.
 // ============================================================
 
-const WHATSAPP_PLACEHOLDER = "[+57 ___ ___ ____]";
+const PHONE_PLACEHOLDER = "[+57 ___ ___ ____]";
 
 // ============================================================
 // Direcciones de email
@@ -81,7 +81,8 @@ export const COMPANY = {
   brandTagline: TAGLINE,
   siteUrl: URL,
   publicEmail: EMAIL_PUBLIC,
-  publicWhatsapp: WHATSAPP_PLACEHOLDER,
+  publicPhone: PHONE_PLACEHOLDER,
+  publicWhatsapp: PHONE_PLACEHOLDER,
   nit: NIT,
   addressStreet: ADDRESS.street,
   addressCity: ADDRESS.city,
