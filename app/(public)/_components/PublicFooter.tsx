@@ -52,9 +52,9 @@ function SocialLinks() {
 
   return (
     <ul className="mt-4 flex gap-3">
-      {instagram && (
+      {instagram ? (
         <li>
-          
+          <a
             href={instagram}
             target="_blank"
             rel="noopener noreferrer"
@@ -64,10 +64,10 @@ function SocialLinks() {
             <InstagramIcon />
           </a>
         </li>
-      )}
-      {facebook && (
+      ) : null}
+      {facebook ? (
         <li>
-          
+          <a
             href={facebook}
             target="_blank"
             rel="noopener noreferrer"
@@ -77,7 +77,7 @@ function SocialLinks() {
             <FacebookIcon />
           </a>
         </li>
-      )}
+      ) : null}
     </ul>
   );
 }
