@@ -403,7 +403,7 @@ async function sendOrderPaidEmail(order: OrderForEmail) {
   await sendEmail({
     to: order.customer_email,
     subject: `Pago confirmado · pedido ${order.order_number}`,
-    template: OrderPaid({
+    react: OrderPaid({
       customerName: order.customer_name,
       orderNumber: order.order_number,
       items: order.items.map((i) => ({
@@ -441,7 +441,7 @@ async function sendOrderRejectedEmail(
   await sendEmail({
     to: order.customer_email,
     subject: `No pudimos procesar tu pago · pedido ${order.order_number}`,
-    template: OrderRejected({
+    react: OrderRejected({
       customerName: order.customer_name,
       orderNumber: order.order_number,
       totalCop: order.total_cop,
