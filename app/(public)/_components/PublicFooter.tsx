@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { COMPANY, REGULATORY } from "@/lib/legal/company-info";
+import {
+  COMPANY,
+  REGULATORY,
+  getFormattedAddress,
+} from "@/lib/legal/company-info";
 import { NewsletterForm } from "./NewsletterForm";
 
 export default function PublicFooter() {
@@ -20,59 +24,67 @@ export default function PublicFooter() {
                 />
               </svg>
             </span>
-            <span className="font-serif text-lg">{COMPANY.brandName}</span>
+            <span className="font-serif text-lg">{COMPANY.brand}</span>
           </div>
           <p className="text-sm text-white/70 leading-relaxed">
-            {COMPANY.brandTagline}. Una marca de {COMPANY.parentBrand}.
+            {COMPANY.tagline}. Una marca de {COMPANY.parentBrand}.
           </p>
-          <ul className="mt-4 flex gap-3">
-            <li>
-              <a
-                href={COMPANY.instagramUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white/70 hover:text-white"
-                aria-label="Instagram"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="2" y="2" width="20" height="20" rx="5" />
-                  <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-                  <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
-                </svg>
-              </a>
-            </li>
-            <li>
-              <a
-                href={COMPANY.facebookUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white/70 hover:text-white"
-                aria-label="Facebook"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
-                </svg>
-              </a>
-            </li>
-          </ul>
+
+          {/* Redes sociales: solo se renderizan si existen */}
+          {(COMPANY.social.instagram || COMPANY.social.facebook) && (
+            <ul className="mt-4 flex gap-3">
+              {COMPANY.social.instagram && (
+                <li>
+                  
+                    href={COMPANY.social.instagram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white/70 hover:text-white"
+                    aria-label="Instagram"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <rect x="2" y="2" width="20" height="20" rx="5" />
+                      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+                    </svg>
+                  </a>
+                </li>
+              )}
+              {COMPANY.social.facebook && (
+                <li>
+                  
+                    href={COMPANY.social.facebook}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white/70 hover:text-white"
+                    aria-label="Facebook"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+                    </svg>
+                  </a>
+                </li>
+              )}
+            </ul>
+          )}
         </div>
 
         {/* Catálogo */}
@@ -97,7 +109,10 @@ export default function PublicFooter() {
               </Link>
             </li>
             <li>
-              <Link href="/mi-cuenta" className="text-white/85 hover:text-white">
+              <Link
+                href="/mi-cuenta"
+                className="text-white/85 hover:text-white"
+              >
                 Mi cuenta
               </Link>
             </li>
@@ -143,7 +158,7 @@ export default function PublicFooter() {
               </Link>
             </li>
             <li className="text-white/60 text-xs pt-1 leading-relaxed">
-              {COMPANY.publicEmail}
+              {COMPANY.email.public}
             </li>
           </ul>
         </div>
@@ -203,17 +218,10 @@ export default function PublicFooter() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-xs text-white/55">
           <div>
             <p>
-              © {year} {COMPANY.legalName} · NIT {COMPANY.nit}
+              © {year} {COMPANY.legalName}
             </p>
-            <p className="mt-1">
-              {COMPANY.addressStreet}, {COMPANY.addressCity},{" "}
-              {COMPANY.addressDepartment}, {COMPANY.addressCountry}
-            </p>
-            {REGULATORY.invimaImporterRegistration && (
-              <p className="mt-1">
-                Registro INVIMA: {REGULATORY.invimaImporterRegistration}
-              </p>
-            )}
+            <p className="mt-1">{getFormattedAddress()}</p>
+            <p className="mt-1">{REGULATORY.shortDisclaimer}</p>
           </div>
           <p className="md:text-right">
             Pagos seguros con Bold · Despachos a toda Colombia
