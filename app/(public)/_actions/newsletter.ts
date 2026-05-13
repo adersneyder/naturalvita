@@ -86,7 +86,7 @@ export async function subscribeNewsletterAction(
         await sendEmail({
           to: email,
           subject: "Bienvenido a NaturalVita · cupón WELCOME10 dentro",
-          template: NewsletterWelcome({
+          react: NewsletterWelcome({
             customerName: null,
             couponCode: "WELCOME10",
             couponDescription:
