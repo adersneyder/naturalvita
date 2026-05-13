@@ -9,6 +9,66 @@ import { NewsletterForm } from "./NewsletterForm";
 export default function PublicFooter() {
   const year = new Date().getFullYear();
 
+  // Render condicional de redes sociales como elementos JSX
+  // construidos antes del return para evitar JSX inline complejo.
+  const socialLinks: React.ReactNode[] = [];
+
+  if (COMPANY.social.instagram) {
+    socialLinks.push(
+      <li key="instagram">
+        
+          href={COMPANY.social.instagram}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-white/70 hover:text-white"
+          aria-label="Instagram"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="2" y="2" width="20" height="20" rx="5" />
+            <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+          </svg>
+        </a>
+      </li>,
+    );
+  }
+
+  if (COMPANY.social.facebook) {
+    socialLinks.push(
+      <li key="facebook">
+        
+          href={COMPANY.social.facebook}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-white/70 hover:text-white"
+          aria-label="Facebook"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+          </svg>
+        </a>
+      </li>,
+    );
+  }
+
   return (
     <footer className="mt-20 bg-[var(--color-leaf-900)] text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
@@ -30,60 +90,8 @@ export default function PublicFooter() {
             {COMPANY.tagline}. Una marca de {COMPANY.parentBrand}.
           </p>
 
-          {/* Redes sociales: solo se renderizan si existen */}
-          {(COMPANY.social.instagram || COMPANY.social.facebook) && (
-            <ul className="mt-4 flex gap-3">
-              {COMPANY.social.instagram && (
-                <li>
-                  
-                    href={COMPANY.social.instagram}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-white/70 hover:text-white"
-                    aria-label="Instagram"
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <rect x="2" y="2" width="20" height="20" rx="5" />
-                      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-                      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
-                    </svg>
-                  </a>
-                </li>
-              )}
-              {COMPANY.social.facebook && (
-                <li>
-                  
-                    href={COMPANY.social.facebook}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-white/70 hover:text-white"
-                    aria-label="Facebook"
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
-                    </svg>
-                  </a>
-                </li>
-              )}
-            </ul>
+          {socialLinks.length > 0 && (
+            <ul className="mt-4 flex gap-3">{socialLinks}</ul>
           )}
         </div>
 
