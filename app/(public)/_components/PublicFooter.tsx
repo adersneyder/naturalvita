@@ -1,5 +1,4 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
 import {
   COMPANY,
   REGULATORY,
@@ -7,67 +6,88 @@ import {
 } from "@/lib/legal/company-info";
 import { NewsletterForm } from "./NewsletterForm";
 
+function InstagramIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="2" y="2" width="20" height="20" rx="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+    </svg>
+  );
+}
+
+function FacebookIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+    </svg>
+  );
+}
+
+function SocialLinks() {
+  const instagram = COMPANY.social.instagram;
+  const facebook = COMPANY.social.facebook;
+
+  if (!instagram && !facebook) {
+    return null;
+  }
+
+  return (
+    <ul className="mt-4 flex gap-3">
+      {instagram && (
+        <li>
+          
+            href={instagram}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-white/70 hover:text-white"
+            aria-label="Instagram"
+          >
+            <InstagramIcon />
+          </a>
+        </li>
+      )}
+      {facebook && (
+        <li>
+          
+            href={facebook}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-white/70 hover:text-white"
+            aria-label="Facebook"
+          >
+            <FacebookIcon />
+          </a>
+        </li>
+      )}
+    </ul>
+  );
+}
+
 export default function PublicFooter() {
   const year = new Date().getFullYear();
-
-  const instagramItem: ReactNode = COMPANY.social.instagram ? (
-    <li key="instagram">
-      
-        href={COMPANY.social.instagram}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-white/70 hover:text-white"
-        aria-label="Instagram"
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <rect x="2" y="2" width="20" height="20" rx="5" />
-          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-          <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
-        </svg>
-      </a>
-    </li>
-  ) : null;
-
-  const facebookItem: ReactNode = COMPANY.social.facebook ? (
-    <li key="facebook">
-      
-        href={COMPANY.social.facebook}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-white/70 hover:text-white"
-        aria-label="Facebook"
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
-        </svg>
-      </a>
-    </li>
-  ) : null;
-
-  const hasSocialLinks = instagramItem !== null || facebookItem !== null;
 
   return (
     <footer className="mt-20 bg-[var(--color-leaf-900)] text-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
-        {/* Brand */}
         <div className="col-span-2 md:col-span-1">
           <div className="flex items-center gap-2 mb-3">
             <span className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
@@ -84,16 +104,9 @@ export default function PublicFooter() {
           <p className="text-sm text-white/70 leading-relaxed">
             {COMPANY.tagline}. Una marca de {COMPANY.parentBrand}.
           </p>
-
-          {hasSocialLinks && (
-            <ul className="mt-4 flex gap-3">
-              {instagramItem}
-              {facebookItem}
-            </ul>
-          )}
+          <SocialLinks />
         </div>
 
-        {/* Catálogo */}
         <div>
           <h3 className="font-serif text-sm uppercase tracking-wider text-white/60 mb-3 m-0">
             Catálogo
@@ -125,7 +138,6 @@ export default function PublicFooter() {
           </ul>
         </div>
 
-        {/* Soporte */}
         <div>
           <h3 className="font-serif text-sm uppercase tracking-wider text-white/60 mb-3 m-0">
             Soporte
@@ -169,7 +181,6 @@ export default function PublicFooter() {
           </ul>
         </div>
 
-        {/* Legal */}
         <div>
           <h3 className="font-serif text-sm uppercase tracking-wider text-white/60 mb-3 m-0">
             Legal
@@ -203,7 +214,6 @@ export default function PublicFooter() {
         </div>
       </div>
 
-      {/* Newsletter signup */}
       <div className="border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
           <div className="md:max-w-md">
@@ -219,7 +229,6 @@ export default function PublicFooter() {
         </div>
       </div>
 
-      {/* Bottom bar con datos legales */}
       <div className="border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-xs text-white/55">
           <div>
