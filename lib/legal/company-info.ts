@@ -19,6 +19,12 @@ export const COMPANY = {
   /** Razón social legal (responsable del tratamiento de datos) */
   legalName: "Everlife Colombia S.A.S.",
 
+  /** Marca matriz */
+  parentBrand: "Everlife Colombia",
+
+  /** Eslogan público */
+  tagline: "Productos naturales seleccionados para tu bienestar",
+
   /** Dominio principal */
   domain: "naturalvita.co",
 
@@ -27,34 +33,10 @@ export const COMPANY = {
 
   // ---------- Direcciones de email ----------
   email: {
-    /**
-     * Email público de contacto. Aparece en footer, /contacto,
-     * redes sociales, firma de marketing. Atendido por humanos.
-     */
     public: "info@naturalvita.co",
-
-    /**
-     * Identidad de envío de emails transaccionales (confirmación
-     * de pedido, pago, envío). No tiene buzón humano. Reply-To
-     * redirige al email público.
-     */
     notifications: "notificaciones@naturalvita.co",
-
-    /**
-     * Identidad de envío de emails de marketing de Savia.
-     * No tiene buzón humano. Reply-To al email público.
-     */
     marketing: "hola@news.naturalvita.co",
-
-    /**
-     * Email técnico interno. Owner de plataformas externas
-     * (AWS, Vercel, Supabase, Bold, etc.). No expuesto al cliente.
-     */
     tech: "dev@naturalvita.co",
-
-    /**
-     * Buzón técnico para reportes DMARC. No leído por humanos.
-     */
     dmarc: "dmarc@naturalvita.co",
   },
 
@@ -69,9 +51,9 @@ export const COMPANY = {
     postalCode: "050025",
   },
 
-  // ---------- Redes sociales (pendientes de crear para NaturalVita) ----------
+  // ---------- Redes sociales (pendientes de crear) ----------
   social: {
-    instagram: null as string | null, // "https://instagram.com/naturalvita.co"
+    instagram: null as string | null,
     facebook: null as string | null,
     tiktok: null as string | null,
     youtube: null as string | null,
@@ -80,13 +62,41 @@ export const COMPANY = {
 
   // ---------- Cumplimiento legal ----------
   legal: {
-    /** Ley colombiana de protección de datos personales */
     privacyLaw: "Ley 1581 de 2012 (Habeas Data)",
     privacyAuthority: "Superintendencia de Industria y Comercio (SIC)",
   },
 } as const;
 
-// ---------- Helpers ----------
+// ============================================================
+// Información regulatoria
+// ============================================================
+
+export const REGULATORY = {
+  /** Marco legal de protección de datos personales en Colombia */
+  habeasDataLaw: "Ley 1581 de 2012",
+
+  /** Autoridad regulatoria de protección de datos */
+  privacyAuthority: "Superintendencia de Industria y Comercio (SIC)",
+
+  /** Nombre de la autoridad sanitaria colombiana */
+  healthAuthority: "INVIMA",
+
+  /** Nombre completo del INVIMA para textos legales */
+  healthAuthorityFullName:
+    "Instituto Nacional de Vigilancia de Medicamentos y Alimentos",
+
+  /** Disclaimer general para productos suplementicios */
+  supplementDisclaimer:
+    "Los suplementos alimenticios no son medicamentos y no están destinados a diagnosticar, tratar, curar o prevenir ninguna enfermedad. Consulte a su médico antes de iniciar cualquier suplementación si toma medicamentos, está embarazada, lactando o tiene condiciones médicas.",
+
+  /** Disclaimer corto para footer */
+  shortDisclaimer:
+    "Todos los productos cuentan con registro sanitario INVIMA vigente.",
+} as const;
+
+// ============================================================
+// Helpers
+// ============================================================
 
 /**
  * Dirección completa formateada para mostrar en footer o emails.
@@ -103,4 +113,12 @@ export function getFormattedAddress(): string {
  */
 export function getLegalLine(): string {
   return `${COMPANY.brand} es una marca de ${COMPANY.legalName}.`;
+}
+
+/**
+ * Texto regulatorio completo para footer del sitio
+ * o disclaimers legales.
+ */
+export function getRegulatoryFooter(): string {
+  return `${COMPANY.brand} es una marca de ${COMPANY.legalName}. ${REGULATORY.shortDisclaimer} Datos tratados conforme a la ${REGULATORY.habeasDataLaw}.`;
 }
