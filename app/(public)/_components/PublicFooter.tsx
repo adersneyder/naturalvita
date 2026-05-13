@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   COMPANY,
-  REGULATORY,
   getFormattedAddress,
 } from "@/lib/legal/company-info";
 import { NewsletterForm } from "./NewsletterForm";
@@ -9,8 +8,8 @@ import { NewsletterForm } from "./NewsletterForm";
 function InstagramIcon() {
   return (
     <svg
-      width="20"
-      height="20"
+      width="18"
+      height="18"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -28,8 +27,8 @@ function InstagramIcon() {
 function FacebookIcon() {
   return (
     <svg
-      width="20"
-      height="20"
+      width="18"
+      height="18"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -51,14 +50,14 @@ function SocialLinks() {
   }
 
   return (
-    <ul className="mt-4 flex gap-3">
+    <ul className="flex gap-3">
       {instagram ? (
         <li>
-          <a
+          
             href={instagram}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-white/70 hover:text-white"
+            className="text-white/70 hover:text-white transition-colors"
             aria-label="Instagram"
           >
             <InstagramIcon />
@@ -67,11 +66,11 @@ function SocialLinks() {
       ) : null}
       {facebook ? (
         <li>
-          <a
+          
             href={facebook}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-white/70 hover:text-white"
+            className="text-white/70 hover:text-white transition-colors"
             aria-label="Facebook"
           >
             <FacebookIcon />
@@ -87,157 +86,118 @@ export default function PublicFooter() {
 
   return (
     <footer className="mt-20 bg-[var(--color-leaf-900)] text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
-        <div className="col-span-2 md:col-span-1">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M12 2c-2 4-6 6-6 11a6 6 0 0012 0c0-5-4-7-6-11z"
-                  fill="white"
-                  opacity="0.9"
-                />
-              </svg>
-            </span>
-            <span className="font-serif text-lg">{COMPANY.brand}</span>
+      {/* ============================================ */}
+      {/* Sección 1 · Zona principal                   */}
+      {/* ============================================ */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
+        <div className="grid md:grid-cols-2 gap-10 md:gap-16">
+          {/* Brand + tagline + redes */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M12 2c-2 4-6 6-6 11a6 6 0 0012 0c0-5-4-7-6-11z"
+                    fill="white"
+                    opacity="0.9"
+                  />
+                </svg>
+              </span>
+              <span className="font-serif text-xl">{COMPANY.brand}</span>
+            </div>
+            <p className="text-sm text-white/70 leading-relaxed mb-5 max-w-sm">
+              {COMPANY.tagline}. Una marca de {COMPANY.parentBrand}.
+            </p>
+            <SocialLinks />
           </div>
-          <p className="text-sm text-white/70 leading-relaxed">
-            {COMPANY.tagline}. Una marca de {COMPANY.parentBrand}.
-          </p>
-          <SocialLinks />
-        </div>
 
-        <div>
-          <h3 className="font-serif text-sm uppercase tracking-wider text-white/60 mb-3 m-0">
-            Catálogo
-          </h3>
-          <ul className="space-y-2 text-sm">
-            <li>
-              <Link href="/tienda" className="text-white/85 hover:text-white">
-                Toda la tienda
-              </Link>
-            </li>
-            <li>
-              <Link href="/buscar" className="text-white/85 hover:text-white">
-                Buscar productos
-              </Link>
-            </li>
-            <li>
-              <Link href="/carrito" className="text-white/85 hover:text-white">
-                Mi carrito
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/mi-cuenta"
-                className="text-white/85 hover:text-white"
-              >
-                Mi cuenta
-              </Link>
-            </li>
-          </ul>
-        </div>
-
-        <div>
-          <h3 className="font-serif text-sm uppercase tracking-wider text-white/60 mb-3 m-0">
-            Soporte
-          </h3>
-          <ul className="space-y-2 text-sm">
-            <li>
-              <Link
-                href="/sobre-nosotros"
-                className="text-white/85 hover:text-white"
-              >
-                Sobre nosotros
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/preguntas-frecuentes"
-                className="text-white/85 hover:text-white"
-              >
-                Preguntas frecuentes
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/contacto"
-                className="text-white/85 hover:text-white"
-              >
-                Contacto
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/legal/envios"
-                className="text-white/85 hover:text-white"
-              >
-                Envíos y devoluciones
-              </Link>
-            </li>
-            <li className="text-white/60 text-xs pt-1 leading-relaxed">
-              {COMPANY.email.public}
-            </li>
-          </ul>
-        </div>
-
-        <div>
-          <h3 className="font-serif text-sm uppercase tracking-wider text-white/60 mb-3 m-0">
-            Legal
-          </h3>
-          <ul className="space-y-2 text-sm">
-            <li>
-              <Link
-                href="/legal/privacidad"
-                className="text-white/85 hover:text-white"
-              >
-                Política de datos
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/legal/terminos"
-                className="text-white/85 hover:text-white"
-              >
-                Términos y condiciones
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/legal/envios"
-                className="text-white/85 hover:text-white"
-              >
-                Política de envíos
-              </Link>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-          <div className="md:max-w-md">
+          {/* Newsletter */}
+          <div className="md:max-w-md md:justify-self-end w-full">
             <h3 className="font-serif text-lg mb-1">
               Recibe novedades y ofertas
             </h3>
-            <p className="text-xs text-white/65 leading-relaxed">
+            <p className="text-xs text-white/65 leading-relaxed mb-3">
               Suscríbete y recibe un cupón de bienvenida para tu primera
               compra. Sin spam, puedes cancelar cuando quieras.
             </p>
+            <NewsletterForm />
           </div>
-          <NewsletterForm />
         </div>
+
+        {/* Navegación inline en 2 líneas */}
+        <nav className="mt-12 pt-8 border-t border-white/10">
+          <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-white/85">
+            <li>
+              <Link href="/tienda" className="hover:text-white transition-colors">
+                Tienda
+              </Link>
+            </li>
+            <li className="text-white/30">·</li>
+            <li>
+              <Link href="/buscar" className="hover:text-white transition-colors">
+                Buscar productos
+              </Link>
+            </li>
+            <li className="text-white/30">·</li>
+            <li>
+              <Link href="/sobre-nosotros" className="hover:text-white transition-colors">
+                Sobre nosotros
+              </Link>
+            </li>
+            <li className="text-white/30">·</li>
+            <li>
+              <Link href="/preguntas-frecuentes" className="hover:text-white transition-colors">
+                Preguntas frecuentes
+              </Link>
+            </li>
+            <li className="text-white/30">·</li>
+            <li>
+              <Link href="/contacto" className="hover:text-white transition-colors">
+                Contacto
+              </Link>
+            </li>
+            <li className="text-white/30">·</li>
+            <li>
+              <Link href="/mi-cuenta" className="hover:text-white transition-colors">
+                Mi cuenta
+              </Link>
+            </li>
+            <li className="text-white/30">·</li>
+            <li>
+              <Link href="/legal/privacidad" className="hover:text-white transition-colors">
+                Política de datos
+              </Link>
+            </li>
+            <li className="text-white/30">·</li>
+            <li>
+              <Link href="/legal/terminos" className="hover:text-white transition-colors">
+                Términos
+              </Link>
+            </li>
+            <li className="text-white/30">·</li>
+            <li>
+              <Link href="/legal/envios" className="hover:text-white transition-colors">
+                Envíos
+              </Link>
+            </li>
+          </ul>
+        </nav>
       </div>
 
+      {/* ============================================ */}
+      {/* Sección 2 · Bottom legal compacta            */}
+      {/* ============================================ */}
       <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3 text-xs text-white/55">
-          <div>
-            <p>
-              © {year} {COMPANY.legalName}
-            </p>
-            <p className="mt-1">{getFormattedAddress()}</p>
-            <p className="mt-1">{REGULATORY.shortDisclaimer}</p>
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-white/55">
+          <p>
+            © {year} {COMPANY.legalName} · {getFormattedAddress()} ·{" "}
+            
+              href={`mailto:${COMPANY.email.public}`}
+              className="hover:text-white transition-colors"
+            >
+              {COMPANY.email.public}
+            </a>
+          </p>
           <p className="md:text-right">
             Pagos seguros con Bold · Despachos a toda Colombia
           </p>
