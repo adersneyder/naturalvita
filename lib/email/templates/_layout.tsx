@@ -4,16 +4,17 @@ import {
   Head,
   Hr,
   Html,
-  Img,
   Preview,
   Section,
   Tailwind,
   Text,
 } from "@react-email/components";
 import type { ReactNode } from "react";
+import { COMPANY, getFormattedAddress } from "@/lib/legal/company-info";
 
 /**
- * Layout base para todos los emails transaccionales de NaturalVita.
+ * Layout base para todos los emails de NaturalVita (transaccionales
+ * y marketing).
  *
  * Decisiones:
  *   - Colores hex hardcoded (no CSS vars) — los clientes de email no soportan
@@ -22,9 +23,11 @@ import type { ReactNode } from "react";
  *     classes a inline styles que sí funcionan en clientes de email).
  *   - Header sobrio con wordmark, no logo gráfico (mejor compatibilidad y
  *     más rápido de cargar).
- *   - Footer con info de Everlife + dirección física + unsubscribe (los
- *     transaccionales legalmente no requieren unsubscribe pero es buena
- *     práctica para marketing futuro).
+ *   - Footer con info de Everlife + dirección física desde fuente única
+ *     lib/legal/company-info.ts. Sin texto contextual hardcoded — la info
+ *     legal habla por sí sola.
+ *   - Si se pasa unsubscribeUrl, agrega link de baja (RFC 8058). Solo
+ *     necesario en emails de marketing.
  */
 
 const COLORS = {
@@ -51,7 +54,7 @@ export function EmailLayout({
   /**
    * Si se proporciona, agrega link "Cancelar suscripción" al footer.
    * Solo necesario en emails de marketing (newsletter, campañas).
-   * Los transaccionales (orden, envío) lo omiten.
+   * Los transaccionales (orden, envío, contacto) lo omiten.
    */
   unsubscribeUrl?: string;
 }) {
@@ -86,7 +89,7 @@ export function EmailLayout({
                   letterSpacing: "-0.02em",
                 }}
               >
-                NaturalVita
+                {COMPANY.brand}
               </Text>
               <Text
                 style={{
@@ -125,35 +128,41 @@ export function EmailLayout({
                   lineHeight: 1.5,
                 }}
               >
-                NaturalVita es una marca de Everlife Colombia S.A.S.
+                {COMPANY.brand} es una marca de {COMPANY.legalName}.
                 <br />
-                Bogotá, Colombia · pedidos@naturalvita.co
+                {getFormattedAddress()}
+                <br />
+                
+                  href={`mailto:${COMPANY.email.public}`}
+                  style={{
+                    color: COLORS.earth700,
+                    textDecoration: "none",
+                  }}
+                >
+                  {COMPANY.email.public}
+                </a>
               </Text>
-              <Text
-                style={{
-                  fontSize: "11px",
-                  color: COLORS.earth500,
-                  textAlign: "center",
-                  margin: "8px 0 0",
-                }}
-              >
-                {unsubscribeUrl ? (
-                  <>
-                    ¿Ya no quieres recibir nuestros correos?{" "}
-                    <a
-                      href={unsubscribeUrl}
-                      style={{
-                        color: COLORS.earth700,
-                        textDecoration: "underline",
-                      }}
-                    >
-                      Cancelar suscripción
-                    </a>
-                  </>
-                ) : (
-                  "Este es un correo transaccional sobre tu pedido."
-                )}
-              </Text>
+              {unsubscribeUrl ? (
+                <Text
+                  style={{
+                    fontSize: "11px",
+                    color: COLORS.earth500,
+                    textAlign: "center",
+                    margin: "12px 0 0",
+                  }}
+                >
+                  ¿Ya no quieres recibir nuestros correos?{" "}
+                  
+                    href={unsubscribeUrl}
+                    style={{
+                      color: COLORS.earth700,
+                      textDecoration: "underline",
+                    }}
+                  >
+                    Cancelar suscripción
+                  </a>
+                </Text>
+              ) : null}
             </Section>
           </Container>
         </Body>
