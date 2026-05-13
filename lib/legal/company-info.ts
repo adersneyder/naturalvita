@@ -51,10 +51,10 @@ export const COMPANY = {
     postalCode: "050025",
   },
 
-  // ---------- Redes sociales (pendientes de crear) ----------
+  // ---------- Redes sociales ----------
   social: {
-    instagram: null as string | null,
-    facebook: null as string | null,
+    instagram: "https://instagram.com/naturalvita.co" as string | null,
+    facebook: "https://facebook.com/naturalvita.co" as string | null,
     tiktok: null as string | null,
     youtube: null as string | null,
     linkedin: null as string | null,
