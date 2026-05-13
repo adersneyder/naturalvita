@@ -81,7 +81,7 @@ export async function submitContactForm(
   const inquiryRes = await sendEmail({
     to: internalEmail,
     subject: `Contacto: ${data.subject}`,
-    template: ContactInquiry({
+    react: ContactInquiry({
       fromName: data.name,
       fromEmail: data.email,
       fromPhone: phone,
