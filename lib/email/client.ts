@@ -31,7 +31,7 @@
 
 import { Resend } from "resend";
 import { render } from "@react-email/render";
-import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { ReactElement } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -161,26 +161,6 @@ function getResendClient(): Resend {
   return _resend;
 }
 
-let _supabaseAdmin: ReturnType<typeof createClient> | null = null;
-
-function getSupabaseAdmin() {
-  if (_supabaseAdmin) return _supabaseAdmin;
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceKey) {
-    throw new Error(
-      "[email/client] Faltan NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY.",
-    );
-  }
-
-  _supabaseAdmin = createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  return _supabaseAdmin;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Utilidades internas
 // ─────────────────────────────────────────────────────────────────────────────
@@ -201,7 +181,7 @@ function extractEmail(addr: string): string {
  */
 async function isAllowedRecipient(email: string): Promise<boolean> {
   try {
-    const supabase = getSupabaseAdmin();
+    const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("email_suppressions")
       .select("email")
