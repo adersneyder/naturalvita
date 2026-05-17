@@ -103,6 +103,13 @@ export interface SendEmailResult {
   /** `true` si el envío fue aceptado por Resend */
   success: boolean;
 
+  /**
+   * Alias de `success` para compatibilidad con código pre-existente
+   * que consume el cliente. Siempre tiene el mismo valor que `success`.
+   * Nuevos consumidores deberían usar `success`.
+   */
+  ok: boolean;
+
   /** ID del mensaje en Resend para tracking de eventos */
   messageId?: string;
 
@@ -277,6 +284,7 @@ export async function sendEmail(
   if (!to || !subject || (!react && !htmlInput)) {
     return {
       success: false,
+      ok: false,
       error: "invalid_input",
       errorMessage: "Faltan campos requeridos: to, subject, y react/html.",
     };
@@ -291,6 +299,7 @@ export async function sendEmail(
       );
       return {
         success: false,
+        ok: false,
         error: "suppressed",
         errorMessage: `${extractEmail(to)} está en la lista de suppression.`,
       };
@@ -309,6 +318,7 @@ export async function sendEmail(
       console.error("[email/client] Error renderizando React email:", err);
       return {
         success: false,
+        ok: false,
         error: "internal_error",
         errorMessage: "Falló el render de la plantilla React.",
       };
@@ -338,6 +348,7 @@ export async function sendEmail(
       console.error("[email/client] Resend devolvió error:", error);
       return {
         success: false,
+        ok: false,
         error: "transport_error",
         errorMessage: error.message,
       };
@@ -345,6 +356,7 @@ export async function sendEmail(
 
     return {
       success: true,
+      ok: true,
       messageId: data?.id,
     };
   } catch (err) {
@@ -353,6 +365,7 @@ export async function sendEmail(
     console.error("[email/client] Excepción en envío:", err);
     return {
       success: false,
+      ok: false,
       error: "internal_error",
       errorMessage: message,
     };

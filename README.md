@@ -1,65 +1,26 @@
-# NaturalVita
+# Fix · Sprint 2 S0 · Compatibilidad ok/success en SendEmailResult
 
-Tienda online de productos naturales en Colombia.
-
-## Stack técnico
-
-- **Next.js 15** (App Router) + **React 19** + **TypeScript**
-- **Tailwind CSS v4** para estilos
-- **Supabase** para base de datos, autenticación y storage
-- **Bold** para procesamiento de pagos (Colombia)
-- **Claude API** para chatbot de asesoría
-- **Klaviyo** para email marketing y flujos de retención
-- **Vercel** para hosting y despliegue continuo
-
-## Estructura
+## Problema
+El build de Vercel falló en type-check:
 
 ```
-naturalvita/
-├── app/                    # Páginas y layouts (App Router)
-│   ├── globals.css         # Estilos globales + tema Tailwind
-│   ├── layout.tsx          # Layout raíz con SEO
-│   └── page.tsx            # Home
-├── lib/
-│   └── supabase/           # Clientes de Supabase
-│       ├── client.ts       # Cliente para componentes browser
-│       └── server.ts       # Cliente para Server Components
-├── .env.local.example      # Plantilla de variables de entorno
-└── package.json
+./app/(public)/contacto/actions.ts:96:19
+Type error: Property 'ok' does not exist on type 'SendEmailResult'.
 ```
 
-## Configuración local
+El cliente entregado usaba `success: boolean`, pero el código existente
+del repo consume `.ok`.
 
-1. Instalar dependencias:
-   ```bash
-   npm install
-   ```
+## Fix
+`SendEmailResult` ahora incluye AMBOS campos como alias. Siempre
+tienen el mismo valor. Esto preserva compatibilidad con `actions.ts`,
+`webhooks/bold/route.ts`, y cualquier otro consumidor pre-existente
+sin obligarlos a cambiar.
 
-2. Copiar variables de entorno:
-   ```bash
-   cp .env.local.example .env.local
-   ```
+## Aplicar
+1. Reemplaza `lib/email/client.ts` en el repo con el de este ZIP.
+2. Commit en GitHub: `Sprint 2 S0 · Fix: compat ok/success en SendEmailResult`.
+3. Vercel deploya automáticamente.
 
-3. Rellenar valores reales en `.env.local`.
-
-4. Correr en desarrollo:
-   ```bash
-   npm run dev
-   ```
-
-   Abrir [http://localhost:3000](http://localhost:3000).
-
-## Despliegue
-
-Conectado a Vercel — cada push a `main` despliega automáticamente.
-
-## Roadmap
-
-- [x] Setup inicial Next.js + Tailwind
-- [ ] Schema de base de datos en Supabase (productos, usuarios, carritos)
-- [ ] Scraper de laboratorios proveedores
-- [ ] Catálogo y página de producto
-- [ ] Carrito y checkout con Bold
-- [ ] Chatbot con Claude API
-- [ ] Flujos de email con Klaviyo
-- [ ] SEO técnico y schema.org
+Nada más cambia. Variables Vercel, webhook Resend, todo lo demás
+sigue igual.
