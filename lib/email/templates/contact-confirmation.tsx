@@ -40,7 +40,7 @@ export function ContactConfirmation({
         }}
       >
         Gracias por escribirnos. Recibimos tu mensaje sobre{" "}
-        <strong style={{ color: C.leaf900 }}>{subject}</strong> y un humano de
+        <strong style={{ color: C.leaf900 }}>{subject}</strong> y un miembro de
         nuestro equipo te responderá en menos de un día hábil al mismo correo
         desde el que escribiste.
       </Text>
