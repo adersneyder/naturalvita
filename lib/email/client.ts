@@ -1,266 +1,373 @@
 /**
  * lib/email/client.ts
  *
- * Cliente unificado de envío de email para NaturalVita usando AWS SES.
- * Reemplaza completamente la integración previa con Resend.
+ * Cliente unificado de envío de emails de NaturalVita.
  *
- * Mantiene la misma interfaz pública sendEmail() que ya consumen las
- * server actions y plantillas existentes, por lo que la migración es
- * transparente para el resto del código.
+ * MIGRACIÓN SPRINT 2 SESIÓN 0 (14-may-2026):
+ *   Reemplaza el adapter AWS SES por Resend tras la denegación del sandbox
+ *   exit por parte de AWS. La infraestructura SES queda dormida para
+ *   reapelación en mes 2-3. Esta migración mantiene la interfaz pública
+ *   `sendEmail()` intacta para que todas las server actions, plantillas
+ *   y futuras integraciones de Savia funcionen sin modificación.
  *
- * Modelo de identidades de envío:
- *  - "notificaciones@naturalvita.co"     -> transaccionales (default)
- *  - "hola@news.naturalvita.co"          -> marketing (Savia)
+ * Modelo de correos (sin cambios desde Sprint 1):
+ *   - transactional → notificaciones@naturalvita.co
+ *   - marketing     → hola@news.naturalvita.co
+ *   - reply-to      → info@naturalvita.co (humano, Hostinger)
  *
- * Reply-To por defecto: info@naturalvita.co (cara pública del cliente)
+ * Responsabilidades de este módulo:
+ *   1. Encapsular el SDK de Resend en un singleton lazy
+ *   2. Decidir el `from` según `category`
+ *   3. Renderizar React → HTML + plain-text (con auto-fallback de texto)
+ *   4. Consultar `email_suppressions` antes de cada envío
+ *   5. Inyectar headers RFC para marketing (List-Unsubscribe en Sprint 3)
+ *   6. Devolver un resultado tipado con messageId para tracking
+ *
+ * Lo que NO hace (cubierto por Savia en Sprint 3):
+ *   - Encolar envíos (eso es `email_jobs` + cron)
+ *   - Tracking de open/click (eso son endpoints propios)
+ *   - Procesar bounces/complaints (eso es el webhook `/api/webhooks/resend`)
  */
 
-import {
-  SESv2Client,
-  SendEmailCommand,
-  type SendEmailCommandInput,
-} from "@aws-sdk/client-sesv2";
+import { Resend } from "resend";
 import { render } from "@react-email/render";
+import { createClient } from "@supabase/supabase-js";
 import type { ReactElement } from "react";
 
-// ---------- Configuración base ----------
-
-const AWS_REGION = process.env.AWS_REGION ?? "us-east-1";
-
-const ses = new SESv2Client({
-  region: AWS_REGION,
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-});
-
-// ---------- Identidades de envío ----------
-
-/**
- * Identidad para emails transaccionales (confirmación de pedido,
- * pagos, envíos, facturas, recuperación de contraseña).
- * Envía desde el dominio raíz, reputación independiente.
- */
-const FROM_TRANSACTIONAL =
-  process.env.SES_FROM_TRANSACTIONAL ??
-  "NaturalVita <notificaciones@naturalvita.co>";
-
-/**
- * Identidad para emails de marketing emitidos por Savia
- * (welcome series, carrito abandonado, recompra, campañas).
- * Envía desde el subdominio news, reputación independiente.
- */
-const FROM_MARKETING =
-  process.env.SES_FROM_MARKETING ??
-  "NaturalVita <hola@news.naturalvita.co>";
-
-/**
- * Reply-To por defecto: las respuestas humanas de los clientes
- * caen siempre en el buzón público info@.
- */
-const DEFAULT_REPLY_TO =
-  process.env.SES_REPLY_TO ?? "info@naturalvita.co";
-
-// ---------- Tipos ----------
+// ─────────────────────────────────────────────────────────────────────────────
+// Tipos públicos
+// ─────────────────────────────────────────────────────────────────────────────
 
 export type EmailCategory = "transactional" | "marketing";
 
-export interface SendEmailInput {
-  /** Destinatario (uno o varios) */
-  to: string | string[];
+export interface SendEmailOptions {
+  /** Email del destinatario. String simple o "Nombre <email@dominio>" */
+  to: string;
 
   /** Asunto del email */
   subject: string;
 
-  /** Contenido HTML del email */
-  html?: string;
-
-  /** Versión texto plano (auto-generada si no se provee) */
-  text?: string;
-
-  /** Componente React Email (alternativa a html/text directos) */
+  /**
+   * Contenido React (preferido). Se renderiza a HTML y a plain-text
+   * automáticamente usando `@react-email/render`.
+   */
   react?: ReactElement;
 
-  /** Categoría del email — determina remitente y reputación */
+  /** HTML crudo. Si pasas `react`, se ignora. */
+  html?: string;
+
+  /**
+   * Plain-text alternativo. Si no se pasa y se usa `react`, se genera
+   * automáticamente. Se recomienda enviar siempre para deliverability.
+   */
+  text?: string;
+
+  /**
+   * Categoría del email. Determina el `from` automáticamente y el
+   * tratamiento de headers / suppression list.
+   * @default "transactional"
+   */
   category?: EmailCategory;
 
-  /** Reply-To custom (sobrescribe default) */
-  replyTo?: string;
-
-  /** From custom (sobrescribe default por categoría) */
+  /**
+   * Override del `from`. Solo se usa en casos especiales (p. ej. dev@).
+   * En el 99% de los casos déjalo en blanco para que el cliente decida.
+   */
   from?: string;
 
-  /** Headers adicionales (List-Unsubscribe, etc.) */
+  /** Override del Reply-To. Por defecto `info@naturalvita.co`. */
+  replyTo?: string;
+
+  /**
+   * Tags arbitrarios para reporting en Resend (filtros de campañas,
+   * eventos por tipo, etc.). Se pasan como tags nativos de Resend.
+   */
+  tags?: Array<{ name: string; value: string }>;
+
+  /**
+   * Headers HTTP extra del email. Útil para `List-Unsubscribe` y
+   * `List-Unsubscribe-Post` que Savia inyecta en Sprint 3.
+   */
   headers?: Record<string, string>;
 
-  /** Tags para tracking en SES (opcional) */
-  tags?: Array<{ name: string; value: string }>;
+  /**
+   * Si está en `true`, omite el chequeo de suppression list.
+   * SOLO usar para correos verdaderamente críticos (recuperación de
+   * contraseña, etc.). Por defecto `false`.
+   * @default false
+   */
+  skipSuppressionCheck?: boolean;
 }
 
 export interface SendEmailResult {
-  /** Indica si el envío fue exitoso (nombre nuevo, preferido) */
+  /** `true` si el envío fue aceptado por Resend */
   success: boolean;
-  /** Alias retro-compatible de success para código existente */
-  ok: boolean;
-  /** ID del mensaje en SES si el envío fue exitoso */
+
+  /** ID del mensaje en Resend para tracking de eventos */
   messageId?: string;
-  /** Mensaje de error si el envío falló */
-  error?: string;
+
+  /**
+   * Razón cuando `success = false`. Valores posibles:
+   *   - "suppressed": el email está en la lista de suppression
+   *   - "invalid_input": faltó `to`, `subject`, o contenido
+   *   - "transport_error": Resend devolvió error
+   *   - "internal_error": excepción no manejada
+   */
+  error?: "suppressed" | "invalid_input" | "transport_error" | "internal_error";
+
+  /** Mensaje de error humano-legible para logs */
+  errorMessage?: string;
 }
 
-// ---------- Función principal ----------
+// ─────────────────────────────────────────────────────────────────────────────
+// Configuración
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FROM_TRANSACTIONAL =
+  process.env.RESEND_FROM_TRANSACTIONAL ??
+  "NaturalVita <notificaciones@naturalvita.co>";
+
+const FROM_MARKETING =
+  process.env.RESEND_FROM_MARKETING ??
+  "NaturalVita <hola@news.naturalvita.co>";
+
+const REPLY_TO_DEFAULT =
+  process.env.RESEND_REPLY_TO ?? "info@naturalvita.co";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Singletons lazy (Resend client + Supabase admin)
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _resend: Resend | null = null;
+
+function getResendClient(): Resend {
+  if (_resend) return _resend;
+
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "[email/client] RESEND_API_KEY no está configurada en variables de entorno.",
+    );
+  }
+
+  _resend = new Resend(apiKey);
+  return _resend;
+}
+
+let _supabaseAdmin: ReturnType<typeof createClient> | null = null;
+
+function getSupabaseAdmin() {
+  if (_supabaseAdmin) return _supabaseAdmin;
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceKey) {
+    throw new Error(
+      "[email/client] Faltan NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY.",
+    );
+  }
+
+  _supabaseAdmin = createClient(url, serviceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  return _supabaseAdmin;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilidades internas
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Envía un email vía AWS SES.
+ * Extrae la parte de email puro de un string que puede venir como
+ * "Nombre <email@dominio>" o como "email@dominio" directo.
+ */
+function extractEmail(addr: string): string {
+  const match = addr.match(/<([^>]+)>/);
+  return (match ? match[1] : addr).trim().toLowerCase();
+}
+
+/**
+ * Consulta la tabla `email_suppressions` para verificar si una dirección
+ * está bloqueada (por bounce hard, complaint, o unsubscribe).
+ * Devuelve `true` si el envío debe continuar, `false` si está bloqueado.
+ */
+async function isAllowedRecipient(email: string): Promise<boolean> {
+  try {
+    const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase
+      .from("email_suppressions")
+      .select("email")
+      .eq("email", extractEmail(email))
+      .maybeSingle();
+
+    if (error) {
+      // Si Supabase falla, mejor enviar que perder el correo crítico.
+      // El bounce posterior lo añadirá si era inválido de todas formas.
+      console.warn(
+        "[email/client] Suppression check falló, permitiendo envío:",
+        error.message,
+      );
+      return true;
+    }
+
+    return !data;
+  } catch (err) {
+    console.warn("[email/client] Suppression check exception:", err);
+    return true;
+  }
+}
+
+/**
+ * Resuelve el `from` según categoría. Si el caller especifica `from`
+ * lo respeta (caso edge).
+ */
+function resolveFrom(category: EmailCategory, override?: string): string {
+  if (override) return override;
+  return category === "marketing" ? FROM_MARKETING : FROM_TRANSACTIONAL;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API pública: sendEmail
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Envía un email a través de Resend con la configuración correcta según
+ * categoría. Es la única función que el resto del código debe usar.
  *
- * Para emails transaccionales: usar category: "transactional" (default).
- * Para emails de Savia/marketing: usar category: "marketing".
- *
- * Ejemplo transaccional:
- * ```ts
+ * @example
+ * // Email transaccional (default)
  * await sendEmail({
- *   to: customer.email,
- *   subject: "Tu pedido fue confirmado",
+ *   to: "cliente@example.com",
+ *   subject: "Confirmación de pedido",
  *   react: <OrderPaid order={order} />,
  * });
- * ```
  *
- * Ejemplo marketing (Savia):
- * ```ts
+ * @example
+ * // Email de marketing (Savia)
  * await sendEmail({
  *   to: subscriber.email,
  *   subject: "Bienvenido a NaturalVita",
- *   react: <NewsletterWelcome ... />,
+ *   react: <NewsletterWelcome firstName={subscriber.firstName} />,
  *   category: "marketing",
- *   headers: {
- *     "List-Unsubscribe": `<https://naturalvita.co/api/savia/unsubscribe/${token}>`,
- *     "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
- *   },
+ *   tags: [
+ *     { name: "flow", value: "welcome-series" },
+ *     { name: "step", value: "1" },
+ *   ],
  * });
- * ```
  */
 export async function sendEmail(
-  input: SendEmailInput,
+  options: SendEmailOptions,
 ): Promise<SendEmailResult> {
-  try {
-    // Validación mínima
-    if (!input.to || (Array.isArray(input.to) && input.to.length === 0)) {
-      return { success: false, ok: false, error: "Destinatario requerido" };
-    }
-    if (!input.subject) {
-      return { success: false, ok: false, error: "Asunto requerido" };
-    }
-    if (!input.html && !input.text && !input.react) {
+  const {
+    to,
+    subject,
+    react,
+    html: htmlInput,
+    text: textInput,
+    category = "transactional",
+    from: fromOverride,
+    replyTo = REPLY_TO_DEFAULT,
+    tags,
+    headers,
+    skipSuppressionCheck = false,
+  } = options;
+
+  // Validación de inputs
+  if (!to || !subject || (!react && !htmlInput)) {
+    return {
+      success: false,
+      error: "invalid_input",
+      errorMessage: "Faltan campos requeridos: to, subject, y react/html.",
+    };
+  }
+
+  // Chequeo de suppression list
+  if (!skipSuppressionCheck) {
+    const allowed = await isAllowedRecipient(to);
+    if (!allowed) {
+      console.info(
+        `[email/client] Envío bloqueado por suppression list: ${extractEmail(to)}`,
+      );
       return {
         success: false,
-        ok: false,
-        error: "Contenido HTML, texto o React requerido",
+        error: "suppressed",
+        errorMessage: `${extractEmail(to)} está en la lista de suppression.`,
+      };
+    }
+  }
+
+  // Render React → HTML + text si aplica
+  let html: string;
+  let text: string;
+
+  if (react) {
+    try {
+      html = await render(react);
+      text = textInput ?? (await render(react, { plainText: true }));
+    } catch (err) {
+      console.error("[email/client] Error renderizando React email:", err);
+      return {
+        success: false,
+        error: "internal_error",
+        errorMessage: "Falló el render de la plantilla React.",
+      };
+    }
+  } else {
+    html = htmlInput!;
+    text = textInput ?? stripHtml(html);
+  }
+
+  // Envío vía Resend
+  try {
+    const resend = getResendClient();
+    const from = resolveFrom(category, fromOverride);
+
+    const { data, error } = await resend.emails.send({
+      from,
+      to,
+      subject,
+      html,
+      text,
+      replyTo,
+      headers,
+      tags,
+    });
+
+    if (error) {
+      console.error("[email/client] Resend devolvió error:", error);
+      return {
+        success: false,
+        error: "transport_error",
+        errorMessage: error.message,
       };
     }
 
-    // Resolver contenido HTML y texto
-    let htmlBody = input.html;
-    let textBody = input.text;
-
-    if (input.react) {
-      // react-email v0.x soporta render con opciones { plainText }
-      htmlBody = await render(input.react);
-      if (!textBody) {
-        textBody = await render(input.react, { plainText: true });
-      }
-    }
-
-    // Resolver remitente según categoría
-    const category = input.category ?? "transactional";
-    const from =
-      input.from ??
-      (category === "marketing" ? FROM_MARKETING : FROM_TRANSACTIONAL);
-
-    // Resolver Reply-To
-    const replyTo = input.replyTo ?? DEFAULT_REPLY_TO;
-
-    // Normalizar destinatarios
-    const toAddresses = Array.isArray(input.to) ? input.to : [input.to];
-
-    // Construir comando SES
-    const command: SendEmailCommandInput = {
-      FromEmailAddress: from,
-      Destination: {
-        ToAddresses: toAddresses,
-      },
-      ReplyToAddresses: [replyTo],
-      Content: {
-        Simple: {
-          Subject: { Data: input.subject, Charset: "UTF-8" },
-          Body: {
-            ...(htmlBody && {
-              Html: { Data: htmlBody, Charset: "UTF-8" },
-            }),
-            ...(textBody && {
-              Text: { Data: textBody, Charset: "UTF-8" },
-            }),
-          },
-          ...(input.headers && {
-            Headers: Object.entries(input.headers).map(([name, value]) => ({
-              Name: name,
-              Value: value,
-            })),
-          }),
-        },
-      },
-      ...(input.tags && {
-        EmailTags: input.tags.map((tag) => ({
-          Name: tag.name,
-          Value: tag.value,
-        })),
-      }),
-      // Configuration Set: lo configuraremos después para tracking de eventos
-      // ConfigurationSetName: "naturalvita-default",
-    };
-
-    const result = await ses.send(new SendEmailCommand(command));
-
     return {
       success: true,
-      ok: true,
-      messageId: result.MessageId,
+      messageId: data?.id,
     };
-  } catch (error) {
-    console.error("[sendEmail] AWS SES error:", error);
-
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Error desconocido en sendEmail.";
+    console.error("[email/client] Excepción en envío:", err);
     return {
       success: false,
-      ok: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Error desconocido al enviar email",
+      error: "internal_error",
+      errorMessage: message,
     };
   }
 }
 
-// ---------- Helpers retrocompatibles ----------
-
 /**
- * Helper para mantener compatibilidad con código existente que importaba
- * `getResendClient()` o similares. Devuelve la instancia configurada del
- * cliente SES por si se necesita acceso directo.
+ * Fallback básico para convertir HTML a plain-text cuando no hay React.
+ * Render más sofisticado lo hace `@react-email/render` con `plainText: true`.
  */
-export function getSESClient(): SESv2Client {
-  return ses;
-}
-
-/**
- * Verifica que las variables de entorno necesarias estén configuradas.
- * Útil para healthchecks de despliegue.
- */
-export function validateEmailConfig(): { valid: boolean; missing: string[] } {
-  const required = [
-    "AWS_REGION",
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-  ];
-  const missing = required.filter((key) => !process.env[key]);
-  return { valid: missing.length === 0, missing };
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }

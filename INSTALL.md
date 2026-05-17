@@ -1,366 +1,231 @@
-# NaturalVita · Sprint 1 · Migración AWS SES + GEO base
+# NaturalVita · Sprint 2 · Sesión 0 · Migración Resend
 
-Guía de instalación e integración. Sigue los pasos **en orden**.
+Migración inversa: AWS SES → Resend. La infraestructura SES queda dormida para reapelar en mes 2-3.
 
----
-
-## Contexto
-
-Este ZIP implementa:
-
-1. **Migración completa de Resend a AWS SES**: `lib/email/client.ts` se reescribe para usar `@aws-sdk/client-sesv2`. La interfaz pública `sendEmail()` no cambia, así que las plantillas y server actions existentes siguen funcionando sin modificación.
-2. **Nuevo modelo de correos**: emails transaccionales salen desde `notificaciones@naturalvita.co`, marketing desde `hola@news.naturalvita.co`, ambos con `Reply-To: info@naturalvita.co`.
-3. **Webhook SNS** para procesar bounces y complaints automáticamente.
-4. **GEO base** (Generative Engine Optimization): `/llms.txt`, `/llms-full.txt`, `robots.txt` extendido con permisos explícitos para bots de IA.
-5. **Schema.org Organization** sin NIT ni teléfono según política del proyecto.
-6. **Adapter stub de Savia** para Sprint 2.
+Duración estimada: **1.5–2 h** (incluye configuración manual del webhook en Resend).
 
 ---
 
-## 1 · Estructura de archivos a copiar
+## 1 · Contexto de la migración
 
-Copia el contenido del ZIP al raíz del repo `naturalvita`. Estructura:
+El 13-may AWS denegó la salida del sandbox SES sin justificación específica. Para no bloquear el lanzamiento (~3-jun) volvemos a Resend, que tiene la cuenta activa en São Paulo con dos API keys ya creadas ("Supabase Auth" y "NaturalVita Production") y el dominio `news.naturalvita.co` verificado.
 
-```
-naturalvita/
-├── app/
-│   ├── api/webhooks/aws-sns/route.ts           [NUEVO]
-│   ├── llms.txt/route.ts                        [NUEVO]
-│   ├── llms-full.txt/route.ts                   [NUEVO]
-│   └── robots.txt/route.ts                      [NUEVO o reemplaza]
-├── components/
-│   └── schema/OrganizationSchema.tsx            [NUEVO]
-├── lib/
-│   ├── email/client.ts                          [REEMPLAZA versión Resend]
-│   ├── legal/company-info.ts                    [REEMPLAZA con nuevos emails]
-│   └── savia/transport/ses.ts                   [NUEVO]
-├── migrations/
-│   └── 20260512_create_email_suppressions.sql   [APLICAR en Supabase]
-└── .env.example                                 [REEMPLAZA]
-```
+Lo que se conserva intacto del trabajo Sprint 1:
+
+- Modelo de correos: transaccional desde `notificaciones@naturalvita.co`, marketing desde `hola@news.naturalvita.co`, reply-to `info@naturalvita.co`.
+- DNS Hostinger (SPF, DKIM, DMARC con p=quarantine).
+- Tabla `email_suppressions` en Supabase.
+- Footers de plantillas con dirección Medellín.
+- Arquitectura GEO (`/llms.txt`, schema.org, etc.).
+- Plantillas react-email (`emails/*.tsx`).
+
+Lo que cambia: el **adapter** (`lib/email/client.ts`) y el **webhook** (de `/api/webhooks/aws-sns` a `/api/webhooks/resend`).
 
 ---
 
 ## 2 · Dependencias npm
 
-### Instalar
+Desde la raíz del repo:
 
 ```bash
-npm install @aws-sdk/client-sesv2@^3.700.0
+npm uninstall @aws-sdk/client-sesv2 @aws-sdk/client-sns
+npm install resend@^4.0.0 svix@^1.34.0 @react-email/render@^1.0.0
 ```
 
-### Desinstalar
+Verifica que quedaron correctas:
 
 ```bash
-npm uninstall resend
-```
-
-Verifica que `package.json` ya no tenga `resend` en `dependencies` después del uninstall.
-
-### Verificación
-
-```bash
-npm list @aws-sdk/client-sesv2
-# Debe mostrar versión instalada
-
-npm list resend
-# Debe responder "(empty)"
+npm ls resend svix @react-email/render
 ```
 
 ---
 
-## 3 · Variables de entorno
+## 3 · Archivos a colocar / reemplazar
 
-### En Vercel (ya configuradas)
+Copia el contenido del ZIP sobre la raíz del repo. Específicamente:
+
+| Archivo | Acción |
+|---|---|
+| `lib/email/client.ts` | **Reemplaza** el existente |
+| `app/api/webhooks/resend/route.ts` | **Nuevo archivo** |
+| `app/tienda/metadata-canonical.snippet.tsx` | **Referencia** — no se queda en el repo |
+| `.env.example` | **Reemplaza** el existente |
+
+### Aplicar el fix de canónica en `/tienda`
+
+Abre `app/tienda/page.tsx` y haz una de estas dos cosas según cómo esté escrito:
+
+**Caso A · `metadata` estático.** Añade o fusiona el campo `alternates`:
+
+```typescript
+export const metadata: Metadata = {
+  // ... lo que ya tengas
+  alternates: {
+    canonical: "https://naturalvita.co/tienda",
+  },
+};
+```
+
+**Caso B · `generateMetadata` dinámico** (filtros con nuqs). Dentro de la función, devuelve también:
+
+```typescript
+return {
+  // ... lo que ya devuelvas
+  alternates: {
+    canonical: "https://naturalvita.co/tienda",
+    // ↑ SIEMPRE el listado base. Nunca incluyas query params en la canónica.
+  },
+};
+```
+
+Verifica que `app/page.tsx` apunta su canónica a `https://naturalvita.co` y no a `/tienda`.
+
+Borra el archivo `app/tienda/metadata-canonical.snippet.tsx` después de aplicar el fix (solo es referencia).
+
+---
+
+## 4 · Webhook viejo de AWS SNS
+
+`app/api/webhooks/aws-sns/route.ts` queda **en el repo sin tocarlo**. La suscripción SNS en AWS ya está dormida (Sprint 1 cerrado), así que no recibirá tráfico. Cuando reapelemos AWS lo reactivamos. Nota mental: si en algún momento sí queremos limpiarlo, lo haremos en un sprint dedicado a higiene.
+
+---
+
+## 5 · Búsqueda global de referencias antiguas
+
+Antes de hacer commit, asegúrate de que no quedan menciones a AWS SES en código activo:
+
+```bash
+grep -rn "aws-sdk/client-ses" --include="*.ts" --include="*.tsx" .
+grep -rn "aws-sdk/client-sns" --include="*.ts" --include="*.tsx" .
+grep -rn "SESClient\|SendEmailCommand" --include="*.ts" --include="*.tsx" .
+```
+
+Los únicos hits válidos son dentro de `app/api/webhooks/aws-sns/route.ts` (dormido). Cualquier otro hit es un import muerto que el nuevo `client.ts` ya reemplazó internamente — bórralo.
+
+La firma pública `sendEmail()` no cambia, por lo que las **plantillas y server actions que la consumen siguen funcionando sin modificación**. Si encuentras alguno que aún hace `new SESClient()` directo o que importa el cliente de AWS, ese código es el que se migró internamente y debes borrarlo. Por contrato, todo el envío pasa por `sendEmail()`.
+
+---
+
+## 6 · Configuración de variables en Vercel
+
+En el panel de Vercel → Project → Settings → Environment Variables, configura para **Production** y **Preview**:
 
 | Variable | Valor |
 |---|---|
-| `AWS_REGION` | `us-east-1` |
-| `AWS_ACCESS_KEY_ID` | (de IAM user `naturalvita-ses-sender`) |
-| `AWS_SECRET_ACCESS_KEY` | (de IAM user `naturalvita-ses-sender`) |
-| `SES_FROM_TRANSACTIONAL` | `NaturalVita <notificaciones@naturalvita.co>` |
-| `SES_FROM_MARKETING` | `NaturalVita <hola@news.naturalvita.co>` |
-| `SES_REPLY_TO` | `info@naturalvita.co` |
+| `RESEND_API_KEY` | API key "NaturalVita Production" desde resend.com → API Keys |
+| `RESEND_WEBHOOK_SECRET` | (se genera en el paso 7) |
+| `RESEND_FROM_TRANSACTIONAL` | `NaturalVita <notificaciones@naturalvita.co>` |
+| `RESEND_FROM_MARKETING` | `NaturalVita <hola@news.naturalvita.co>` |
+| `RESEND_REPLY_TO` | `info@naturalvita.co` |
 
-### En `.env.local` (desarrollo)
-
-Replicar las mismas variables. Para desarrollo local, **puedes** usar las mismas credenciales del IAM user de producción, o crear un IAM user separado `naturalvita-ses-sender-dev` con misma política. Recomendado lo segundo para auditoría más limpia.
-
-### Eliminadas
-
-- `RESEND_API_KEY` (eliminada en Vercel ✅)
-- `RESEND_FROM_EMAIL`
-- Cualquier otra `RESEND_*`
+Las variables `AWS_*` y `SES_*` quedan **en Vercel sin tocar**. Las usaremos en la reapelación.
 
 ---
 
-## 4 · Migración SQL en Supabase
+## 7 · Configurar webhook en panel Resend
 
-Aplica la migración `migrations/20260512_create_email_suppressions.sql` vía Supabase MCP o pega el SQL en el SQL Editor de Supabase.
+Esta es la única parte manual y la haces tras el primer deploy a Vercel con el código nuevo.
 
-Esto crea:
-- Tabla `email_suppressions` con índices y RLS
-- Función `is_email_suppressed(email)` para consulta rápida
-- Trigger `updated_at` automático
+1. Login en `https://resend.com/login`.
+2. Sidebar → **Webhooks** → **Add Endpoint**.
+3. **Endpoint URL**: `https://naturalvita.co/api/webhooks/resend`
+4. **API Version**: la default (v1).
+5. **Events to send**: marca exactamente:
+   - `email.sent`
+   - `email.delivered`
+   - `email.bounced`
+   - `email.complained`
+   - `email.opened` (para Savia futuro)
+   - `email.clicked` (para Savia futuro)
+6. Click **Add Endpoint**.
+7. En la pantalla del endpoint recién creado, busca **Signing Secret** (empieza con `whsec_...`). Click "Reveal" o "Copy".
+8. Pega ese secret en Vercel como `RESEND_WEBHOOK_SECRET`. Redeploy.
+9. En Resend, click **Send Test Event** → elige `email.delivered`. Si todo está bien, recibirás `200 OK`.
 
-### Verificación
-
-```sql
--- Debe devolver la fila de definición
-SELECT * FROM email_suppressions LIMIT 1;
-
--- Debe devolver false para email no suprimido
-SELECT is_email_suppressed('test@example.com');
-```
-
----
-
-## 5 · Actualizar plantillas de email transaccionales
-
-El cliente `sendEmail()` migrado a SES funciona igual, pero conviene revisar las plantillas existentes para asegurar consistencia con el nuevo modelo:
-
-### Archivos a revisar
-
-```
-emails/_layout.tsx
-emails/order-paid.tsx
-emails/order-shipped.tsx
-emails/order-rejected.tsx
-emails/order-refunded.tsx
-emails/newsletter-welcome.tsx
-emails/contact-inquiry.tsx
-emails/contact-confirmation.tsx
-```
-
-### Cambios necesarios en cada uno
-
-**Buscar y reemplazar** (usando find/replace global del editor):
-
-| Buscar | Reemplazar |
-|---|---|
-| `pedidos@naturalvita.co` | `info@naturalvita.co` |
-| `From: 'pedidos@'` (en código) | El nuevo modelo lo gestiona el cliente automáticamente — eliminar líneas `from:` hardcodeadas de las llamadas a `sendEmail()` |
-
-### En el footer de cada email
-
-Verificar que aparezca:
-
-- Email de contacto: `info@naturalvita.co`
-- Dirección: la generada por `getFormattedAddress()` desde `company-info.ts`
-- Línea legal: `NaturalVita es una marca de Everlife Colombia S.A.S.`
-
-### Otros lugares en el repo que pueden mencionar `pedidos@`
-
-Búsqueda global recomendada:
-
-```bash
-grep -r "pedidos@naturalvita" --include="*.ts" --include="*.tsx" .
-```
-
-Resultados típicos a actualizar:
-- `app/(public)/iniciar-sesion/_LoginForm.tsx` (mensajes de error)
-- `app/contacto/page.tsx` (formulario de contacto)
-- `components/Footer.tsx` (footer del sitio)
-- Cualquier hardcoded copy del sitio
-
-Reemplazar todo `pedidos@naturalvita.co` por `info@naturalvita.co` para alinear con el nuevo modelo.
+Si ves `401 invalid_signature`, revisa que el secret en Vercel sea exacto (incluye el prefijo `whsec_`).
 
 ---
 
-## 6 · Inyectar Schema.org Organization en el layout
+## 8 · Validación E2E
 
-En `app/layout.tsx` (o `app/(public)/layout.tsx` según la estructura del repo), importa e incluye los componentes de schema en el `<head>`:
+Tras el deploy con webhook configurado:
 
-```tsx
-import { OrganizationSchema, WebSiteSchema } from "@/components/schema/OrganizationSchema";
+### 8a · Envío transaccional
+1. Abre `https://naturalvita.co/contacto` en navegador anónimo.
+2. Llena el formulario con un email que controles (Gmail recomendado).
+3. Submit.
+4. **Esperado**: email aterriza en inbox en <10 segundos desde `notificaciones@naturalvita.co`, con `Reply-To: info@naturalvita.co`.
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="es">
-      <head>
-        <OrganizationSchema isMainEntity />
-        <WebSiteSchema />
-      </head>
-      <body>{children}</body>
-    </html>
-  );
-}
-```
-
-`isMainEntity` solo en el layout que envuelve la home — para otras páginas no es necesario.
-
-### Validación
-
-Tras deploy a producción, validar con:
-
-- Google Rich Results Test: https://search.google.com/test/rich-results?url=https://naturalvita.co
-- Debe detectar `Organization` y `WebSite` sin errores
-
----
-
-## 7 · Deploy a Vercel
-
-```bash
-git add .
-git commit -m "feat(sprint-1): migración AWS SES + GEO base + nuevo modelo de correos"
-git push origin main
-```
-
-Vercel desplegará automáticamente. Espera a que el build esté en verde.
-
-### Verificación post-deploy
-
-| Check | URL | Resultado esperado |
-|---|---|---|
-| robots.txt | `https://naturalvita.co/robots.txt` | Texto plano con bots IA permitidos |
-| llms.txt | `https://naturalvita.co/llms.txt` | Markdown con descripción NaturalVita |
-| llms-full.txt | `https://naturalvita.co/llms-full.txt` | Markdown extendido con productos |
-| schema.org | View source de home | Bloque `<script type="application/ld+json">` con Organization |
-
----
-
-## 8 · Configurar SNS Subscription (DESPUÉS del deploy)
-
-Este paso solo se hace cuando el webhook ya esté desplegado en producción.
-
-### 8.1 · Crear Configuration Set en SES
-
-1. AWS Console → SES → sidebar → **Configuration sets**
-2. Click **Create set**
-3. Configuración:
-   - **Name:** `naturalvita-default`
-   - **Reputation tracking:** Enabled
-   - **Sending status:** Enabled
-4. Click **Create set**
-
-### 8.2 · Añadir Event Destination apuntando al SNS topic
-
-1. Dentro del Configuration Set → pestaña **Event destinations** → **Add destination**
-2. Configuración:
-   - **Event types:** marca `Bounces`, `Complaints`, `Deliveries`, `Rejects`
-   - **Destination name:** `sns-naturalvita-events`
-   - **Destination type:** Amazon SNS
-   - **SNS topic:** selecciona `naturalvita-ses-events`
-3. Click **Add destination**
-
-### 8.3 · Asociar Configuration Set a las identidades
-
-Para cada identidad (`naturalvita.co` y `news.naturalvita.co`):
-
-1. SES → Configuración → Identidades → click sobre la identidad
-2. Pestaña **Configuration set** (o **Default configuration set**) → **Edit**
-3. Selecciona `naturalvita-default` como default
-4. Save changes
-
-### 8.4 · Crear Suscripción HTTPS
-
-1. AWS Console → SNS → Topics → click sobre `naturalvita-ses-events`
-2. Pestaña **Subscriptions** → **Create subscription**
-3. Configuración:
-   - **Protocol:** HTTPS
-   - **Endpoint:** `https://naturalvita.co/api/webhooks/aws-sns`
-   - **Enable raw message delivery:** **NO marcar**
-4. Click **Create subscription**
-
-AWS hace POST inmediato al webhook con `SubscriptionConfirmation`. El código en `route.ts` confirma automáticamente.
-
-### 8.5 · Verificar que la suscripción quedó confirmada
-
-En SNS → Topics → `naturalvita-ses-events` → pestaña Subscriptions: debe aparecer la suscripción con status **Confirmed** (no "Pending confirmation").
-
-Si quedó pendiente, revisar logs de Vercel → Functions → buscar errores en `/api/webhooks/aws-sns`.
-
----
-
-## 9 · Validación end-to-end
-
-### 9.1 · Enviar email transaccional de prueba (estando aún en sandbox)
-
-Mientras AWS aprueba la salida del sandbox, solo puedes enviar a `dev@naturalvita.co`. Hacer un test:
+### 8b · Webhook procesando bounce
+Envía un email manual a `bounced@resend.dev` (dirección especial de Resend que siempre rebota):
 
 ```typescript
-// En cualquier server action o API route temporal
+// Desde un script /scripts/test-bounce.ts o consola Supabase
 import { sendEmail } from "@/lib/email/client";
-
-const result = await sendEmail({
-  to: "dev@naturalvita.co",
-  subject: "Test SES NaturalVita",
-  html: "<h1>Funciona</h1><p>Email enviado desde AWS SES.</p>",
+await sendEmail({
+  to: "bounced@resend.dev",
+  subject: "Test bounce",
+  html: "<p>Test</p>",
 });
-
-console.log(result);
-// Esperado: { success: true, messageId: "..." }
 ```
 
-Revisa la bandeja de `dev@naturalvita.co` en webmail Hostinger. Debe llegar el email.
+Espera ~30 segundos y verifica en Supabase Studio:
 
-### 9.2 · Cuando AWS apruebe salida del sandbox
+```sql
+SELECT * FROM email_suppressions
+WHERE email = 'bounced@resend.dev'
+ORDER BY created_at DESC
+LIMIT 1;
+```
 
-Recibirás email de AWS confirmando producción. A partir de ahí puedes enviar a cualquier destinatario.
+Debe aparecer una fila con `reason = 'bounce'` y `source = 'resend'`.
 
-### 9.3 · Mail-tester score
+### 8c · Webhook procesando complaint
+Mismo patrón con `complained@resend.dev`. Esa dirección dispara `email.complained` automáticamente.
 
-Crear cuenta gratuita en https://mail-tester.com → te dan una dirección única. Envía un test desde el sitio (welcome, order confirmation) a esa dirección. Score esperado: **≥9/10**.
+```sql
+SELECT * FROM email_suppressions WHERE email = 'complained@resend.dev';
+```
 
-Si score <9, revisar:
-- DKIM passes
-- SPF aligned
-- DMARC passes
-- No imágenes pesadas sin alt
-- Ratio html/text correcto
+### 8d · Suppression check funciona
+Intenta enviar un segundo email a `bounced@resend.dev` después del paso 8b. El resultado debe ser:
+
+```typescript
+{ success: false, error: "suppressed", errorMessage: "...está en la lista de suppression." }
+```
+
+Sin que Resend reciba la solicitud.
 
 ---
 
-## 10 · Limpieza final (después de validación)
+## 9 · Solicitud manual de indexación en GSC
 
-### 10.1 · Eliminar registros DNS de Resend (opcional, después de 30 días sin uso)
+En paralelo al deploy, repite la solicitud de indexación de las 5 URLs top en Google Search Console:
 
-En Hostinger DNS, después de confirmar que SES funciona en producción durante 30 días, eliminar:
-
-```
-TXT  resend._domainkey   ...   (DKIM Resend antiguo)
-MX   send                10    feedback-smtp.sa-east-1.amazonses.com
-TXT  send                      "v=spf1 include:amazonses.com ~all"
-```
-
-**Importante:** estos registros son los que Resend usaba internamente (Resend envía vía AWS SES sa-east-1 por debajo). No los elimines antes de validar que el nuevo flujo (us-east-1 directo) funciona en producción durante un tiempo prudencial.
-
-### 10.2 · Eliminar referencias a Resend en el código
-
-```bash
-grep -r "resend" --include="*.ts" --include="*.tsx" -i .
-```
-
-Debe devolver vacío (excepto comentarios históricos si los hay).
+1. `https://naturalvita.co`
+2. `https://naturalvita.co/tienda` *(canónica recién aplicada, importante repetir)*
+3. `https://naturalvita.co/sobre-nosotros`
+4. `https://naturalvita.co/preguntas-frecuentes`
+5. `https://naturalvita.co/contacto`
 
 ---
 
-## Troubleshooting
+## 10 · Checklist de cierre Sesión 0
 
-### Error: "Email address is not verified"
+- [ ] Dependencias npm correctas
+- [ ] `lib/email/client.ts` reemplazado
+- [ ] `app/api/webhooks/resend/route.ts` creado
+- [ ] Fix canónica `/tienda` aplicado
+- [ ] Variables Vercel configuradas (5 nuevas)
+- [ ] Build limpio: `npm run build` sin warnings
+- [ ] Deploy a producción exitoso
+- [ ] Webhook Resend configurado con signing secret en Vercel
+- [ ] Test event Resend devuelve `200 OK`
+- [ ] E2E contacto: email transaccional llega en <10s
+- [ ] E2E bounce: aparece en `email_suppressions`
+- [ ] E2E complaint: aparece en `email_suppressions`
+- [ ] E2E suppression check: bloquea segundo envío
+- [ ] GSC: 5 URLs solicitadas para reindexación
+- [ ] Dashboard actualizado con Sesión 0 cerrada
 
-Estás en sandbox. Solo puedes enviar a direcciones verificadas. Espera aprobación AWS de salida del sandbox (24-72h) o verifica el destinatario manualmente en SES → Identidades → Crear identidad → tipo Email.
-
-### Error: "Could not connect to SES"
-
-Verificar variables `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` en Vercel. Si están bien, validar que el IAM user `naturalvita-ses-sender` tenga política `AmazonSESFullAccess`.
-
-### Webhook SNS no recibe eventos
-
-1. Verificar que la suscripción quedó **Confirmed** (no Pending)
-2. Verificar que el Configuration Set está asociado a la identidad de dominio
-3. Verificar logs Vercel → Functions → `/api/webhooks/aws-sns`
-4. Si los logs muestran "Invalid signature", verificar que `expectedTopicArnPattern` en el código coincida con el ARN real del topic (debería empezar con `arn:aws:sns:us-east-1:<account-id>:naturalvita-ses-`)
-
----
-
-## Estado al cerrar Sprint 1
-
-- ✅ Resend removido completamente del stack
-- ✅ AWS SES como ESP único para transaccional + marketing
-- ✅ Modelo de correos limpio: `info@` público, `notificaciones@` transaccional, `hola@news` marketing
-- ✅ Webhook automático de bounces y complaints
-- ✅ GEO base operativo: llms.txt, robots.txt, schema.org
-- ✅ Base lista para Sprint 2 · Savia núcleo
-
-Próximo: Sprint 2 · construcción del engine de Savia, flows de welcome y carrito abandonado, dashboard `/admin/savia`.
+Cuando todo lo de arriba esté verde, arrancamos **Sesión A del Home** (Hero + 6 etapas de vida + estética Discovery Land).

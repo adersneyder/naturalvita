@@ -1,0 +1,35 @@
+{
+  "_comment": "PATCH DE DEPENDENCIAS · Sprint 2 Sesión 0 · 14-may-2026",
+  "_instructions": [
+    "Este NO es un package.json para reemplazar el del repo.",
+    "Es la lista exacta de dependencias a añadir/remover.",
+    "",
+    "Ejecuta en orden:",
+    "",
+    "  1. npm uninstall @aws-sdk/client-sesv2 @aws-sdk/client-sns",
+    "  2. npm install resend@^4.0.0 svix@^1.34.0 @react-email/render@^1.0.0",
+    "",
+    "Si svix ya está instalado (no debería, era una dependencia transitiva),",
+    "el comando install lo deja en la versión correcta.",
+    "",
+    "Si @react-email/render ya está instalado para las plantillas existentes",
+    "(probable), el install solo actualiza la versión.",
+    "",
+    "Verifica luego con:",
+    "  npm ls resend svix @react-email/render"
+  ],
+  "dependenciesToAdd": {
+    "resend": "^4.0.0",
+    "svix": "^1.34.0",
+    "@react-email/render": "^1.0.0"
+  },
+  "dependenciesToRemove": [
+    "@aws-sdk/client-sesv2",
+    "@aws-sdk/client-sns"
+  ],
+  "rationale": {
+    "resend": "Cliente oficial de Resend para envío de emails. v4+ soporta replyTo y tags nativos.",
+    "svix": "Verificación de firma HMAC de webhooks Resend. Resend usa Svix internamente como su proveedor de webhooks.",
+    "@react-email/render": "Render de plantillas React → HTML + plain-text automático. Asegura que cada envío incluye versión text/plain (deliverability)."
+  }
+}
