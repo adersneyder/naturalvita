@@ -3,12 +3,6 @@
  *
  * Webhook receptor de eventos de Resend.
  *
- * MIGRACIÓN SPRINT 2 SESIÓN 0 (14-may-2026):
- *   Sustituye al webhook AWS SNS (`/api/webhooks/aws-sns`) ahora que
- *   volvemos a Resend tras la denegación del sandbox exit por AWS.
- *   Mantenemos el archivo aws-sns intacto pero sin tráfico (la
- *   suscripción SNS quedó dormida) para reapelar en mes 2-3.
- *
  * Eventos procesados:
  *   - email.bounced     → si bounce_type = "hard" añade a email_suppressions
  *   - email.complained  → siempre añade a email_suppressions
@@ -16,31 +10,17 @@
  *   - email.opened      → reservado para Savia (Sprint 3)
  *   - email.clicked     → reservado para Savia (Sprint 3)
  *
- * Seguridad:
- *   - Verifica firma Svix (svix-id, svix-timestamp, svix-signature)
- *   - Rechaza requests sin secret configurado
- *   - Valida formato del payload antes de procesar
+ * Seguridad: verifica firma Svix (svix-id, svix-timestamp, svix-signature).
  *
  * Patrón ack-early con Next.js 15 `after()`:
- *   - Validación de firma y parsing dentro del response window
- *   - Procesamiento de suppression / log fuera del window vía `after()`
- *   - Esto evita reintentos por timeout cuando Supabase está lento
- *
- * Configuración en panel de Resend:
- *   1. Resend → Webhooks → Add Endpoint
- *   2. URL: https://naturalvita.co/api/webhooks/resend
- *   3. Events: email.bounced, email.complained, email.delivered,
- *              email.opened, email.clicked
- *   4. Copiar el "Signing Secret" → RESEND_WEBHOOK_SECRET en Vercel
+ *   Validación de firma dentro del response window. Procesamiento de
+ *   suppression / log fuera del window vía `after()`. Evita reintentos
+ *   por timeout cuando Supabase está lento.
  */
 
 import { NextResponse, after, type NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { Webhook } from "svix";
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tipos de eventos Resend
-// ─────────────────────────────────────────────────────────────────────────────
+import { createAdminClient } from "@/lib/supabase/admin";
 
 type ResendEventType =
   | "email.sent"
@@ -61,7 +41,6 @@ interface ResendEvent {
     to: string[];
     subject: string;
     created_at: string;
-    // Campos específicos según tipo:
     bounce_type?: "hard" | "soft" | "undetermined";
     bounce?: {
       type?: string;
@@ -80,36 +59,8 @@ interface ResendEvent {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Supabase admin (lazy)
-// ─────────────────────────────────────────────────────────────────────────────
-
-let _supabaseAdmin: ReturnType<typeof createClient> | null = null;
-
-function getSupabaseAdmin() {
-  if (_supabaseAdmin) return _supabaseAdmin;
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceKey) {
-    throw new Error(
-      "[webhooks/resend] Faltan NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY.",
-    );
-  }
-
-  _supabaseAdmin = createClient(url, serviceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  return _supabaseAdmin;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Procesadores de eventos (corren via after())
-// ─────────────────────────────────────────────────────────────────────────────
-
 async function processBounce(event: ResendEvent) {
-  const supabase = getSupabaseAdmin();
+  const supabase = createAdminClient();
   const recipient = event.data.to[0]?.toLowerCase();
   if (!recipient) return;
 
@@ -124,18 +75,22 @@ async function processBounce(event: ResendEvent) {
     return;
   }
 
-  const { error } = await supabase
-    .from("email_suppressions")
-    .upsert(
-      {
-        email: recipient,
-        reason: "bounce",
-        source: "resend",
-        external_id: event.data.email_id,
-        details: event.data.bounce ?? null,
-      },
-      { onConflict: "email" },
-    );
+  const diagnosticCode =
+    event.data.bounce?.message ?? event.data.bounce?.subType ?? null;
+  const subReason = event.data.bounce?.subType ?? null;
+  const notes = `Resend email_id: ${event.data.email_id}`;
+
+  const { error } = await supabase.from("email_suppressions").upsert(
+    {
+      email: recipient,
+      reason: "bounce",
+      source: "resend",
+      sub_reason: subReason,
+      diagnostic_code: diagnosticCode,
+      notes,
+    },
+    { onConflict: "email" },
+  );
 
   if (error) {
     console.error(
@@ -148,22 +103,26 @@ async function processBounce(event: ResendEvent) {
 }
 
 async function processComplaint(event: ResendEvent) {
-  const supabase = getSupabaseAdmin();
+  const supabase = createAdminClient();
   const recipient = event.data.to[0]?.toLowerCase();
   if (!recipient) return;
 
-  const { error } = await supabase
-    .from("email_suppressions")
-    .upsert(
-      {
-        email: recipient,
-        reason: "complaint",
-        source: "resend",
-        external_id: event.data.email_id,
-        details: event.data.complaint ?? null,
-      },
-      { onConflict: "email" },
-    );
+  const subReason =
+    event.data.complaint?.feedback_type ??
+    event.data.complaint?.type ??
+    null;
+  const notes = `Resend email_id: ${event.data.email_id}`;
+
+  const { error } = await supabase.from("email_suppressions").upsert(
+    {
+      email: recipient,
+      reason: "complaint",
+      source: "resend",
+      sub_reason: subReason,
+      notes,
+    },
+    { onConflict: "email" },
+  );
 
   if (error) {
     console.error(
@@ -176,23 +135,16 @@ async function processComplaint(event: ResendEvent) {
 }
 
 async function processDelivery(event: ResendEvent) {
-  // Por ahora solo log. En Sprint 3 esto persiste en email_events.
   console.info(
     `[webhooks/resend] Delivered: ${event.data.email_id} → ${event.data.to[0]}`,
   );
 }
 
 async function processOpenOrClick(event: ResendEvent) {
-  // Reservado para Savia (Sprint 3). El tracking propio usa endpoints
-  // /api/savia/open y /api/savia/click para tener control total.
   console.info(
     `[webhooks/resend] ${event.type}: ${event.data.email_id} → ${event.data.to[0]}`,
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Handler principal
-// ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   const secret = process.env.RESEND_WEBHOOK_SECRET;
@@ -233,7 +185,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
   }
 
-  // Procesamiento diferido fuera del response window (patrón ack-early)
   after(async () => {
     try {
       switch (event.type) {
@@ -253,7 +204,6 @@ export async function POST(request: NextRequest) {
         case "email.sent":
         case "email.delivery_delayed":
         case "email.failed":
-          // Solo log por ahora
           console.info(
             `[webhooks/resend] ${event.type}: ${event.data.email_id}`,
           );
