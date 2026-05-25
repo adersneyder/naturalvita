@@ -71,6 +71,7 @@ interface Candidate {
   image_url: string | null;
   is_featured: boolean;
   fts_rank: number;
+  has_stock: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -201,8 +202,14 @@ async function prefilter(
     const trackStock = p.track_stock as boolean;
     const stock = p.stock as number;
 
-    // Filtro duro de stock
-    if (trackStock && stock <= 0) continue;
+    // Stock NO es filtro duro aquí: el quiz es una herramienta de
+    // descubrimiento, no el carrito. La validación real de inventario ocurre
+    // en la ficha de producto y en el checkout. Usamos el stock como señal de
+    // ranking (los productos disponibles suben), pero nunca vaciamos el
+    // resultado por falta de stock — peor experiencia sería un Home que dice
+    // "no hay nada". Cuando se cargue inventario real, los disponibles
+    // escalan en el ranking automáticamente.
+    const hasStock = !trackStock || stock > 0;
 
     const categoryRel = p.categories as { name: string; slug: string } | null;
     const categorySlug = categoryRel?.slug ?? "";
@@ -227,15 +234,16 @@ async function prefilter(
       image_url: primaryImage,
       is_featured: p.is_featured as boolean,
       fts_rank: ftsRank,
+      has_stock: hasStock,
     });
   }
 
-  // 1d. Ordenar por score compuesto: FTS rank (peso 3) + boost featured
-  //     El filtro de categoría relevante ya se aplicó arriba (inRelevantCategory),
-  //     así que aquí solo rankeamos por relevancia textual + destacados.
+  // 1d. Ordenar por score compuesto: FTS rank (peso 3) + boost featured +
+  //     boost stock. El stock no filtra, pero un producto disponible se
+  //     prioriza sobre uno agotado cuando ambos son relevantes.
   scored.sort((a, b) => {
-    const scoreA = a.fts_rank * 3 + (a.is_featured ? 1.5 : 0);
-    const scoreB = b.fts_rank * 3 + (b.is_featured ? 1.5 : 0);
+    const scoreA = a.fts_rank * 3 + (a.is_featured ? 1.5 : 0) + (a.has_stock ? 2 : 0);
+    const scoreB = b.fts_rank * 3 + (b.is_featured ? 1.5 : 0) + (b.has_stock ? 2 : 0);
     return scoreB - scoreA;
   });
 
@@ -393,9 +401,8 @@ async function hydrateProducts(
   const result: MatchedProduct[] = [];
   for (const p of data as Array<Record<string, unknown>>) {
     const id = p.id as string;
-    const trackStock = p.track_stock as boolean;
-    const stock = p.stock as number;
-    if (trackStock && stock <= 0) continue; // no mostrar agotados
+    // No filtramos por stock aquí (coherente con el pre-filtro): el quiz es
+    // descubrimiento. La disponibilidad real se valida en ficha y checkout.
 
     const images = (p.product_images as Array<{ url: string; is_primary: boolean }>) ?? [];
     const primaryImage =
