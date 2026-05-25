@@ -14,6 +14,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/lib/supabase/types";
 import type { MatchedProduct } from "@/lib/quiz/match-products";
 
 const SLUG_ALPHABET =
@@ -52,7 +53,7 @@ export async function saveQuizResult(
       slug,
       etapa: input.etapa,
       objetivo: input.objetivo,
-      products: input.products,
+      products: input.products as unknown as Json,
       customer_id: input.customerId ?? null,
       email: input.email ?? null,
     });
@@ -101,7 +102,7 @@ export async function getQuizResult(
     slug: data.slug as string,
     etapa: data.etapa as string,
     objetivo: data.objetivo as string,
-    products: data.products as MatchedProduct[],
+    products: data.products as unknown as MatchedProduct[],
     createdAt: data.created_at as string,
   };
 }

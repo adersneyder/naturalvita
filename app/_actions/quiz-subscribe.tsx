@@ -36,6 +36,7 @@ import { QuizResult } from "@/lib/email/templates/quiz-result";
 import { saveQuizResult } from "@/lib/quiz/save-result";
 import { STAGES, GOALS, selectionLabel } from "@/components/home/quiz-data";
 import type { MatchedProduct } from "@/lib/quiz/match-products";
+import type { Json } from "@/lib/supabase/types";
 
 export type QuizSubscribeState = {
   ok: boolean;
@@ -161,7 +162,7 @@ export async function quizSubscribeAction(
 
   if (effectiveEmail) {
     const admin = createAdminClient();
-    const quizProperties = {
+    const quizProperties: Json = {
       etapa,
       objetivo,
       recommended_product_ids: products.map((p) => p.id),

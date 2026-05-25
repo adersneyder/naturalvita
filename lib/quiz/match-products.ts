@@ -27,6 +27,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { Json } from "@/lib/supabase/types";
 import {
   getStage,
   getGoal,
@@ -338,7 +339,7 @@ async function readCache(
     }
   })();
 
-  return data.recommendations as Array<{ product_id: string; reason: string }>;
+  return data.recommendations as unknown as Array<{ product_id: string; reason: string }>;
 }
 
 async function writeCache(
@@ -353,7 +354,7 @@ async function writeCache(
       cache_key: key,
       etapa,
       objetivo,
-      recommendations,
+      recommendations: recommendations as unknown as Json,
       model: MATCH_MODEL,
       expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     },
