@@ -1,231 +1,146 @@
-# NaturalVita · Sprint 2 · Sesión 0 · Migración Resend
+# NaturalVita · Sprint 2 · Sesión A · Home Quiz-First
 
-Migración inversa: AWS SES → Resend. La infraestructura SES queda dormida para reapelar en mes 2-3.
+## 🆕 Actualización Sesión A.2 (sin fricción + login + persistencia)
 
-Duración estimada: **1.5–2 h** (incluye configuración manual del webhook en Resend).
+Esta versión cierra tres mejoras sobre el quiz base:
 
----
+1. **Detección de usuarios logueados (sin fricción):** el quiz detecta la sesión client-side. Si estás logueado, NO te pide email (usa el de tu cuenta), vincula el resultado a tu `customer_id`, y respeta tu `accepts_marketing` (si es false, guarda pero no envía email automático). El Home sigue siendo estático (la detección es client-side, no sacrifica SEO/LCP).
 
-## 1 · Contexto de la migración
+2. **URL compartible del resultado (`/quiz/r/[slug]`):** cada resultado se guarda con un slug corto. La página es un Server Component liviano (cero JS pesado), con metadata dinámica + schema.org ItemList. Se incluye como link en el email ("Volver a ver tu selección"). Marcada `noindex` (cada resultado es personal) pero `follow` para que los links a productos pasen autoridad.
 
-El 13-may AWS denegó la salida del sandbox SES sin justificación específica. Para no bloquear el lanzamiento (~3-jun) volvemos a Resend, que tiene la cuenta activa en São Paulo con dos API keys ya creadas ("Supabase Auth" y "NaturalVita Production") y el dominio `news.naturalvita.co` verificado.
+3. **Persistencia:** tabla `quiz_results` con snapshot de productos. Migración `sprint2_sa2_quiz_results` ya aplicada vía MCP.
 
-Lo que se conserva intacto del trabajo Sprint 1:
+**Archivos nuevos de A.2** (además de los 8 base):
+- `app/quiz/r/[slug]/page.tsx` — página pública del resultado
+- `lib/quiz/save-result.ts` — guardar/leer resultados
 
-- Modelo de correos: transaccional desde `notificaciones@naturalvita.co`, marketing desde `hola@news.naturalvita.co`, reply-to `info@naturalvita.co`.
-- DNS Hostinger (SPF, DKIM, DMARC con p=quarantine).
-- Tabla `email_suppressions` en Supabase.
-- Footers de plantillas con dirección Medellín.
-- Arquitectura GEO (`/llms.txt`, schema.org, etc.).
-- Plantillas react-email (`emails/*.tsx`).
-
-Lo que cambia: el **adapter** (`lib/email/client.ts`) y el **webhook** (de `/api/webhooks/aws-sns` a `/api/webhooks/resend`).
-
----
-
-## 2 · Dependencias npm
-
-Desde la raíz del repo:
-
-```bash
-npm uninstall @aws-sdk/client-sesv2 @aws-sdk/client-sns
-npm install resend@^4.0.0 svix@^1.34.0 @react-email/render@^1.0.0
-```
-
-Verifica que quedaron correctas:
-
-```bash
-npm ls resend svix @react-email/render
-```
+**Archivos modificados respecto al ZIP base:**
+- `app/_actions/quiz-subscribe.tsx` — ahora detecta login, persiste, respeta accepts_marketing
+- `components/home/HeroQuiz.tsx` — detecta sesión client-side, botón "Guardar" para logueados
+- `lib/email/templates/quiz-result.tsx` — incluye link al resultado guardado
+- `app/page.tsx` — sin cambios (sigue estático)
 
 ---
 
-## 3 · Archivos a colocar / reemplazar
 
-Copia el contenido del ZIP sobre la raíz del repo. Específicamente:
+Home rediseñado con Quiz-Hero (matching IA en tiempo real con Haiku 4.5) + 6 cards de etapas de vida.
 
-| Archivo | Acción |
-|---|---|
-| `lib/email/client.ts` | **Reemplaza** el existente |
-| `app/api/webhooks/resend/route.ts` | **Nuevo archivo** |
-| `app/tienda/metadata-canonical.snippet.tsx` | **Referencia** — no se queda en el repo |
-| `.env.example` | **Reemplaza** el existente |
+## 1 · Migración Supabase — YA APLICADA
 
-### Aplicar el fix de canónica en `/tienda`
+La migración `sprint2_sa_quiz_infra` ya se aplicó vía MCP durante la sesión. Añadió:
+- Columna `quiz_properties JSONB` a `newsletter_subscribers`
+- Tabla `quiz_match_cache` (caché 24h del matching IA) con RLS
+- Función `cleanup_expired_quiz_cache()`
 
-Abre `app/tienda/page.tsx` y haz una de estas dos cosas según cómo esté escrito:
-
-**Caso A · `metadata` estático.** Añade o fusiona el campo `alternates`:
-
-```typescript
-export const metadata: Metadata = {
-  // ... lo que ya tengas
-  alternates: {
-    canonical: "https://naturalvita.co/tienda",
-  },
-};
-```
-
-**Caso B · `generateMetadata` dinámico** (filtros con nuqs). Dentro de la función, devuelve también:
-
-```typescript
-return {
-  // ... lo que ya devuelvas
-  alternates: {
-    canonical: "https://naturalvita.co/tienda",
-    // ↑ SIEMPRE el listado base. Nunca incluyas query params en la canónica.
-  },
-};
-```
-
-Verifica que `app/page.tsx` apunta su canónica a `https://naturalvita.co` y no a `/tienda`.
-
-Borra el archivo `app/tienda/metadata-canonical.snippet.tsx` después de aplicar el fix (solo es referencia).
-
----
-
-## 4 · Webhook viejo de AWS SNS
-
-`app/api/webhooks/aws-sns/route.ts` queda **en el repo sin tocarlo**. La suscripción SNS en AWS ya está dormida (Sprint 1 cerrado), así que no recibirá tráfico. Cuando reapelemos AWS lo reactivamos. Nota mental: si en algún momento sí queremos limpiarlo, lo haremos en un sprint dedicado a higiene.
-
----
-
-## 5 · Búsqueda global de referencias antiguas
-
-Antes de hacer commit, asegúrate de que no quedan menciones a AWS SES en código activo:
-
-```bash
-grep -rn "aws-sdk/client-ses" --include="*.ts" --include="*.tsx" .
-grep -rn "aws-sdk/client-sns" --include="*.ts" --include="*.tsx" .
-grep -rn "SESClient\|SendEmailCommand" --include="*.ts" --include="*.tsx" .
-```
-
-Los únicos hits válidos son dentro de `app/api/webhooks/aws-sns/route.ts` (dormido). Cualquier otro hit es un import muerto que el nuevo `client.ts` ya reemplazó internamente — bórralo.
-
-La firma pública `sendEmail()` no cambia, por lo que las **plantillas y server actions que la consumen siguen funcionando sin modificación**. Si encuentras alguno que aún hace `new SESClient()` directo o que importa el cliente de AWS, ese código es el que se migró internamente y debes borrarlo. Por contrato, todo el envío pasa por `sendEmail()`.
-
----
-
-## 6 · Configuración de variables en Vercel
-
-En el panel de Vercel → Project → Settings → Environment Variables, configura para **Production** y **Preview**:
-
-| Variable | Valor |
-|---|---|
-| `RESEND_API_KEY` | API key "NaturalVita Production" desde resend.com → API Keys |
-| `RESEND_WEBHOOK_SECRET` | (se genera en el paso 7) |
-| `RESEND_FROM_TRANSACTIONAL` | `NaturalVita <notificaciones@naturalvita.co>` |
-| `RESEND_FROM_MARKETING` | `NaturalVita <hola@news.naturalvita.co>` |
-| `RESEND_REPLY_TO` | `info@naturalvita.co` |
-
-Las variables `AWS_*` y `SES_*` quedan **en Vercel sin tocar**. Las usaremos en la reapelación.
-
----
-
-## 7 · Configurar webhook en panel Resend
-
-Esta es la única parte manual y la haces tras el primer deploy a Vercel con el código nuevo.
-
-1. Login en `https://resend.com/login`.
-2. Sidebar → **Webhooks** → **Add Endpoint**.
-3. **Endpoint URL**: `https://naturalvita.co/api/webhooks/resend`
-4. **API Version**: la default (v1).
-5. **Events to send**: marca exactamente:
-   - `email.sent`
-   - `email.delivered`
-   - `email.bounced`
-   - `email.complained`
-   - `email.opened` (para Savia futuro)
-   - `email.clicked` (para Savia futuro)
-6. Click **Add Endpoint**.
-7. En la pantalla del endpoint recién creado, busca **Signing Secret** (empieza con `whsec_...`). Click "Reveal" o "Copy".
-8. Pega ese secret en Vercel como `RESEND_WEBHOOK_SECRET`. Redeploy.
-9. En Resend, click **Send Test Event** → elige `email.delivered`. Si todo está bien, recibirás `200 OK`.
-
-Si ves `401 invalid_signature`, revisa que el secret en Vercel sea exacto (incluye el prefijo `whsec_`).
-
----
-
-## 8 · Validación E2E
-
-Tras el deploy con webhook configurado:
-
-### 8a · Envío transaccional
-1. Abre `https://naturalvita.co/contacto` en navegador anónimo.
-2. Llena el formulario con un email que controles (Gmail recomendado).
-3. Submit.
-4. **Esperado**: email aterriza en inbox en <10 segundos desde `notificaciones@naturalvita.co`, con `Reply-To: info@naturalvita.co`.
-
-### 8b · Webhook procesando bounce
-Envía un email manual a `bounced@resend.dev` (dirección especial de Resend que siempre rebota):
-
-```typescript
-// Desde un script /scripts/test-bounce.ts o consola Supabase
-import { sendEmail } from "@/lib/email/client";
-await sendEmail({
-  to: "bounced@resend.dev",
-  subject: "Test bounce",
-  html: "<p>Test</p>",
-});
-```
-
-Espera ~30 segundos y verifica en Supabase Studio:
-
+No tienes que hacer nada en Supabase. Si quieres verificar:
 ```sql
-SELECT * FROM email_suppressions
-WHERE email = 'bounced@resend.dev'
-ORDER BY created_at DESC
-LIMIT 1;
+SELECT * FROM quiz_match_cache LIMIT 1;
+SELECT column_name FROM information_schema.columns
+  WHERE table_name='newsletter_subscribers' AND column_name='quiz_properties';
 ```
 
-Debe aparecer una fila con `reason = 'bounce'` y `source = 'resend'`.
+## 2 · Dependencias npm — NINGUNA NUEVA
 
-### 8c · Webhook procesando complaint
-Mismo patrón con `complained@resend.dev`. Esa dirección dispara `email.complained` automáticamente.
+Todo usa lo que ya tienes: `@anthropic-ai/sdk`, `@upstash/ratelimit`, `@upstash/redis`, `zod`, `@react-email/components`, `lucide-react`, `next/image`. No hay `npm install`.
 
+## ⚠️ Correcciones aplicadas tras revisar tu repo real
+
+Tras revisar la estructura real de tu repo, ajusté tres cosas para que el build no falle:
+
+1. **`quiz-result.tsx` vive en `lib/email/templates/`** (no en `emails/`). Usa el `EmailLayout` compartido, igual que tus otras plantillas. Queda visualmente coherente con newsletter-welcome.
+2. **`status: 'subscribed'`** — tu tabla `newsletter_subscribers` usa el valor `'subscribed'` por defecto (con CHECK constraint que solo acepta 'subscribed'/'unsubscribed'/'bounced'). Mi código ahora usa el valor correcto.
+3. **Ruta de baja `/newsletter/desuscribir/[token]`** — la misma que ya usa tu newsletter-welcome, no inventé una nueva. El email del quiz incluye header `List-Unsubscribe` RFC 8058 + link en footer.
+
+## 3 · Archivos a colocar en el repo
+
+| Archivo del ZIP | Ruta en repo | Acción |
+|---|---|---|
+| `app/page.tsx` | `app/page.tsx` | **Reemplaza** el home actual |
+| `components/home/quiz-data.ts` | igual | Nuevo |
+| `components/home/HeroQuiz.tsx` | igual | Nuevo |
+| `components/home/LifeStages.tsx` | igual | Nuevo |
+| `lib/quiz/match-products.ts` | igual | Nuevo |
+| `app/api/quiz/match/route.ts` | igual | Nuevo |
+| `app/_actions/quiz-subscribe.tsx` | igual (.tsx, contiene JSX) | Nuevo |
+| `lib/email/templates/quiz-result.tsx` | **lib/email/templates/** | Nuevo |
+| `lib/quiz/save-result.ts` | **lib/quiz/** | Nuevo (A.2) |
+| `app/quiz/r/[slug]/page.tsx` | **app/quiz/r/[slug]/** | Nuevo (A.2) |
+
+**Nota sobre `app/page.tsx`:** si tu home actual tiene contenido que quieres conservar (por ejemplo algo que ya estaba), revísalo antes de reemplazar. El nuevo es un home limpio Quiz-First. Las otras secciones (productos top, editorial, origen, labs, newsletter) llegan en Sesiones B-D y se montan dentro de este mismo `page.tsx` donde están los comentarios `TODO`.
+
+**Nota sobre la plantilla de email:** `quiz-result.tsx` va en `lib/email/templates/` (junto a `newsletter-welcome.tsx`, `_layout.tsx`, etc.), NO en una carpeta `emails/`. Usa el `EmailLayout` compartido del repo para mantener coherencia visual (header wordmark + footer con dirección Medellín + soporte unsubscribe RFC 8058). El import en `quiz-subscribe.tsx` ya apunta a `@/lib/email/templates/quiz-result`.
+
+## 4 · Imágenes — generar con Gemini Imagen 3
+
+Ver `prompts-gemini-imagen3.md`. Genera las 6 imágenes de etapas + 1 OG, conviértelas a AVIF (squoosh.app), y súbelas a `/public/home/`:
+
+- `etapa-bebe.avif`, `etapa-nino.avif`, `etapa-adolescente.avif`, `etapa-adulto.avif`, `etapa-embarazo.avif`, `etapa-adulto-mayor.avif`
+- `og-home.jpg`
+
+El sitio funciona sin las imágenes (solo se ven marcos vacíos en las cards). Puedes deployar primero y subir imágenes después.
+
+## 5 · Tipografía serif
+
+El código usa `Georgia` como serif (system font, cero latencia, ya disponible). Es una elección segura y elegante para titulares. Si más adelante quieres Fraunces (más carácter), la integramos vía `next/font/google` en una sesión de pulido — pero Georgia funciona perfecto para lanzar.
+
+## 6 · Variables de entorno
+
+Todo lo que el quiz necesita ya está en Vercel:
+- `ANTHROPIC_API_KEY` (matching IA) ✅
+- `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (rate limit) ✅
+- `RESEND_*` (email de resultado) ✅ — recién configuradas en Sesión 0
+- `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` ✅
+
+Cero variables nuevas.
+
+## 7 · Deploy y validación
+
+1. Sube los 8 archivos a GitHub (commit: `Sprint 2 SA: Home Quiz-First + etapas de vida`)
+2. Vercel deploya automático
+3. Valida:
+   - Abre `https://naturalvita.co` → debe verse el Quiz-Hero con la pregunta "¿Para quién buscas bienestar hoy?"
+   - Elige una etapa → debe pasar al paso 2 (objetivos)
+   - Elige un objetivo → debe mostrar "Seleccionando lo mejor…" y luego 3 productos con razón
+   - Ingresa un email → debe llegar el email de resultado con cupón WELCOME10
+   - Click "Solo quiero ver el catálogo" → va a /tienda
+   - Scroll abajo → las 6 cards de etapas
+
+## 8 · Cómo verificar que el matching IA y caché funcionan
+
+Después de hacer un par de quizzes, revisa en Supabase:
 ```sql
-SELECT * FROM email_suppressions WHERE email = 'complained@resend.dev';
+SELECT cache_key, etapa, objetivo, hit_count, jsonb_array_length(recommendations) AS num_productos, created_at
+FROM quiz_match_cache
+ORDER BY created_at DESC;
 ```
+- La primera vez que alguien hace "adulto + sueño" se crea una fila (gastó IA)
+- La segunda vez con la misma combinación, `hit_count` sube y NO gasta IA (vino del caché)
 
-### 8d · Suppression check funciona
-Intenta enviar un segundo email a `bounced@resend.dev` después del paso 8b. El resultado debe ser:
+## 9 · Costo estimado
 
-```typescript
-{ success: false, error: "suppressed", errorMessage: "...está en la lista de suppression." }
-```
+- Cada quiz nuevo (combinación no cacheada): ~$0.003 USD con Haiku 4.5
+- Combinaciones repetidas (caché 24h): $0
+- Con 36 combinaciones posibles (6 etapas × 6 objetivos), tras el primer día casi todo viene de caché
+- Costo mensual realista: <$5 USD aunque tengas miles de visitas
 
-Sin que Resend reciba la solicitud.
+## 10 · Qué falta (Sesiones B-D)
+
+- **B:** Productos top dinámicos + Editorial (3 artículos)
+- **C:** Origen Everlife (2019/Zardrin) + Labs aliados
+- **D:** Newsletter prominente + sellos confianza + QA mobile + Lighthouse
+
+Todas se montan dentro de `app/page.tsx` donde están los comentarios TODO.
 
 ---
 
-## 9 · Solicitud manual de indexación en GSC
+## Checklist de cierre Sesión A
 
-En paralelo al deploy, repite la solicitud de indexación de las 5 URLs top en Google Search Console:
-
-1. `https://naturalvita.co`
-2. `https://naturalvita.co/tienda` *(canónica recién aplicada, importante repetir)*
-3. `https://naturalvita.co/sobre-nosotros`
-4. `https://naturalvita.co/preguntas-frecuentes`
-5. `https://naturalvita.co/contacto`
-
----
-
-## 10 · Checklist de cierre Sesión 0
-
-- [ ] Dependencias npm correctas
-- [ ] `lib/email/client.ts` reemplazado
-- [ ] `app/api/webhooks/resend/route.ts` creado
-- [ ] Fix canónica `/tienda` aplicado
-- [ ] Variables Vercel configuradas (5 nuevas)
-- [ ] Build limpio: `npm run build` sin warnings
-- [ ] Deploy a producción exitoso
-- [ ] Webhook Resend configurado con signing secret en Vercel
-- [ ] Test event Resend devuelve `200 OK`
-- [ ] E2E contacto: email transaccional llega en <10s
-- [ ] E2E bounce: aparece en `email_suppressions`
-- [ ] E2E complaint: aparece en `email_suppressions`
-- [ ] E2E suppression check: bloquea segundo envío
-- [ ] GSC: 5 URLs solicitadas para reindexación
-- [ ] Dashboard actualizado con Sesión 0 cerrada
-
-Cuando todo lo de arriba esté verde, arrancamos **Sesión A del Home** (Hero + 6 etapas de vida + estética Discovery Land).
+- [ ] 8 archivos subidos a GitHub
+- [ ] Build verde en Vercel
+- [ ] 6 imágenes de etapas generadas y subidas a /public/home/
+- [ ] OG image subida
+- [ ] Quiz completa flujo: etapa → objetivo → 3 productos → email → cupón
+- [ ] Email de resultado llega con cupón WELCOME10
+- [ ] Escape "ver catálogo" funciona
+- [ ] Cards de etapas linkean a /tienda?etapa=X
+- [ ] Caché funcionando (hit_count sube en repeticiones)
