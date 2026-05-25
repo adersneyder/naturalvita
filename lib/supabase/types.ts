@@ -1014,6 +1014,7 @@ export type Database = {
           email: string
           full_name: string | null
           id: string
+          quiz_properties: Json | null
           source: string | null
           status: string
           unsubscribe_token: string
@@ -1025,6 +1026,7 @@ export type Database = {
           email: string
           full_name?: string | null
           id?: string
+          quiz_properties?: Json | null
           source?: string | null
           status?: string
           unsubscribe_token?: string
@@ -1036,6 +1038,7 @@ export type Database = {
           email?: string
           full_name?: string | null
           id?: string
+          quiz_properties?: Json | null
           source?: string | null
           status?: string
           unsubscribe_token?: string
@@ -1751,6 +1754,86 @@ export type Database = {
           },
         ]
       }
+      quiz_match_cache: {
+        Row: {
+          cache_key: string
+          created_at: string
+          etapa: string
+          expires_at: string
+          hit_count: number
+          id: string
+          model: string
+          objetivo: string
+          recommendations: Json
+        }
+        Insert: {
+          cache_key: string
+          created_at?: string
+          etapa: string
+          expires_at?: string
+          hit_count?: number
+          id?: string
+          model?: string
+          objetivo: string
+          recommendations: Json
+        }
+        Update: {
+          cache_key?: string
+          created_at?: string
+          etapa?: string
+          expires_at?: string
+          hit_count?: number
+          id?: string
+          model?: string
+          objetivo?: string
+          recommendations?: Json
+        }
+        Relationships: []
+      }
+      quiz_results: {
+        Row: {
+          created_at: string
+          customer_id: string | null
+          email: string | null
+          etapa: string
+          id: string
+          objetivo: string
+          products: Json
+          slug: string
+          view_count: number
+        }
+        Insert: {
+          created_at?: string
+          customer_id?: string | null
+          email?: string | null
+          etapa: string
+          id?: string
+          objetivo: string
+          products: Json
+          slug: string
+          view_count?: number
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string | null
+          email?: string | null
+          etapa?: string
+          id?: string
+          objetivo?: string
+          products?: Json
+          slug?: string
+          view_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quiz_results_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scraping_jobs: {
         Row: {
           batch_size: number | null
@@ -2030,9 +2113,14 @@ export type Database = {
       }
     }
     Functions: {
+      cleanup_expired_quiz_cache: { Args: never; Returns: undefined }
       current_admin_role: { Args: never; Returns: string }
       increment_coupon_uses: {
         Args: { p_coupon_id: string }
+        Returns: undefined
+      }
+      increment_quiz_result_views: {
+        Args: { result_slug: string }
         Returns: undefined
       }
       is_email_suppressed: { Args: { p_email: string }; Returns: boolean }
