@@ -1,50 +1,56 @@
-# NaturalVita · Quiz de recomendaciones IA — Instalación
+# NaturalVita · Quiz de recomendaciones IA — Instalación (estructura RAÍZ)
 
-Quiz del Home reconstruido desde cero: **objetivo-primero**, layout 2 columnas (~62vh),
-que lee un **mapa de recomendaciones pre-computado por IA**. La base de datos y el motor
-de recálculo automático **ya están desplegados** en Supabase (proyecto qheynvhdjdnqywyaekpq).
-Este ZIP es **integral y autocontenido**: trae todo lo necesario, incluyendo sus propios
-helpers internos. No tienes que ajustar imports ni adivinar nombres de tu repo.
+IMPORTANTE: este ZIP usa la estructura de tu repo, con las carpetas en la RAÍZ
+(`lib/`, `components/`), NO bajo `src/`. Tu `tsconfig.json` tiene `"@/*": ["./*"]`,
+así que los imports `@/lib/quiz/...` resuelven a `lib/quiz/...` en la raíz.
 
-## Cómo integrarlo (subida masiva a GitHub)
+## ⚠️ Antes de subir: borra la carpeta `src/` huérfana del cargue anterior
 
-Sube la carpeta `src/**` tal cual a tu repo (respetando rutas). No pisa nada existente:
-todo el código nuevo vive bajo `src/lib/quiz/` y dos componentes nuevos. La Edge Function
-ya está desplegada en Supabase; el archivo va incluido solo como referencia/control de versión.
+El ZIP anterior (equivocado) creó una carpeta `src/` en tu repo con el quiz dentro.
+Esa carpeta NO sirve (tu proyecto no usa `src/`) y hay que eliminarla para que no
+queden archivos duplicados ni confusión. En GitHub:
+1. Entra a la carpeta `src/` del repo.
+2. Bórrala completa (puedes borrar archivo por archivo, o desde la línea de comandos
+   si clonas: `git rm -r src && git commit -m "remove stray src" && git push`).
+Si no puedes borrarla fácil desde la web, dime y te explico la vía con GitHub Desktop.
 
-Tras subir, solo editas UN archivo tuyo (el Home) para montar el quiz. Eso es todo.
+## Cómo integrar este ZIP (subida masiva)
 
-## Contenido del ZIP
+Sube el contenido del ZIP a la RAÍZ del repo. Las carpetas se fusionan con las tuyas:
+- `lib/quiz/...`        → se agrega junto a tu `lib/` existente
+- `components/home/HeroQuiz.tsx`   → junto a tus componentes del Home
+- `components/admin/QuizRecalcPanel.tsx` → junto a tu admin
+- `supabase/functions/quiz-reco-sync/index.ts` → ya existe, no cambia
+No pisa nada tuyo: todo el código del quiz vive en rutas nuevas (`lib/quiz/`, y dos
+componentes nuevos).
+
+## Contenido
 
 ```
-src/lib/quiz/types.ts                  Tipos + parámetros del umbral (configurable)
-src/lib/quiz/queries.ts                Lectura: getActiveNeeds, resolveQuiz
-src/lib/quiz/actions.ts                Server actions: resolver y guardar resultado
-src/lib/quiz/admin-actions.ts          Server actions admin: recalcular + estado
-src/lib/quiz/_internal/supabase.ts     Cliente Supabase autocontenido (público + servicio)
-src/lib/quiz/_internal/rate-limit.ts   Rate limiter Upstash autocontenido (con fallback)
-src/lib/quiz/_internal/session.ts      Sesión + guard de admin (Supabase Auth por cookies)
-src/components/home/HeroQuiz.tsx        Componente del Hero con el quiz (cliente)
-src/components/admin/QuizRecalcPanel.tsx  Panel admin: botón "Recalcular ahora"
-supabase/functions/quiz-reco-sync/index.ts  Edge Function (YA desplegada; incluida por versión)
-INSTALL.md / CONFIGURACION-SECRETS.md   Esta guía y la de secrets
+lib/quiz/types.ts                  Tipos + umbral configurable
+lib/quiz/queries.ts                Lectura: getActiveNeeds, resolveQuiz
+lib/quiz/actions.ts                Server actions: resolver y guardar
+lib/quiz/admin-actions.ts          Server actions admin: recalcular + estado
+lib/quiz/_internal/supabase.ts     Cliente Supabase autocontenido
+lib/quiz/_internal/rate-limit.ts   Rate limiter Upstash autocontenido
+lib/quiz/_internal/session.ts      Sesión + guard de admin (Supabase Auth)
+components/home/HeroQuiz.tsx        Hero con el quiz (cliente)
+components/admin/QuizRecalcPanel.tsx  Panel admin: botón "Recalcular ahora"
+supabase/functions/quiz-reco-sync/index.ts  Edge Function (ya desplegada; por versión)
+CONFIGURACION-SECRETS.md           Guía de secrets para el recálculo automático
 ```
 
-## Dependencias
+## Dependencias y variables
 
-Ninguna nueva. El módulo usa lo que tu proyecto ya tiene: `@supabase/supabase-js`,
-`@supabase/ssr`, `@upstash/ratelimit`, `@upstash/redis`, `zod` y `next`.
-
-## Variables de entorno (ya las tienes)
-
-El módulo usa las variables estándar que tu proyecto ya tiene en Vercel:
-`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
-y (opcional, para rate limit) `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
-Si Upstash no está, el guardado del quiz simplemente no aplica límite (no rompe).
+Ninguna nueva. Usa lo que ya tienes: `@supabase/supabase-js`, `@supabase/ssr`,
+`@upstash/ratelimit`, `@upstash/redis`, `zod`, `next`.
+Variables (ya configuradas en Vercel): `NEXT_PUBLIC_SUPABASE_URL`,
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, y opcionalmente
+`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
 
 ## El ÚNICO archivo tuyo que editas: el Home
 
-En `src/app/(public)/page.tsx`, reemplaza el HeroQuiz viejo:
+En tu página de inicio (la que renderiza el Home, p.ej. `app/(public)/page.tsx`):
 
 ```tsx
 import HeroQuiz from "@/components/home/HeroQuiz";
@@ -55,24 +61,18 @@ export default async function HomePage() {
   return (
     <>
       <HeroQuiz needs={needs} isLoggedIn={false} />
-      {/* LifeStages, FeaturedProducts, ... (resto del Home igual) */}
+      {/* LifeStages, FeaturedProducts, ... (resto igual) */}
     </>
   );
 }
 ```
 
-Notas:
-- `isLoggedIn={false}` por ahora. Cuando el Home tenga login visible (Sprint 2 Sesión B),
-  pásalo según tu sesión para activar el guardado vinculado a la cuenta.
-- El primer paso del quiz ahora pregunta OBJETIVO (no etapa), así que ya NO se pisa
-  con la sección LifeStages de abajo.
-- Imagen del Hero: el componente usa `/home/naturalvita-hero.avif`. Usa la que generaste
-  para Sprint 2 o cambia el `src` en HeroQuiz.tsx. Si no existe aún, cualquier AVIF/WEBP
-  vertical sirve temporalmente.
+- `isLoggedIn={false}` por ahora; conéctalo a tu sesión cuando el Home tenga login visible.
+- El quiz pregunta primero el OBJETIVO (no la etapa), así que ya NO se pisa con LifeStages.
+- Imagen del Hero: usa `/home/naturalvita-hero.avif` (carpeta `public/home/`). Cambia el
+  `src` en HeroQuiz.tsx si tu imagen tiene otro nombre.
 
 ## Panel de admin (opcional)
-
-Monta `QuizRecalcPanel` donde gestiones catálogo (p.ej. una sección de /admin):
 
 ```tsx
 import QuizRecalcPanel from "@/components/admin/QuizRecalcPanel";
@@ -84,29 +84,15 @@ export default async function Page() {
 }
 ```
 
-### Guard de admin — único punto a verificar
+Guard de admin en `lib/quiz/_internal/session.ts` → `requireQuizAdmin()`: considera admin
+si `app_metadata.role === 'admin'` o si hay fila en `admin_users`. Ajústalo a tu modelo si
+difiere (está aislado y comentado). Solo afecta al panel admin, no al quiz público.
 
-`_internal/session.ts` → `requireQuizAdmin()` considera admin si:
-  (a) el usuario tiene `app_metadata.role === 'admin'` en Supabase Auth, o
-  (b) existe una fila suya en la tabla `admin_users`.
-Si tu repo marca admins de otra forma, ajusta `requireQuizAdmin()` (está aislado y comentado).
-Esto SOLO afecta al panel de admin; el quiz público no usa esta verificación.
-
-## Cómo funciona el umbral
-
-`resolve_quiz(need, stage)` devuelve candidatos rankeados; el front aplica:
-máx 2 directas + 1 coadyuvante (coadyuvante solo si score ≥ 45), tope 3, los que sean
-dignos (si hay 1, muestra 1). Si no hay ninguno apto (típico en bebé), muestra un mensaje
-cálido invitando a consultar, no una lista vacía. Parámetros en `types.ts` → `QUIZ_THRESHOLD`.
+## Umbral
+máx 2 directas + 1 coadyuvante (≥45), tope 3, los que sean dignos. Sin aptos → mensaje
+cálido, no lista vacía. Parámetros en `lib/quiz/types.ts` → `QUIZ_THRESHOLD`.
 
 ## Recálculo automático
-
-Ya quedó montado en Supabase (trigger de huella + Edge Function + cron 15 min + cron
-semanal + botón admin). Para ACTIVARLO necesitas registrar dos secrets una sola vez:
-ver CONFIGURACION-SECRETS.md. El quiz funciona sin esto (el mapa ya está poblado); los
-secrets solo habilitan que se reclasifique solo al agregar/editar productos.
-
-## Mejora futura sugerida
-De-duplicar presentaciones del mismo producto base en el resultado (p.ej. dos tamaños
-del mismo probiótico). Y reforzar catálogo central de "articulaciones" (hoy se apoya
-sobre todo en coadyuvantes).
+Ya montado en Supabase (trigger + Edge Function + cron 15 min + semanal + botón admin).
+Para activarlo, registra dos secrets (ver CONFIGURACION-SECRETS.md). El quiz funciona
+sin esto; los secrets solo habilitan reclasificar al agregar/editar productos.
