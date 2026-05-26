@@ -6,13 +6,12 @@
 // - getQuizSyncStatusAction: estado de la última corrida + cuántos sucios hay.
 // Requiere sesión de admin. TODO(repo): ajustar el guard de admin al del repo.
 
-import { createServerClient } from "@/lib/supabase/server";
-// TODO(repo): confirmar helper real de verificación de admin.
-import { requireAdmin } from "@/lib/auth/admin";
+import { quizServiceClient } from "./_internal/supabase";
+import { requireQuizAdmin } from "./_internal/session";
 
 export async function triggerQuizRecalcAction() {
-  await requireAdmin();
-  const supabase = createServerClient();
+  await requireQuizAdmin();
+  const supabase = quizServiceClient();
 
   // Invoca la función SQL que llama a la Edge Function si hay sucios.
   const { data, error } = await supabase.rpc("trigger_quiz_reco_sync", {
@@ -27,8 +26,8 @@ export async function triggerQuizRecalcAction() {
 }
 
 export async function getQuizSyncStatusAction() {
-  await requireAdmin();
-  const supabase = createServerClient();
+  await requireQuizAdmin();
+  const supabase = quizServiceClient();
 
   const [{ data: dirty }, { data: lastRun }] = await Promise.all([
     supabase.from("quiz_reco_dirty_products").select("id"),

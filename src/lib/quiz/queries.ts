@@ -5,7 +5,7 @@
 // acordado: máx 2 directas + máx 1 coadyuvante (score >= 45), tope 3,
 // con desempate por reseñas -> novedad -> id. Disponibilidad = is_active.
 
-import { createServerClient } from "@/lib/supabase/server";
+import { quizPublicClient } from "./_internal/supabase";
 import {
   type QuizNeed,
   type QuizResult,
@@ -16,7 +16,7 @@ import {
 
 /** Lista las necesidades activas para pintar el primer paso del quiz. */
 export async function getActiveNeeds(): Promise<QuizNeed[]> {
-  const supabase = createServerClient();
+  const supabase = quizPublicClient();
   const { data, error } = await supabase
     .from("quiz_needs")
     .select("slug,name,tagline,description,icon")
@@ -56,7 +56,7 @@ export async function resolveQuiz(
   needSlug: string,
   stage: LifeStage,
 ): Promise<QuizResult | null> {
-  const supabase = createServerClient();
+  const supabase = quizPublicClient();
 
   // Necesidad (para el encabezado del resultado)
   const { data: need, error: needErr } = await supabase

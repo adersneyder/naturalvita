@@ -14,11 +14,9 @@
 import { z } from "zod";
 import { resolveQuiz } from "./queries";
 import { type LifeStage } from "./types";
-import { createServerClient } from "@/lib/supabase/server";
-// TODO(repo): confirmar ruta real del rate limiter compartido.
-import { ratelimit } from "@/lib/rate-limit";
-// TODO(repo): confirmar helper de sesión/usuario actual.
-import { getCurrentCustomer } from "@/lib/auth/session";
+import { quizServiceClient } from "./_internal/supabase";
+import { quizRateLimit } from "./_internal/rate-limit";
+import { getQuizCustomer } from "./_internal/session";
 
 const resolveSchema = z.object({
   needSlug: z.string().min(1).max(64),
@@ -78,13 +76,13 @@ export async function saveQuizResultAction(input: unknown) {
     return { ok: true as const, skipped: true }; // responde ok silencioso
   }
 
-  const supabase = createServerClient();
-  const customer = await getCurrentCustomer().catch(() => null);
+  const supabase = quizServiceClient();
+  const customer = await getQuizCustomer().catch(() => null);
 
   // Rate limit por IP/usuario para el guardado anónimo con email
   if (!customer && email) {
     const id = `quiz-save:${email}`;
-    const { success } = await ratelimit.limit(id);
+    const { success } = await quizRateLimit(id);
     if (!success) {
       return { ok: false as const, error: "Demasiados intentos. Intenta más tarde." };
     }
