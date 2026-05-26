@@ -1,31 +1,32 @@
 /**
  * app/(public)/page.tsx — Home de NaturalVita
  *
- * MOVIDO desde app/page.tsx a app/(public)/page.tsx para que el Home
- * herede el layout público (PublicHeader, PublicFooter, CartDrawer,
- * HabeasDataBanner, Toaster). Antes vivía en la raíz y por eso NO tenía
- * header, buscador, cuenta ni carrito. La URL sigue siendo "/" — los
- * grupos entre paréntesis no afectan la ruta.
- *
  * Sprint 2 Sesión A: Quiz-Hero + 6 etapas de vida.
- * Sprint 2 Sesión B: + Productos top dinámicos (FeaturedProducts).
+ * Sprint 2 Sesión B: + Selección destacada + secciones de marca Everlife.
  *
- * Estructura final del Home (se completa en Sesiones B-D):
- *   [A] HeroQuiz          ← Sesión A
- *   [A] LifeStages        ← Sesión A
- *   [B] FeaturedProducts  ← Sesión B (Punto 1)
- *   [B] Editorial (3 artículos)
- *   [C] Origen Everlife
- *   [C] Labs aliados + sellos confianza
- *   [D] Newsletter prominente
+ * Estructura del Home:
+ *   [A] HeroQuiz          — Hero personalizado (quiz)
+ *   [A] LifeStages        — 6 etapas de vida ("del bebé al abuelo")
+ *   [B] FeaturedProducts  — Selección destacada (cascada 3 niveles)
+ *   [B] ValueProps        — 3 propuestas de valor (confianza)
+ *   [B] EverlifeOrigin    — Origen de la marca (2019, Zardrin)
+ *   [B] PartnerLabs       — Laboratorios aliados (dinámico)
+ *   [B] TrustBadges       — Sellos de confianza (cierre, encima del footer)
  *
+ * El newsletter vive en el PublicFooter (layout), no aquí.
  * El Header/Footer vienen del layout (public), no se tocan aquí.
  */
 import type { Metadata } from "next";
 import { HeroQuiz } from "@/components/home/HeroQuiz";
 import { LifeStages } from "@/components/home/LifeStages";
 import FeaturedProducts from "@/components/home/FeaturedProducts";
+import { ValueProps } from "@/components/home/ValueProps";
+import { EverlifeOrigin } from "@/components/home/EverlifeOrigin";
+import { PartnerLabs } from "@/components/home/PartnerLabs";
+import { TrustBadges } from "@/components/home/TrustBadges";
+
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co";
+
 export const metadata: Metadata = {
   title: "NaturalVita · Bienestar que crece contigo",
   description:
@@ -58,7 +59,7 @@ export const metadata: Metadata = {
     images: [`${SITE_URL}/home/og-home.jpg`],
   },
 };
-// Schema.org WebSite con SearchAction → habilita sitelinks searchbox en Google
+
 const websiteSchema = {
   "@context": "https://schema.org",
   "@type": "WebSite",
@@ -76,6 +77,7 @@ const websiteSchema = {
     "query-input": "required name=search_term_string",
   },
 };
+
 export default function HomePage() {
   return (
     <>
@@ -86,11 +88,10 @@ export default function HomePage() {
       <HeroQuiz />
       <LifeStages />
       <FeaturedProducts />
-      {/*
-        TODO Sesión B: <Editorial />
-        TODO Sesión C: <EverlifeOrigin /> + <PartnerLabs />
-        TODO Sesión D: <NewsletterCta /> + <TrustBadges />
-      */}
+      <ValueProps />
+      <EverlifeOrigin />
+      <PartnerLabs />
+      <TrustBadges />
     </>
   );
 }

@@ -1,92 +1,93 @@
-# NaturalVita · Sprint 2 Sesión B · Punto 3 — Quiz accionable
+# NaturalVita · Sprint 2 Sesión B — Secciones de marca Everlife
 
-Hace que los productos del **resultado del quiz** sean accionables: cada uno con
-botón **"Agregar"** (al carrito, con feedback) y **"Ver"** (ficha rápida en modal,
-sin salir del Home para no perder el resultado del quiz).
-
-Incluye también el alineamiento del modelo de disponibilidad/inventario al modelo
-de intermediación (ver sección "Cambios en base de datos", ya aplicados por MCP).
+Cuatro secciones nuevas para el Home, que cuentan quién está detrás de
+NaturalVita y por qué confiar. Completan los TODOs que quedaban en el `page.tsx`.
 
 ---
 
-## Archivos de este ZIP (solo 2 — reemplazan los existentes)
+## Archivos de este ZIP
 
 ```
-lib/quiz/match-products.ts          → reemplaza  src/lib/quiz/match-products.ts
-components/home/HeroQuiz.tsx         → reemplaza  src/components/home/HeroQuiz.tsx
+components/home/ValueProps.tsx        → NUEVO   (propuestas de valor, 3 columnas)
+components/home/EverlifeOrigin.tsx    → NUEVO   (origen de la marca, 2019/Zardrin)
+components/home/PartnerLabs.tsx       → NUEVO   (laboratorios aliados, dinámico)
+components/home/TrustBadges.tsx       → NUEVO   (sellos de confianza, cierre)
+lib/catalog/partner-labs.ts          → NUEVO   (consulta de labs con catálogo vivo)
+app/(public)/page.tsx                 → REEMPLAZA el Home actual
 ```
 
-> Ajusta el prefijo (`src/` o raíz) según la estructura de tu repo. Las rutas
-> internas de import (`@/lib/...`, `@/components/...`) no cambian.
-
-**Súbelos como archivo (drag & drop o "Upload files" en GitHub), NO copies y
-pegues el contenido en el editor web.** Son archivos largos con JSX anidado; el
-parser SWC de Next 15.5 puede corromperse al pegar. Subirlos como archivo es seguro.
+> Súbelos como archivo (drag & drop o "Upload files" en GitHub), NO copies y
+> pegues en el editor web. Son archivos con JSX; el parser SWC de Next 15.5
+> puede corromperse al pegar.
 
 ---
 
-## Qué hace cada archivo
+## Orden de las secciones en el Home (ya resuelto en page.tsx)
 
-### `lib/quiz/match-products.ts` (enriquecido)
-- El tipo `MatchedProduct` ahora incluye 3 campos para la ficha rápida:
-  `presentation`, `shortDescription`, `laboratory`.
-- `hydrateProducts` trae esos campos en el mismo query (incluye el embed
-  `laboratories(name)` vía la FK `products_laboratory_id_fkey`). **No hay fetch
-  extra ni endpoint nuevo:** los datos viajan en el resultado del match.
-- Se eliminó el filtro de stock muerto (`if (trackStock && stock <= 0) continue`).
-  La disponibilidad la manda `is_active`/`status` (ya filtrados en el query).
+```
+HeroQuiz → LifeStages → FeaturedProducts
+  → ValueProps        (3 razones para confiar)
+  → EverlifeOrigin    (historia de marca)
+  → PartnerLabs       (laboratorios aliados)
+  → TrustBadges       (sellos de confianza)
+→ PublicFooter        (incluye el newsletter — viene del layout)
+```
 
-### `components/home/HeroQuiz.tsx` (carrito + ficha rápida)
-- Cada producto del resultado tiene botón **"Agregar"** (usa `useCart().addItem`,
-  feedback "Agregado ✓" 2s) y **"Ver"** (abre la ficha rápida).
-- Nuevo modal **ficha rápida** (`QuickView`): imagen + laboratorio + nombre +
-  presentación + precio + descripción corta + razón IA + "Agregar al carrito" +
-  link "Ver ficha completa" a `/producto/[slug]`. Cierra con Escape o clic afuera.
-- Se conserva todo lo demás: rama logueado (botón "Guardar mi selección" sin pedir
-  email) / anónimo (form email + cupón), señal de marketing, CTA a la tienda,
-  estética del quiz.
+Criterio del orden: el visitante ya viene enganchado con producto desde la
+"Selección destacada"; ahí entran las razones para confiar (valores, origen,
+labs). Los sellos cierran pegados encima del footer, como último empujón antes
+de decidir. El newsletter no es sección aparte: vive en el footer del layout.
 
 ---
 
-## Qué NO se toca (verificado)
-- **`/api/quiz/match/route.ts`**: el tipo enriquecido viaja solo en el JSON; el
-  route devuelve el resultado tal cual. Sin cambios.
-- **`app/_actions/quiz-subscribe.tsx`**: su `productSchema` (Zod) no usa `.strict()`,
-  así que ignora los campos extra sin error. Sin cambios.
-- **Email `quiz-result`** y **`/tienda`**: sin cambios.
+## Imagen requerida
+
+`EverlifeOrigin` espera una imagen en:
+
+```
+/public/home/origen-everlife.avif
+```
+
+Sugerencia (Flux Pro, según el plan de imágenes): laboratorio o manos con
+producto natural, tono cálido, profesional pero humano. Si aún no existe, la
+sección renderiza igual (el contenedor de imagen queda con fondo crema hasta
+que la subas). Conviene subirla antes del launch.
 
 ---
 
-## Cambios en base de datos (YA APLICADOS por MCP — informativos)
+## Notas de contenido (texto es borrador — ajústalo cuando quieras)
 
-Modelo de intermediación: **la disponibilidad la manda `is_active`, no el stock.**
-Regla: activo sin número = sin tope (`track_stock=false`); activo con número =
-tope N (`track_stock=true` + `stock=N`); desactivado = invisible en todos los canales.
+- **Origen Everlife:** redactado a partir del contexto conocido (2019, Zardrin,
+  "del bebé al abuelo"). Es un borrador; el texto real de la historia lo
+  defines tú. Está en `EverlifeOrigin.tsx`, fácil de editar.
+- **Laboratorios aliados:** NO dice "colombianos" — se centra en la calidad del
+  producto, porque las marcas son americanas, europeas y colombianas. Es
+  dinámico: muestra solo laboratorios con productos activos (hoy: Millenium
+  Natural Systems, Cinat, Naturfar). Cuando otro laboratorio cargue catálogo,
+  aparece solo. Muestra los nombres en texto (los logos aún no están cargados);
+  cuando subas logo_url, se cambia el render sin rehacer la sección.
+- **Sellos de confianza:** la atención dice "Atención cuando la necesitas —
+  acompañamiento cercano, paso a paso", reflejando el agente humanizado sin
+  prometer que siempre responde una persona.
 
-1. **`fix_track_stock_intermediation_model`** — 89 productos que estaban en
-   `track_stock=true, stock=0` (default residual, no un límite real) pasaron a
-   `track_stock=false`. Los 101 activos quedaron sin tope. Ningún límite real perdido
-   (0 productos tenían `track_stock=true, stock>0`).
+---
 
-2. **`track_stock_default_false_intermediation`** — el DEFAULT de la columna
-   `track_stock` pasó de `true` a `false`. Así, todo producto nuevo (carga manual o
-   scraping) que no fije el campo nace **sin tope** (pedible), en vez de "agotado de
-   fábrica". Blinda la regla a nivel de dato.
+## Qué NO se toca
+- El layout `(public)` (header, footer con newsletter, carrito) — sin cambios.
+- HeroQuiz, LifeStages, FeaturedProducts — sin cambios (solo se importan).
 
 ---
 
 ## Verificación post-deploy
-1. Completa el quiz (cualquier etapa + objetivo). Deben salir 3 productos.
-2. "Agregar" → el contador del carrito en el header sube; el botón muestra "Agregado".
-3. "Ver" (o clic en el producto) → abre la ficha rápida con datos completos.
-4. En la ficha rápida: "Agregar al carrito" funciona; "Ver ficha completa" navega a
-   `/producto/[slug]`; Escape y clic afuera cierran.
-5. Logueado: el bloque de captura muestra "Guardar mi selección" (sin pedir email).
+1. El Home muestra, bajo la selección destacada: valores → origen → labs → sellos.
+2. La sección de aliados lista los 3 laboratorios reales; al hacer clic en uno,
+   lleva a `/tienda?lab=slug`.
+3. El origen muestra el relato; "Conoce más sobre nosotros" lleva a /sobre-nosotros.
+4. Los sellos quedan justo encima del footer.
+5. Responsive: en móvil, origen apila imagen sobre texto; valores y sellos se
+   reorganizan en una columna.
 
----
-
-## Pendiente de verificación (no bloquea este deploy)
-El DEFAULT de la BD cubre el caso "no se setea el campo". Si el **ProductEditor**
-del admin o el **scraper** escriben `track_stock=true` explícitamente, conviene
-ajustarlos para que solo lo hagan cuando haya un número de inventario. Requiere
-revisar ese código (no incluido en este ZIP).
+## Calidad
+- Type-check en verde (tsc strict, 0 errores).
+- Estética coherente con LifeStages/HeroQuiz: CSS scoped, Georgia en titulares,
+  paleta crema/blanco con acentos verde y púrpura.
