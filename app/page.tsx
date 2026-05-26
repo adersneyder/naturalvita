@@ -2,11 +2,12 @@
  * app/page.tsx — Home de NaturalVita
  *
  * Sprint 2 Sesión A: Quiz-Hero + 6 etapas de vida.
+ * Sprint 2 Sesión B: + Productos top dinámicos (FeaturedProducts).
  *
  * Estructura final del Home (se completa en Sesiones B-D):
- *   [A] HeroQuiz          ← esta sesión
- *   [A] LifeStages        ← esta sesión
- *   [B] Productos top dinámicos
+ *   [A] HeroQuiz          ← Sesión A
+ *   [A] LifeStages        ← Sesión A
+ *   [B] FeaturedProducts  ← Sesión B (Punto 1)
  *   [B] Editorial (3 artículos)
  *   [C] Origen Everlife
  *   [C] Labs aliados + sellos confianza
@@ -14,13 +15,11 @@
  *
  * El Header/Footer vienen del layout, no se tocan aquí.
  */
-
 import type { Metadata } from "next";
 import { HeroQuiz } from "@/components/home/HeroQuiz";
 import { LifeStages } from "@/components/home/LifeStages";
-
+import FeaturedProducts from "@/components/home/FeaturedProducts";
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co";
-
 export const metadata: Metadata = {
   title: "NaturalVita · Bienestar que crece contigo",
   description:
@@ -53,7 +52,6 @@ export const metadata: Metadata = {
     images: [`${SITE_URL}/home/og-home.jpg`],
   },
 };
-
 // Schema.org WebSite con SearchAction → habilita sitelinks searchbox en Google
 const websiteSchema = {
   "@context": "https://schema.org",
@@ -72,7 +70,6 @@ const websiteSchema = {
     "query-input": "required name=search_term_string",
   },
 };
-
 export default function HomePage() {
   return (
     <>
@@ -82,8 +79,9 @@ export default function HomePage() {
       />
       <HeroQuiz />
       <LifeStages />
+      <FeaturedProducts />
       {/*
-        TODO Sesión B: <FeaturedProducts /> + <Editorial />
+        TODO Sesión B: <Editorial />
         TODO Sesión C: <EverlifeOrigin /> + <PartnerLabs />
         TODO Sesión D: <NewsletterCta /> + <TrustBadges />
       */}
