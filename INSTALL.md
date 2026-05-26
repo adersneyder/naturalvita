@@ -9,10 +9,12 @@ NaturalVita y por qué confiar. Completan los TODOs que quedaban en el `page.tsx
 
 ```
 components/home/ValueProps.tsx        → NUEVO   (propuestas de valor, 3 columnas)
-components/home/EverlifeOrigin.tsx    → NUEVO   (origen de la marca, 2019/Zardrin)
+components/home/EverlifeOrigin.tsx    → NUEVO   (origen de marca, composición logos)
 components/home/PartnerLabs.tsx       → NUEVO   (laboratorios aliados, dinámico)
 components/home/TrustBadges.tsx       → NUEVO   (sellos de confianza, cierre)
 lib/catalog/partner-labs.ts          → NUEVO   (consulta de labs con catálogo vivo)
+public/home/everlife-logo.png        → NUEVO   (logo Everlife, transparente)
+public/home/naturalvita-logo.png     → NUEVO   (logo NaturalVita, transparente)
 app/(public)/page.tsx                 → REEMPLAZA el Home actual
 ```
 
@@ -40,18 +42,27 @@ de decidir. El newsletter no es sección aparte: vive en el footer del layout.
 
 ---
 
-## Imagen requerida
+## Imágenes requeridas (van en este ZIP)
 
-`EverlifeOrigin` espera una imagen en:
+`EverlifeOrigin` ya NO usa una sola imagen de fondo. La pieza visual es una
+composición de marca: los dos logos reales (sin alterar, por manual de marca)
+sobre una naturaleza dibujada en SVG (tallo que crece de la raíz a la flor).
+
+Sube estos dos archivos del ZIP a `/public/home/`:
 
 ```
-/public/home/origen-everlife.avif
+public/home/everlife-logo.png      (293×113, fondo transparente)
+public/home/naturalvita-logo.png   (816×502, fondo transparente)
 ```
 
-Sugerencia (Flux Pro, según el plan de imágenes): laboratorio o manos con
-producto natural, tono cálido, profesional pero humano. Si aún no existe, la
-sección renderiza igual (el contenedor de imagen queda con fondo crema hasta
-que la subas). Conviene subirla antes del launch.
+Composición: arriba NaturalVita (la flor, "Florece en línea"), un tallo
+continuo que sube, abajo Everlife (la raíz, "Nuestra raíz"), con el badge
+"Desde 2019" anclado abajo. Carga instantáneo, nítida en cualquier pantalla,
+nunca queda vacía. Los logos van como `next/image` con sus proporciones
+exactas para no deformarse.
+
+> Si en el futuro tienes una foto real espectacular, puedes cambiar este bloque
+> por la foto; pero la composición de marca funciona perfecta para lanzar.
 
 ---
 
@@ -59,7 +70,8 @@ que la subas). Conviene subirla antes del launch.
 
 - **Origen Everlife:** redactado a partir del contexto conocido (2019, Zardrin,
   "del bebé al abuelo"). Es un borrador; el texto real de la historia lo
-  defines tú. Está en `EverlifeOrigin.tsx`, fácil de editar.
+  defines tú. Está en `EverlifeOrigin.tsx`, fácil de editar. La pieza visual es
+  la composición de marca con los dos logos reales (ver "Imágenes requeridas").
 - **Laboratorios aliados:** NO dice "colombianos" — se centra en la calidad del
   producto, porque las marcas son americanas, europeas y colombianas. Es
   dinámico: muestra solo laboratorios con productos activos (hoy: Millenium
