@@ -3,9 +3,12 @@
  *
  * Sprint 2 Sesión A: Quiz-Hero + 6 etapas de vida.
  * Sprint 2 Sesión B: + Selección destacada + secciones de marca Everlife.
+ * Sprint 2 Sesión B (quiz IA): HeroQuiz ahora lee necesidades del motor de
+ *   recomendaciones (objetivo-primero). La página carga las necesidades en el
+ *   servidor y se las pasa al componente.
  *
  * Estructura del Home:
- *   [A] HeroQuiz          — Hero personalizado (quiz)
+ *   [A] HeroQuiz          — Hero personalizado (quiz objetivo-primero)
  *   [A] LifeStages        — 6 etapas de vida ("del bebé al abuelo")
  *   [B] FeaturedProducts  — Selección destacada (cascada 3 niveles)
  *   [B] ValueProps        — 3 propuestas de valor (confianza)
@@ -24,6 +27,7 @@ import { ValueProps } from "@/components/home/ValueProps";
 import { EverlifeOrigin } from "@/components/home/EverlifeOrigin";
 import { PartnerLabs } from "@/components/home/PartnerLabs";
 import { TrustBadges } from "@/components/home/TrustBadges";
+import { getActiveNeeds } from "@/lib/quiz/queries";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co";
 
@@ -78,14 +82,18 @@ const websiteSchema = {
   },
 };
 
-export default function HomePage() {
+export default async function HomePage() {
+  // Necesidades activas del quiz (objetivo-primero). Se cargan en el servidor
+  // y se pasan al HeroQuiz. Si la consulta falla, devuelve [] y el quiz no rompe.
+  const needs = await getActiveNeeds();
+
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
       />
-      <HeroQuiz />
+      <HeroQuiz needs={needs} isLoggedIn={false} />
       <LifeStages />
       <FeaturedProducts />
       <ValueProps />

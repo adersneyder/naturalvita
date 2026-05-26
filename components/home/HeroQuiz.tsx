@@ -28,7 +28,7 @@ const PESOS = new Intl.NumberFormat("es-CO", {
   maximumFractionDigits: 0,
 });
 
-export default function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
+export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
   const [step, setStep] = useState<Step>("objetivo");
   const [need, setNeed] = useState<QuizNeed | null>(null);
   const [stage, setStage] = useState<LifeStage | null>(null);
@@ -354,3 +354,7 @@ function HeroQuizStyles() {
     `}</style>
   );
 }
+
+// Compatibilidad: el repo importa el Home como `{ HeroQuiz }` (named).
+// Exponemos también default para flexibilidad.
+export default HeroQuiz;
