@@ -3,28 +3,34 @@
 /**
  * components/home/HeroQuiz.tsx
  *
- * Quiz-Hero del Home de NaturalVita. Sprint 2 Sesión A.
+ * Quiz-Hero del Home de NaturalVita. Sprint 2 Sesión A + Sesión B (punto 3).
  *
  * Flujo de 3 pasos:
  *   1. ¿Para quién? → elige etapa de vida (6 cards)
  *   2. ¿Qué quieres mejorar? → elige objetivo (filtrado según etapa)
  *   3. Resultado → fetch a /api/quiz/match, muestra 3 productos con razón IA
- *      + captura email (server action) → cupón WELCOME10
  *
- * Diseño:
- *   - Estado con useReducer (sin librerías externas)
- *   - Transiciones CSS suaves entre pasos, respeta prefers-reduced-motion
- *   - Escape "solo ver catálogo" siempre visible
- *   - Estética cálida, serif Fraunces para titulares
+ * Sesión B (punto 3) añade sobre el resultado:
+ *   - Botón "Agregar" por producto → carrito (useCart.addItem), feedback "Agregado".
+ *   - Botón "Ver" por producto → ficha rápida (modal QuickView, sin navegar,
+ *     para no perder el resultado del quiz al volver).
+ *   - Logueado: sin fricción de email (botón "Guardar mi selección").
+ *   - Anónimo: form de email opcional + cupón.
+ *
+ * Disponibilidad: modelo de intermediación. Todo producto que llega al quiz
+ * está activo (is_active), por tanto es pedible. El carrito usa stock_at_add
+ * como tope; como no rastreamos stock visible, pasamos un tope alto y el
+ * control real de cantidad vive en checkout.
  *
  * No usa Framer Motion ni Zustand (disciplina de dependencias del repo).
  */
 
-import { useReducer, useState, useEffect, useTransition } from "react";
+import { useReducer, useState, useEffect, useTransition, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Plus, X, ShoppingBag } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { useCart } from "@/lib/cart/use-cart";
 import {
   STAGES,
   goalsForStage,
@@ -46,6 +52,9 @@ interface MatchedProduct {
   priceCop: number;
   imageUrl: string | null;
   reason: string;
+  presentation: string | null;
+  shortDescription: string | null;
+  laboratory: string | null;
 }
 
 type Step = "stage" | "goal" | "result";
@@ -108,6 +117,11 @@ function reducer(state: State, action: Action): State {
   }
 }
 
+// Tope de cantidad por línea cuando el producto no rastrea inventario.
+// El control real (y el tope por stock, si el producto lo define) se aplica
+// en la ficha de producto y en checkout.
+const QUIZ_CART_MAX = 99;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Componente principal
 // ─────────────────────────────────────────────────────────────────────────────
@@ -115,6 +129,7 @@ function reducer(state: State, action: Action): State {
 export function HeroQuiz() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [quickView, setQuickView] = useState<MatchedProduct | null>(null);
 
   // Detectar sesión del lado del cliente. Esto mantiene el Home estático
   // (no fuerza render dinámico por cookies), óptimo para SEO y LCP. El quiz
@@ -180,6 +195,7 @@ export function HeroQuiz() {
             onSubscribed={(resultUrl) =>
               dispatch({ type: "SUBSCRIBED", resultUrl })
             }
+            onQuickView={(p) => setQuickView(p)}
           />
         )}
 
@@ -190,6 +206,10 @@ export function HeroQuiz() {
           </Link>
         )}
       </div>
+
+      {quickView && (
+        <QuickView product={quickView} onClose={() => setQuickView(null)} />
+      )}
 
       <QuizStyles />
     </section>
@@ -271,6 +291,7 @@ function ResultStep({
   isLoggedIn,
   onBack,
   onSubscribed,
+  onQuickView,
 }: {
   etapa: string;
   objetivo: string;
@@ -282,6 +303,7 @@ function ResultStep({
   isLoggedIn: boolean;
   onBack: () => void;
   onSubscribed: (resultUrl?: string) => void;
+  onQuickView: (p: MatchedProduct) => void;
 }) {
   const stage = getStage(etapa);
   const goal = getGoal(objetivo);
@@ -315,30 +337,7 @@ function ResultStep({
           </h1>
           <div className="nv-quiz__products">
             {products.map((p) => (
-              <Link
-                key={p.id}
-                href={`/producto/${p.slug}`}
-                className="nv-quiz__product"
-              >
-                {p.imageUrl && (
-                  <Image
-                    src={p.imageUrl}
-                    alt={p.name}
-                    width={64}
-                    height={64}
-                    className="nv-quiz__product-img"
-                  />
-                )}
-                <div className="nv-quiz__product-info">
-                  <span className="nv-quiz__product-name">{p.name}</span>
-                  <span className="nv-quiz__product-price">
-                    {formatCOP(p.priceCop)}
-                  </span>
-                  {p.reason && (
-                    <span className="nv-quiz__product-reason">{p.reason}</span>
-                  )}
-                </div>
-              </Link>
+              <ProductRow key={p.id} product={p} onQuickView={onQuickView} />
             ))}
           </div>
 
@@ -386,6 +385,221 @@ function ResultStep({
           </Link>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fila de producto del resultado · con acciones Agregar + Ver
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ProductRow({
+  product,
+  onQuickView,
+}: {
+  product: MatchedProduct;
+  onQuickView: (p: MatchedProduct) => void;
+}) {
+  const { addItem } = useCart();
+  const [added, setAdded] = useState(false);
+
+  const handleAdd = useCallback(() => {
+    addItem({
+      product_id: product.id,
+      slug: product.slug,
+      name: product.name,
+      presentation: product.presentation,
+      price_cop: product.priceCop,
+      image_url: product.imageUrl,
+      stock_at_add: QUIZ_CART_MAX,
+      quantity: 1,
+    });
+    setAdded(true);
+    window.setTimeout(() => setAdded(false), 2000);
+  }, [addItem, product]);
+
+  return (
+    <div className="nv-quiz__product">
+      <button
+        type="button"
+        className="nv-quiz__product-main"
+        onClick={() => onQuickView(product)}
+        aria-label={`Ver ${product.name}`}
+      >
+        {product.imageUrl && (
+          <Image
+            src={product.imageUrl}
+            alt={product.name}
+            width={64}
+            height={64}
+            className="nv-quiz__product-img"
+          />
+        )}
+        <div className="nv-quiz__product-info">
+          <span className="nv-quiz__product-name">{product.name}</span>
+          <span className="nv-quiz__product-price">
+            {formatCOP(product.priceCop)}
+          </span>
+          {product.reason && (
+            <span className="nv-quiz__product-reason">{product.reason}</span>
+          )}
+        </div>
+      </button>
+
+      <div className="nv-quiz__product-actions">
+        <button
+          type="button"
+          className={`nv-quiz__add ${added ? "nv-quiz__add--done" : ""}`}
+          onClick={handleAdd}
+          disabled={added}
+          aria-label={`Agregar ${product.name} al carrito`}
+        >
+          {added ? (
+            <>
+              <Check size={15} /> Agregado
+            </>
+          ) : (
+            <>
+              <Plus size={15} /> Agregar
+            </>
+          )}
+        </button>
+        <button
+          type="button"
+          className="nv-quiz__view"
+          onClick={() => onQuickView(product)}
+        >
+          Ver
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ficha rápida (modal) · sin navegar, preserva el resultado del quiz
+// ─────────────────────────────────────────────────────────────────────────────
+
+function QuickView({
+  product,
+  onClose,
+}: {
+  product: MatchedProduct;
+  onClose: () => void;
+}) {
+  const { addItem } = useCart();
+  const [added, setAdded] = useState(false);
+
+  // Cerrar con Escape + bloquear scroll del fondo
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose]);
+
+  function handleAdd() {
+    addItem({
+      product_id: product.id,
+      slug: product.slug,
+      name: product.name,
+      presentation: product.presentation,
+      price_cop: product.priceCop,
+      image_url: product.imageUrl,
+      stock_at_add: QUIZ_CART_MAX,
+      quantity: 1,
+    });
+    setAdded(true);
+    window.setTimeout(() => setAdded(false), 2000);
+  }
+
+  return (
+    <div
+      className="nv-qv__overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={product.name}
+      onClick={onClose}
+    >
+      <div className="nv-qv__panel" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          className="nv-qv__close"
+          onClick={onClose}
+          aria-label="Cerrar"
+        >
+          <X size={18} />
+        </button>
+
+        <div className="nv-qv__body">
+          <div className="nv-qv__img-wrap">
+            {product.imageUrl ? (
+              <Image
+                src={product.imageUrl}
+                alt={product.name}
+                width={220}
+                height={220}
+                className="nv-qv__img"
+              />
+            ) : (
+              <div className="nv-qv__img-placeholder">{product.name.charAt(0)}</div>
+            )}
+          </div>
+
+          <div className="nv-qv__details">
+            {product.laboratory && (
+              <span className="nv-qv__lab">{product.laboratory}</span>
+            )}
+            <h2 className="nv-qv__name">{product.name}</h2>
+            {product.presentation && (
+              <p className="nv-qv__presentation">{product.presentation}</p>
+            )}
+            <p className="nv-qv__price">{formatCOP(product.priceCop)}</p>
+
+            {product.shortDescription && (
+              <p className="nv-qv__desc">{product.shortDescription}</p>
+            )}
+
+            {product.reason && (
+              <p className="nv-qv__reason">
+                <span className="nv-qv__reason-tag">Por qué te lo sugerimos</span>
+                {product.reason}
+              </p>
+            )}
+
+            <div className="nv-qv__actions">
+              <button
+                type="button"
+                className={`nv-qv__add ${added ? "nv-qv__add--done" : ""}`}
+                onClick={handleAdd}
+                disabled={added}
+              >
+                {added ? (
+                  <>
+                    <Check size={17} /> Agregado al carrito
+                  </>
+                ) : (
+                  <>
+                    <ShoppingBag size={17} /> Agregar al carrito
+                  </>
+                )}
+              </button>
+              <Link href={`/producto/${product.slug}`} className="nv-qv__full">
+                Ver ficha completa
+                <ArrowRight size={14} />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <QuickViewStyles />
     </div>
   );
 }
@@ -682,22 +896,33 @@ function QuizStyles() {
       }
       .nv-quiz__product {
         display: flex;
-        gap: 14px;
-        align-items: center;
-        padding: 14px;
+        align-items: stretch;
+        gap: 8px;
+        padding: 10px 12px;
         background: #FFFFFF;
         border: 1px solid #E8DFD0;
         border-radius: 12px;
-        text-decoration: none;
-        text-align: left;
         transition: border-color 0.18s, box-shadow 0.18s;
       }
       .nv-quiz__product:hover {
         border-color: #C77D6D;
         box-shadow: 0 6px 18px rgba(199, 125, 109, 0.12);
       }
+      .nv-quiz__product-main {
+        flex: 1;
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        background: none;
+        border: none;
+        padding: 4px;
+        cursor: pointer;
+        text-align: left;
+        font-family: inherit;
+        min-width: 0;
+      }
       .nv-quiz__product-img { border-radius: 8px; object-fit: cover; flex-shrink: 0; }
-      .nv-quiz__product-info { display: flex; flex-direction: column; gap: 2px; }
+      .nv-quiz__product-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
       .nv-quiz__product-name {
         font-family: Arial, Helvetica, sans-serif;
         font-size: 15px;
@@ -716,6 +941,53 @@ function QuizStyles() {
         color: #8B8881;
         font-style: italic;
         margin-top: 2px;
+      }
+      .nv-quiz__product-actions {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      .nv-quiz__add {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        padding: 8px 14px;
+        background: #4A2E9A;
+        color: #FFFFFF;
+        border: none;
+        border-radius: 8px;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.18s;
+        white-space: nowrap;
+      }
+      .nv-quiz__add:hover:not(:disabled) { background: #3B248A; }
+      .nv-quiz__add--done { background: #1E7D2E; cursor: default; }
+      .nv-quiz__view {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 7px 14px;
+        background: #FFFFFF;
+        color: #4A2E9A;
+        border: 1px solid #E8DFD0;
+        border-radius: 8px;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: border-color 0.18s, background 0.18s;
+      }
+      .nv-quiz__view:hover { border-color: #4A2E9A; background: #F3EEFB; }
+      @media (max-width: 480px) {
+        .nv-quiz__product { flex-direction: column; }
+        .nv-quiz__product-actions { flex-direction: row; }
+        .nv-quiz__add, .nv-quiz__view { flex: 1; }
       }
       .nv-quiz__form {
         background: #FFFFFF;
@@ -810,6 +1082,186 @@ function QuizStyles() {
         border-radius: 9px;
       }
       .nv-quiz__cta:hover { background: #3B248A; text-decoration: none; }
+    `}</style>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Estilos de la ficha rápida (modal)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function QuickViewStyles() {
+  return (
+    <style>{`
+      .nv-qv__overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(42, 39, 34, 0.55);
+        backdrop-filter: blur(3px);
+        animation: nvQvFade 0.2s ease;
+      }
+      @keyframes nvQvFade { from { opacity: 0; } to { opacity: 1; } }
+      .nv-qv__panel {
+        position: relative;
+        width: 100%;
+        max-width: 560px;
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+        background: #FFFFFF;
+        border-radius: 18px;
+        box-shadow: 0 24px 60px rgba(42, 39, 34, 0.25);
+        animation: nvQvPanel 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes nvQvPanel {
+        from { opacity: 0; transform: translateY(16px) scale(0.98); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .nv-qv__overlay, .nv-qv__panel { animation: none; }
+      }
+      .nv-qv__close {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        z-index: 2;
+        width: 34px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #FFFFFF;
+        border: 1px solid #E8DFD0;
+        border-radius: 50%;
+        color: #6B6760;
+        cursor: pointer;
+        transition: background 0.18s, color 0.18s;
+      }
+      .nv-qv__close:hover { background: #F5F1E8; color: #2A2722; }
+      .nv-qv__body {
+        display: flex;
+        gap: 24px;
+        padding: 28px;
+      }
+      @media (max-width: 560px) {
+        .nv-qv__body { flex-direction: column; gap: 16px; padding: 24px 20px; }
+      }
+      .nv-qv__img-wrap {
+        flex-shrink: 0;
+        width: 200px;
+        height: 200px;
+        border-radius: 14px;
+        background: #FAF7F2;
+        border: 1px solid #E8DFD0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      @media (max-width: 560px) {
+        .nv-qv__img-wrap { width: 100%; height: 200px; }
+      }
+      .nv-qv__img { object-fit: contain; padding: 12px; width: auto; height: auto; max-width: 100%; max-height: 100%; }
+      .nv-qv__img-placeholder {
+        font-family: Georgia, serif;
+        font-size: 56px;
+        color: rgba(74, 46, 154, 0.2);
+      }
+      .nv-qv__details { flex: 1; min-width: 0; text-align: left; }
+      .nv-qv__lab {
+        display: inline-block;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #1E7D2E;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+      .nv-qv__name {
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 22px;
+        font-weight: 400;
+        color: #2A2722;
+        line-height: 1.25;
+        margin: 0 0 4px;
+      }
+      .nv-qv__presentation {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        color: #8B8881;
+        margin: 0 0 10px;
+      }
+      .nv-qv__price {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 20px;
+        font-weight: 700;
+        color: #1E7D2E;
+        margin: 0 0 14px;
+      }
+      .nv-qv__desc {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        color: #5C5048;
+        line-height: 1.6;
+        margin: 0 0 14px;
+      }
+      .nv-qv__reason {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 13px;
+        color: #6B6760;
+        line-height: 1.55;
+        background: #F3EEFB;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin: 0 0 18px;
+      }
+      .nv-qv__reason-tag {
+        display: block;
+        font-size: 10.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: #4A2E9A;
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+      .nv-qv__actions { display: flex; flex-direction: column; gap: 10px; }
+      .nv-qv__add {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 13px 20px;
+        background: #4A2E9A;
+        color: #FFFFFF;
+        border: none;
+        border-radius: 10px;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.18s;
+      }
+      .nv-qv__add:hover:not(:disabled) { background: #3B248A; }
+      .nv-qv__add--done { background: #1E7D2E; cursor: default; }
+      .nv-qv__full {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        color: #4A2E9A;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+        padding: 4px;
+      }
+      .nv-qv__full:hover { text-decoration: underline; }
     `}</style>
   );
 }

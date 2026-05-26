@@ -1,146 +1,92 @@
-# NaturalVita · Sprint 2 · Sesión A · Home Quiz-First
+# NaturalVita · Sprint 2 Sesión B · Punto 3 — Quiz accionable
 
-## 🆕 Actualización Sesión A.2 (sin fricción + login + persistencia)
+Hace que los productos del **resultado del quiz** sean accionables: cada uno con
+botón **"Agregar"** (al carrito, con feedback) y **"Ver"** (ficha rápida en modal,
+sin salir del Home para no perder el resultado del quiz).
 
-Esta versión cierra tres mejoras sobre el quiz base:
-
-1. **Detección de usuarios logueados (sin fricción):** el quiz detecta la sesión client-side. Si estás logueado, NO te pide email (usa el de tu cuenta), vincula el resultado a tu `customer_id`, y respeta tu `accepts_marketing` (si es false, guarda pero no envía email automático). El Home sigue siendo estático (la detección es client-side, no sacrifica SEO/LCP).
-
-2. **URL compartible del resultado (`/quiz/r/[slug]`):** cada resultado se guarda con un slug corto. La página es un Server Component liviano (cero JS pesado), con metadata dinámica + schema.org ItemList. Se incluye como link en el email ("Volver a ver tu selección"). Marcada `noindex` (cada resultado es personal) pero `follow` para que los links a productos pasen autoridad.
-
-3. **Persistencia:** tabla `quiz_results` con snapshot de productos. Migración `sprint2_sa2_quiz_results` ya aplicada vía MCP.
-
-**Archivos nuevos de A.2** (además de los 8 base):
-- `app/quiz/r/[slug]/page.tsx` — página pública del resultado
-- `lib/quiz/save-result.ts` — guardar/leer resultados
-
-**Archivos modificados respecto al ZIP base:**
-- `app/_actions/quiz-subscribe.tsx` — ahora detecta login, persiste, respeta accepts_marketing
-- `components/home/HeroQuiz.tsx` — detecta sesión client-side, botón "Guardar" para logueados
-- `lib/email/templates/quiz-result.tsx` — incluye link al resultado guardado
-- `app/page.tsx` — sin cambios (sigue estático)
+Incluye también el alineamiento del modelo de disponibilidad/inventario al modelo
+de intermediación (ver sección "Cambios en base de datos", ya aplicados por MCP).
 
 ---
 
+## Archivos de este ZIP (solo 2 — reemplazan los existentes)
 
-Home rediseñado con Quiz-Hero (matching IA en tiempo real con Haiku 4.5) + 6 cards de etapas de vida.
-
-## 1 · Migración Supabase — YA APLICADA
-
-La migración `sprint2_sa_quiz_infra` ya se aplicó vía MCP durante la sesión. Añadió:
-- Columna `quiz_properties JSONB` a `newsletter_subscribers`
-- Tabla `quiz_match_cache` (caché 24h del matching IA) con RLS
-- Función `cleanup_expired_quiz_cache()`
-
-No tienes que hacer nada en Supabase. Si quieres verificar:
-```sql
-SELECT * FROM quiz_match_cache LIMIT 1;
-SELECT column_name FROM information_schema.columns
-  WHERE table_name='newsletter_subscribers' AND column_name='quiz_properties';
+```
+lib/quiz/match-products.ts          → reemplaza  src/lib/quiz/match-products.ts
+components/home/HeroQuiz.tsx         → reemplaza  src/components/home/HeroQuiz.tsx
 ```
 
-## 2 · Dependencias npm — NINGUNA NUEVA
+> Ajusta el prefijo (`src/` o raíz) según la estructura de tu repo. Las rutas
+> internas de import (`@/lib/...`, `@/components/...`) no cambian.
 
-Todo usa lo que ya tienes: `@anthropic-ai/sdk`, `@upstash/ratelimit`, `@upstash/redis`, `zod`, `@react-email/components`, `lucide-react`, `next/image`. No hay `npm install`.
-
-## ⚠️ Correcciones aplicadas tras revisar tu repo real
-
-Tras revisar la estructura real de tu repo, ajusté tres cosas para que el build no falle:
-
-1. **`quiz-result.tsx` vive en `lib/email/templates/`** (no en `emails/`). Usa el `EmailLayout` compartido, igual que tus otras plantillas. Queda visualmente coherente con newsletter-welcome.
-2. **`status: 'subscribed'`** — tu tabla `newsletter_subscribers` usa el valor `'subscribed'` por defecto (con CHECK constraint que solo acepta 'subscribed'/'unsubscribed'/'bounced'). Mi código ahora usa el valor correcto.
-3. **Ruta de baja `/newsletter/desuscribir/[token]`** — la misma que ya usa tu newsletter-welcome, no inventé una nueva. El email del quiz incluye header `List-Unsubscribe` RFC 8058 + link en footer.
-
-## 3 · Archivos a colocar en el repo
-
-| Archivo del ZIP | Ruta en repo | Acción |
-|---|---|---|
-| `app/page.tsx` | `app/page.tsx` | **Reemplaza** el home actual |
-| `components/home/quiz-data.ts` | igual | Nuevo |
-| `components/home/HeroQuiz.tsx` | igual | Nuevo |
-| `components/home/LifeStages.tsx` | igual | Nuevo |
-| `lib/quiz/match-products.ts` | igual | Nuevo |
-| `app/api/quiz/match/route.ts` | igual | Nuevo |
-| `app/_actions/quiz-subscribe.tsx` | igual (.tsx, contiene JSX) | Nuevo |
-| `lib/email/templates/quiz-result.tsx` | **lib/email/templates/** | Nuevo |
-| `lib/quiz/save-result.ts` | **lib/quiz/** | Nuevo (A.2) |
-| `app/quiz/r/[slug]/page.tsx` | **app/quiz/r/[slug]/** | Nuevo (A.2) |
-
-**Nota sobre `app/page.tsx`:** si tu home actual tiene contenido que quieres conservar (por ejemplo algo que ya estaba), revísalo antes de reemplazar. El nuevo es un home limpio Quiz-First. Las otras secciones (productos top, editorial, origen, labs, newsletter) llegan en Sesiones B-D y se montan dentro de este mismo `page.tsx` donde están los comentarios `TODO`.
-
-**Nota sobre la plantilla de email:** `quiz-result.tsx` va en `lib/email/templates/` (junto a `newsletter-welcome.tsx`, `_layout.tsx`, etc.), NO en una carpeta `emails/`. Usa el `EmailLayout` compartido del repo para mantener coherencia visual (header wordmark + footer con dirección Medellín + soporte unsubscribe RFC 8058). El import en `quiz-subscribe.tsx` ya apunta a `@/lib/email/templates/quiz-result`.
-
-## 4 · Imágenes — generar con Gemini Imagen 3
-
-Ver `prompts-gemini-imagen3.md`. Genera las 6 imágenes de etapas + 1 OG, conviértelas a AVIF (squoosh.app), y súbelas a `/public/home/`:
-
-- `etapa-bebe.avif`, `etapa-nino.avif`, `etapa-adolescente.avif`, `etapa-adulto.avif`, `etapa-embarazo.avif`, `etapa-adulto-mayor.avif`
-- `og-home.jpg`
-
-El sitio funciona sin las imágenes (solo se ven marcos vacíos en las cards). Puedes deployar primero y subir imágenes después.
-
-## 5 · Tipografía serif
-
-El código usa `Georgia` como serif (system font, cero latencia, ya disponible). Es una elección segura y elegante para titulares. Si más adelante quieres Fraunces (más carácter), la integramos vía `next/font/google` en una sesión de pulido — pero Georgia funciona perfecto para lanzar.
-
-## 6 · Variables de entorno
-
-Todo lo que el quiz necesita ya está en Vercel:
-- `ANTHROPIC_API_KEY` (matching IA) ✅
-- `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` (rate limit) ✅
-- `RESEND_*` (email de resultado) ✅ — recién configuradas en Sesión 0
-- `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` ✅
-
-Cero variables nuevas.
-
-## 7 · Deploy y validación
-
-1. Sube los 8 archivos a GitHub (commit: `Sprint 2 SA: Home Quiz-First + etapas de vida`)
-2. Vercel deploya automático
-3. Valida:
-   - Abre `https://naturalvita.co` → debe verse el Quiz-Hero con la pregunta "¿Para quién buscas bienestar hoy?"
-   - Elige una etapa → debe pasar al paso 2 (objetivos)
-   - Elige un objetivo → debe mostrar "Seleccionando lo mejor…" y luego 3 productos con razón
-   - Ingresa un email → debe llegar el email de resultado con cupón WELCOME10
-   - Click "Solo quiero ver el catálogo" → va a /tienda
-   - Scroll abajo → las 6 cards de etapas
-
-## 8 · Cómo verificar que el matching IA y caché funcionan
-
-Después de hacer un par de quizzes, revisa en Supabase:
-```sql
-SELECT cache_key, etapa, objetivo, hit_count, jsonb_array_length(recommendations) AS num_productos, created_at
-FROM quiz_match_cache
-ORDER BY created_at DESC;
-```
-- La primera vez que alguien hace "adulto + sueño" se crea una fila (gastó IA)
-- La segunda vez con la misma combinación, `hit_count` sube y NO gasta IA (vino del caché)
-
-## 9 · Costo estimado
-
-- Cada quiz nuevo (combinación no cacheada): ~$0.003 USD con Haiku 4.5
-- Combinaciones repetidas (caché 24h): $0
-- Con 36 combinaciones posibles (6 etapas × 6 objetivos), tras el primer día casi todo viene de caché
-- Costo mensual realista: <$5 USD aunque tengas miles de visitas
-
-## 10 · Qué falta (Sesiones B-D)
-
-- **B:** Productos top dinámicos + Editorial (3 artículos)
-- **C:** Origen Everlife (2019/Zardrin) + Labs aliados
-- **D:** Newsletter prominente + sellos confianza + QA mobile + Lighthouse
-
-Todas se montan dentro de `app/page.tsx` donde están los comentarios TODO.
+**Súbelos como archivo (drag & drop o "Upload files" en GitHub), NO copies y
+pegues el contenido en el editor web.** Son archivos largos con JSX anidado; el
+parser SWC de Next 15.5 puede corromperse al pegar. Subirlos como archivo es seguro.
 
 ---
 
-## Checklist de cierre Sesión A
+## Qué hace cada archivo
 
-- [ ] 8 archivos subidos a GitHub
-- [ ] Build verde en Vercel
-- [ ] 6 imágenes de etapas generadas y subidas a /public/home/
-- [ ] OG image subida
-- [ ] Quiz completa flujo: etapa → objetivo → 3 productos → email → cupón
-- [ ] Email de resultado llega con cupón WELCOME10
-- [ ] Escape "ver catálogo" funciona
-- [ ] Cards de etapas linkean a /tienda?etapa=X
-- [ ] Caché funcionando (hit_count sube en repeticiones)
+### `lib/quiz/match-products.ts` (enriquecido)
+- El tipo `MatchedProduct` ahora incluye 3 campos para la ficha rápida:
+  `presentation`, `shortDescription`, `laboratory`.
+- `hydrateProducts` trae esos campos en el mismo query (incluye el embed
+  `laboratories(name)` vía la FK `products_laboratory_id_fkey`). **No hay fetch
+  extra ni endpoint nuevo:** los datos viajan en el resultado del match.
+- Se eliminó el filtro de stock muerto (`if (trackStock && stock <= 0) continue`).
+  La disponibilidad la manda `is_active`/`status` (ya filtrados en el query).
+
+### `components/home/HeroQuiz.tsx` (carrito + ficha rápida)
+- Cada producto del resultado tiene botón **"Agregar"** (usa `useCart().addItem`,
+  feedback "Agregado ✓" 2s) y **"Ver"** (abre la ficha rápida).
+- Nuevo modal **ficha rápida** (`QuickView`): imagen + laboratorio + nombre +
+  presentación + precio + descripción corta + razón IA + "Agregar al carrito" +
+  link "Ver ficha completa" a `/producto/[slug]`. Cierra con Escape o clic afuera.
+- Se conserva todo lo demás: rama logueado (botón "Guardar mi selección" sin pedir
+  email) / anónimo (form email + cupón), señal de marketing, CTA a la tienda,
+  estética del quiz.
+
+---
+
+## Qué NO se toca (verificado)
+- **`/api/quiz/match/route.ts`**: el tipo enriquecido viaja solo en el JSON; el
+  route devuelve el resultado tal cual. Sin cambios.
+- **`app/_actions/quiz-subscribe.tsx`**: su `productSchema` (Zod) no usa `.strict()`,
+  así que ignora los campos extra sin error. Sin cambios.
+- **Email `quiz-result`** y **`/tienda`**: sin cambios.
+
+---
+
+## Cambios en base de datos (YA APLICADOS por MCP — informativos)
+
+Modelo de intermediación: **la disponibilidad la manda `is_active`, no el stock.**
+Regla: activo sin número = sin tope (`track_stock=false`); activo con número =
+tope N (`track_stock=true` + `stock=N`); desactivado = invisible en todos los canales.
+
+1. **`fix_track_stock_intermediation_model`** — 89 productos que estaban en
+   `track_stock=true, stock=0` (default residual, no un límite real) pasaron a
+   `track_stock=false`. Los 101 activos quedaron sin tope. Ningún límite real perdido
+   (0 productos tenían `track_stock=true, stock>0`).
+
+2. **`track_stock_default_false_intermediation`** — el DEFAULT de la columna
+   `track_stock` pasó de `true` a `false`. Así, todo producto nuevo (carga manual o
+   scraping) que no fije el campo nace **sin tope** (pedible), en vez de "agotado de
+   fábrica". Blinda la regla a nivel de dato.
+
+---
+
+## Verificación post-deploy
+1. Completa el quiz (cualquier etapa + objetivo). Deben salir 3 productos.
+2. "Agregar" → el contador del carrito en el header sube; el botón muestra "Agregado".
+3. "Ver" (o clic en el producto) → abre la ficha rápida con datos completos.
+4. En la ficha rápida: "Agregar al carrito" funciona; "Ver ficha completa" navega a
+   `/producto/[slug]`; Escape y clic afuera cierran.
+5. Logueado: el bloque de captura muestra "Guardar mi selección" (sin pedir email).
+
+---
+
+## Pendiente de verificación (no bloquea este deploy)
+El DEFAULT de la BD cubre el caso "no se setea el campo". Si el **ProductEditor**
+del admin o el **scraper** escriben `track_stock=true` explícitamente, conviene
+ajustarlos para que solo lo hagan cuando haya un número de inventario. Requiere
+revisar ese código (no incluido en este ZIP).

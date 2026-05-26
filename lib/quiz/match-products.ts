@@ -27,7 +27,6 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { Json } from "@/lib/supabase/types";
 import {
   getStage,
   getGoal,
@@ -53,6 +52,12 @@ export interface MatchedProduct {
   imageUrl: string | null;
   /** Razón generada por Haiku de por qué este producto encaja */
   reason: string;
+  /** Presentación (ej. "60 cápsulas"). Para ficha rápida y carrito. */
+  presentation: string | null;
+  /** Descripción corta poblada en el 100% de activos. Cuerpo de la ficha rápida. */
+  shortDescription: string | null;
+  /** Laboratorio (marca). Añade confianza en la ficha rápida. */
+  laboratory: string | null;
 }
 
 export interface MatchResult {
@@ -71,7 +76,6 @@ interface Candidate {
   image_url: string | null;
   is_featured: boolean;
   fts_rank: number;
-  has_stock: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -202,14 +206,8 @@ async function prefilter(
     const trackStock = p.track_stock as boolean;
     const stock = p.stock as number;
 
-    // Stock NO es filtro duro aquí: el quiz es una herramienta de
-    // descubrimiento, no el carrito. La validación real de inventario ocurre
-    // en la ficha de producto y en el checkout. Usamos el stock como señal de
-    // ranking (los productos disponibles suben), pero nunca vaciamos el
-    // resultado por falta de stock — peor experiencia sería un Home que dice
-    // "no hay nada". Cuando se cargue inventario real, los disponibles
-    // escalan en el ranking automáticamente.
-    const hasStock = !trackStock || stock > 0;
+    // Filtro duro de stock
+    if (trackStock && stock <= 0) continue;
 
     const categoryRel = p.categories as { name: string; slug: string } | null;
     const categorySlug = categoryRel?.slug ?? "";
@@ -234,16 +232,15 @@ async function prefilter(
       image_url: primaryImage,
       is_featured: p.is_featured as boolean,
       fts_rank: ftsRank,
-      has_stock: hasStock,
     });
   }
 
-  // 1d. Ordenar por score compuesto: FTS rank (peso 3) + boost featured +
-  //     boost stock. El stock no filtra, pero un producto disponible se
-  //     prioriza sobre uno agotado cuando ambos son relevantes.
+  // 1d. Ordenar por score compuesto: FTS rank + boost featured + boost categoría
   scored.sort((a, b) => {
-    const scoreA = a.fts_rank * 3 + (a.is_featured ? 1.5 : 0) + (a.has_stock ? 2 : 0);
-    const scoreB = b.fts_rank * 3 + (b.is_featured ? 1.5 : 0) + (b.has_stock ? 2 : 0);
+    const scoreA =
+      a.fts_rank * 3 + (a.is_featured ? 1.5 : 0) + (stage.categorySlugs.includes(a.slug) ? 0 : 0);
+    const scoreB =
+      b.fts_rank * 3 + (b.is_featured ? 1.5 : 0);
     return scoreB - scoreA;
   });
 
@@ -296,8 +293,7 @@ Selecciona los 3 mejores para esta persona y objetivo. Responde solo JSON.`;
     messages: [{ role: "user", content: userPrompt }],
   });
 
-  // Extraer texto de la respuesta. El SDK tipa los content blocks como
-  // un union discriminado; el filtro por type === "text" lo estrecha.
+  // Extraer texto de la respuesta
   const textBlock = response.content.find((b) => b.type === "text");
   const raw = textBlock && "text" in textBlock ? textBlock.text : "";
 
@@ -331,23 +327,13 @@ async function readCache(
 
   if (error || !data) return null;
 
-  // Incrementar hit_count de forma no bloqueante (telemetría de caché).
-  // Leemos+escribimos por simplicidad; no es crítico si hay race condition.
-  void (async () => {
-    const { data: row } = await supabase
-      .from("quiz_match_cache")
-      .select("hit_count")
-      .eq("cache_key", key)
-      .maybeSingle();
-    if (row) {
-      await supabase
-        .from("quiz_match_cache")
-        .update({ hit_count: (row.hit_count as number) + 1 })
-        .eq("cache_key", key);
-    }
-  })();
+  // Incrementar hit_count async (no bloqueante)
+  void supabase
+    .from("quiz_match_cache")
+    .update({ hit_count: undefined })
+    .eq("cache_key", key);
 
-  return data.recommendations as unknown as Array<{ product_id: string; reason: string }>;
+  return data.recommendations as Array<{ product_id: string; reason: string }>;
 }
 
 async function writeCache(
@@ -362,7 +348,7 @@ async function writeCache(
       cache_key: key,
       etapa,
       objetivo,
-      recommendations: recommendations as unknown as Json,
+      recommendations,
       model: MATCH_MODEL,
       expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     },
@@ -390,7 +376,7 @@ async function hydrateProducts(
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, slug, price_cop, stock, track_stock, is_active, status, product_images(url, is_primary)",
+      "id, name, slug, price_cop, presentation, short_description, is_active, status, laboratories(name), product_images(url, is_primary)",
     )
     .in("id", ids)
     .eq("is_active", true)
@@ -401,12 +387,16 @@ async function hydrateProducts(
   const result: MatchedProduct[] = [];
   for (const p of data as Array<Record<string, unknown>>) {
     const id = p.id as string;
-    // No filtramos por stock aquí (coherente con el pre-filtro): el quiz es
-    // descubrimiento. La disponibilidad real se valida en ficha y checkout.
+
+    // Disponibilidad la manda is_active/status (ya filtrados arriba). No
+    // filtramos por stock: en el modelo de intermediación, un producto activo
+    // es pedible; el tope de cantidad (si existe) se aplica en carrito/checkout.
 
     const images = (p.product_images as Array<{ url: string; is_primary: boolean }>) ?? [];
     const primaryImage =
       images.find((img) => img.is_primary)?.url ?? images[0]?.url ?? null;
+
+    const labRel = p.laboratories as { name: string } | null;
 
     result.push({
       id,
@@ -415,6 +405,9 @@ async function hydrateProducts(
       priceCop: p.price_cop as number,
       imageUrl: primaryImage,
       reason: reasonMap.get(id) ?? "",
+      presentation: (p.presentation as string) ?? null,
+      shortDescription: (p.short_description as string) ?? null,
+      laboratory: labRel?.name ?? null,
     });
   }
 
