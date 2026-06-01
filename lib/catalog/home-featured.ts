@@ -5,28 +5,28 @@ import {
 } from "./types";
 
 /**
- * Fila "Selección destacada" del Home — cascada de 3 niveles.
+ * Fila "Selección destacada" del Home — cascada de prioridad.
  *
- * Diseño (decisión Sprint 2 Sesión B):
- *   Nivel 1 · VENTAS REALES — cuando el catálogo ya tiene tracción, la fila
- *     se llena sola con lo más vendido (RPC home_top_selling_product_ids
- *     sobre order_items de pedidos pagados). Se activa SOLO si hay suficientes
- *     productos distintos vendidos para llenar la fila con dignidad
- *     (MIN_REAL_SELLERS), evitando el caso pobre "1 real + 5 rellenos".
- *   Nivel 2 · CURADOS — mientras no hay tracción, usa los productos marcados
- *     is_featured=true en el admin (curaduría humana). Es el estado actual
- *     pre-launch: 6 productos escogidos por correlación demanda-mercado.
- *   Nivel 3 · FALLBACK VARIADO — si por lo que sea no hay ni ventas ni
- *     destacados, una selección variada por categoría para no quedar vacío.
+ * La lógica de cascada vive en la función SQL `get_home_featured`
+ * (Supabase), que ordena en un solo paso eficiente:
  *
- * En los tres niveles:
- *   - Retorna PublicProductSummary[] (mismo tipo que ProductCard espera).
- *   - Filtra productos sin imagen (regla de negocio del catálogo).
- *   - Stock es SEÑAL, no filtro duro (coherente con el quiz): un producto
- *     sin stock puede aparecer; el badge "Agotado" lo comunica en la tarjeta.
+ *   Nivel 1 · CURADOS (is_featured=true) — tu vitrina editorial, SIEMPRE
+ *     primero. Es tu decisión sobre qué mostrar, no se subordina a ventas.
+ *   Nivel 2 · MÁS VENDIDOS (últimos 60 días, pedidos pagados) — rellena
+ *     los espacios libres con señal real de demanda. Se activa solo cuando
+ *     hay ventas; pre-launch no aporta y no estorba.
+ *   Nivel 3 · MEJOR CALIFICADOS (rating con reseñas) — siguiente relleno.
+ *   Nivel 4 · NOVEDADES (created_at reciente) — relleno final para no
+ *     dejar la fila vacía nunca.
  *
- * La forma del SELECT y el mapeo rawToSummary se mantienen idénticos a
- * listing-queries.ts para coherencia total con la tienda.
+ * Un producto nunca se repite: aparece en su nivel más alto. La función
+ * devuelve ya ordenado y deduplicado; aquí solo hidratamos el detalle
+ * (imágenes, laboratorio, badges) para construir PublicProductSummary,
+ * conservando el orden que entrega la RPC.
+ *
+ * Stock es SEÑAL, no filtro duro (coherente con el quiz y la tienda):
+ * un producto sin stock puede aparecer; el badge "Agotado" lo comunica.
+ * Filtra productos sin imagen (regla de negocio del catálogo).
  */
 
 const SELECT_PRODUCT_SUMMARY = `id, slug, name, short_description, presentation, price_cop, compare_at_price_cop,
@@ -35,114 +35,45 @@ const SELECT_PRODUCT_SUMMARY = `id, slug, name, short_description, presentation,
    laboratory:laboratories!laboratory_id(slug, name),
    images:product_images!product_id(url, alt_text, is_primary, sort_order)`;
 
-/** Mínimo de productos distintos vendidos para activar el nivel 1. */
-const MIN_REAL_SELLERS = 6;
-
 export async function getFeaturedProducts(
   limit = 6,
 ): Promise<PublicProductSummary[]> {
   const supabase = await createClient();
 
-  // ---- Nivel 1: ventas reales (se alimenta sola post-launch) ----
-  // Tipamos el resultado localmente para no depender de que types.ts esté
-  // regenerado con la firma de la RPC. Cast acotado y explícito.
-  type TopSellerRow = { product_id: string; units_sold: number };
-  const { data: topSellersRaw, error: rpcError } = await supabase.rpc(
-    "home_top_selling_product_ids",
-    { p_limit: limit, p_days: null },
+  // La función SQL devuelve los product_id ya ordenados por la cascada
+  // (curado -> más vendido -> mejor calificado -> novedad). Pedimos un
+  // margen extra porque luego filtramos productos sin imagen.
+  type FeaturedRow = { product_id: string };
+  const { data: ranked, error } = await supabase.rpc("get_home_featured", {
+    p_limit: limit * 3,
+  });
+
+  // Fallback defensivo: si la RPC fallara por lo que sea, caemos a
+  // is_featured directo para no dejar el Home sin fila.
+  if (error || !ranked) {
+    return fetchCuratedFallback(supabase, limit);
+  }
+
+  const orderedIds = ((ranked ?? []) as unknown as FeaturedRow[]).map(
+    (r) => r.product_id,
   );
-  const topSellers = (topSellersRaw ?? []) as unknown as TopSellerRow[];
-
-  if (!rpcError && topSellers.length >= MIN_REAL_SELLERS) {
-    const ids = topSellers.map((r) => r.product_id);
-    const products = await fetchByIds(supabase, ids);
-    // Conservar el orden de "más vendido" que trae la RPC
-    const ordered = ids
-      .map((id) => products.find((p) => p.id === id))
-      .filter((p): p is PublicProductSummary => p != null);
-    if (ordered.length >= limit) return ordered.slice(0, limit);
-    // Si tras filtrar sin-imagen quedan pocos, completar con curados abajo
-    const fill = await fetchCurated(supabase, limit, ordered.map((p) => p.id));
-    return [...ordered, ...fill].slice(0, limit);
+  if (orderedIds.length === 0) {
+    return fetchCuratedFallback(supabase, limit);
   }
 
-  // ---- Nivel 2: curados (is_featured) — estado actual ----
-  const curated = await fetchCurated(supabase, limit, []);
-  if (curated.length >= limit) return curated.slice(0, limit);
+  // Hidratar el detalle completo de esos productos.
+  const products = await fetchByIds(supabase, orderedIds);
 
-  // ---- Nivel 3: fallback variado por categoría ----
-  const excludeIds = curated.map((p) => p.id);
-  const fallback = await fetchVariedFallback(supabase, limit - curated.length, excludeIds);
-  return [...curated, ...fallback].slice(0, limit);
+  // Conservar el orden exacto de la cascada (la RPC ya lo definió) y
+  // filtrar los que se cayeron por no tener imagen.
+  const ordered = orderedIds
+    .map((id) => products.find((p) => p.id === id))
+    .filter((p): p is PublicProductSummary => p != null);
+
+  return ordered.slice(0, limit);
 }
 
-/** Lee productos destacados (is_featured), activos, recientes primero. */
-async function fetchCurated(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  limit: number,
-  excludeIds: string[],
-): Promise<PublicProductSummary[]> {
-  let query = supabase
-    .from("products")
-    .select(SELECT_PRODUCT_SUMMARY)
-    .eq("status", "active")
-    .eq("is_featured", true)
-    .order("created_at", { ascending: false })
-    .limit(limit * 2); // margen para filtrar sin-imagen
-
-  if (excludeIds.length > 0) {
-    query = query.not("id", "in", `(${excludeIds.join(",")})`);
-  }
-
-  const { data } = await query;
-  return mapRows(data).slice(0, limit);
-}
-
-/**
- * Fallback: selección variada tomando productos activos de distintas
- * categorías, para no repetir la misma categoría seguida. Ordena por
- * categoría y recencia, luego intercala.
- */
-async function fetchVariedFallback(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  needed: number,
-  excludeIds: string[],
-): Promise<PublicProductSummary[]> {
-  if (needed <= 0) return [];
-
-  let query = supabase
-    .from("products")
-    .select(SELECT_PRODUCT_SUMMARY)
-    .eq("status", "active")
-    .order("created_at", { ascending: false })
-    .limit(60); // pool amplio para diversificar
-
-  if (excludeIds.length > 0) {
-    query = query.not("id", "in", `(${excludeIds.join(",")})`);
-  }
-
-  const { data } = await query;
-  const pool = mapRows(data);
-
-  // Intercalar por categoría: round-robin sobre grupos de categoría
-  const byCategory = new Map<string, PublicProductSummary[]>();
-  for (const p of pool) {
-    const key = p.category?.slug ?? "_sin";
-    if (!byCategory.has(key)) byCategory.set(key, []);
-    byCategory.get(key)!.push(p);
-  }
-  const groups = Array.from(byCategory.values());
-  const interleaved: PublicProductSummary[] = [];
-  let idx = 0;
-  while (interleaved.length < needed && groups.some((g) => g.length > 0)) {
-    const g = groups[idx % groups.length];
-    if (g.length > 0) interleaved.push(g.shift()!);
-    idx++;
-  }
-  return interleaved.slice(0, needed);
-}
-
-/** Lee productos por lista de IDs (para el nivel de ventas). */
+/** Lee productos por lista de IDs, conservando solo activos. */
 async function fetchByIds(
   supabase: Awaited<ReturnType<typeof createClient>>,
   ids: string[],
@@ -154,6 +85,24 @@ async function fetchByIds(
     .eq("status", "active")
     .in("id", ids);
   return mapRows(data);
+}
+
+/**
+ * Fallback directo a is_featured si la RPC no respondiera. Garantiza que
+ * el Home nunca quede sin fila aunque haya un problema con la función.
+ */
+async function fetchCuratedFallback(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  limit: number,
+): Promise<PublicProductSummary[]> {
+  const { data } = await supabase
+    .from("products")
+    .select(SELECT_PRODUCT_SUMMARY)
+    .eq("status", "active")
+    .eq("is_featured", true)
+    .order("created_at", { ascending: false })
+    .limit(limit * 2);
+  return mapRows(data).slice(0, limit);
 }
 
 /* -------------------------------------------------------------------------- */
