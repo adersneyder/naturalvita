@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
  *     Siempre habilitadas, no requieren consentimiento.
  *   - analytics: Microsoft Clarity (heatmaps + session replay) + futuras
  *     plataformas que registren comportamiento granular.
- *   - marketing: Klaviyo events, retargeting, futuro Meta Pixel.
+ *   - marketing: eventos de email marketing (Savia), retargeting, futuro Meta Pixel.
  *
  * Vercel Analytics + Speed Insights se quedan en "essential" porque no
  * usan cookies de tracking ni recolectan PII; son agregados anónimos.

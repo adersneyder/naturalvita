@@ -149,7 +149,10 @@ export default function PrivacidadPage() {
             <li>Supabase Inc. (Estados Unidos): base de datos y autenticación.</li>
             <li>Vercel Inc. (Estados Unidos): hosting del sitio.</li>
             <li>Bold S.A.S. (Colombia): procesamiento de pagos.</li>
-            <li>Klaviyo Inc. (Estados Unidos): emails transaccionales y marketing.</li>
+            <li>
+              Proveedores de envío de correo electrónico (con servidores en
+              Estados Unidos): emails transaccionales y de marketing.
+            </li>
             <li>
               Microsoft Corporation (Estados Unidos): Clarity, analítica de
               comportamiento (solo con tu consentimiento).

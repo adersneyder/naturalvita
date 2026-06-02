@@ -123,7 +123,7 @@ export default function HabeasDataBanner() {
               />
               <ConsentRow
                 title="Marketing"
-                description="Eventos a Klaviyo para enviarte recomendaciones relevantes y emails con ofertas. Solo si te suscribes voluntariamente."
+                description="Eventos para enviarte recomendaciones relevantes y emails con ofertas. Solo si te suscribes voluntariamente."
                 checked={marketing}
                 onChange={() => setMarketing((v) => !v)}
               />

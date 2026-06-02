@@ -52,7 +52,7 @@ export async function markOrderProcessing(
 
 /**
  * Marcar pedido como "shipped" + capturar tracking + carrier.
- * Side effect: email "Pedido enviado" al cliente + evento Klaviyo (stub).
+ * Side effect: email "Pedido enviado" al cliente + evento de tracking.
  */
 const ShipSchema = z.object({
   orderId: z.string().uuid(),

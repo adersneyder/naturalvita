@@ -24,7 +24,7 @@ export type NewsletterSignupState = {
  *   4. Insert en BD propia (newsletter_subscribers).
  *   5. Side effects en after() para garantizar ejecución post-response:
  *      - Email Resend con cupón WELCOME10.
- *      - Suscripción a lista Klaviyo + evento.
+ *      - Registro de evento newsletter_subscribed (lib/events/track).
  *
  * after() de Next.js 15 garantiza que el código se ejecute DESPUÉS de
  * enviar el response al cliente pero ANTES de freezing de la lambda en
@@ -106,7 +106,7 @@ export async function subscribeNewsletterAction(
         );
       }
 
-      // Suscribir a lista Klaviyo + evento "Newsletter Subscribed"
+      // Registrar evento newsletter_subscribed (lib/events/track)
       try {
         const { trackNewsletterSubscribed } = await import(
           "@/lib/events/track"

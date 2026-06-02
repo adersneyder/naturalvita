@@ -29,7 +29,7 @@ import { OrderRefunded } from "@/lib/email/templates/order-refunded";
  *   2. Operaciones diferidas via `after()` (ejecutan POST-response, sin
  *      bloquear el ack a Bold):
  *      - sendEmail al cliente.
- *      - Tracking events (futuro Klaviyo).
+ *      - Tracking de eventos de commerce (lib/events/track; Savia a futuro).
  *
  * Esto reduce el tiempo de respuesta del webhook de potencialmente 3-5
  * segundos (esperando a Resend) a sub-segundo, eliminando timeouts.
@@ -268,7 +268,7 @@ export async function POST(req: Request) {
         };
 
         if (eventType === "SALE_APPROVED") {
-          sideLog("enviando email order-paid + tracking Klaviyo");
+          sideLog("enviando email order-paid + tracking de evento");
           await Promise.allSettled([
             sendOrderPaidEmail(order as OrderForEmail),
             (async () => {
@@ -276,7 +276,7 @@ export async function POST(req: Request) {
               await trackOrderPaid(trackPayload);
             })(),
           ]);
-          sideLog("email order-paid + Klaviyo OK");
+          sideLog("email order-paid + tracking OK");
         } else if (eventType === "SALE_REJECTED") {
           sideLog("enviando email order-rejected");
           await sendOrderRejectedEmail(
@@ -285,7 +285,7 @@ export async function POST(req: Request) {
           );
           sideLog("email order-rejected enviado");
         } else if (eventType === "VOID_APPROVED") {
-          sideLog("enviando email order-refunded + tracking Klaviyo");
+          sideLog("enviando email order-refunded + tracking de evento");
           await Promise.allSettled([
             sendOrderRefundedEmail(order as OrderForEmail),
             (async () => {
@@ -293,7 +293,7 @@ export async function POST(req: Request) {
               await trackOrderRefunded(trackPayload);
             })(),
           ]);
-          sideLog("email order-refunded + Klaviyo OK");
+          sideLog("email order-refunded + tracking OK");
         } else if (eventType === "VOID_REJECTED") {
           sideLog(
             `reembolso rechazado para ${orderNumber}: ${payload.data?.user_message}`,

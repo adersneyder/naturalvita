@@ -14,7 +14,7 @@ import { trackOrderPlaced } from "@/lib/events/track";
  * Server action invocada al hacer click "Confirmar y pagar" en /checkout.
  *
  * Crea la orden en BD con anti-tampering, dispara email de "pedido recibido"
- * + evento Klaviyo "Placed Order", y devuelve los datos para Bold.
+ * + evento de tracking order_placed, y devuelve los datos para Bold.
  */
 export async function startCheckout(
   input: CreateOrderInput,
