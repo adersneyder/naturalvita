@@ -217,45 +217,44 @@ export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
           )}
         </div>
 
-        {/* Columna derecha: composición de marca decorativa (SVG inline,
-            sin dependencia de archivo de imagen). Cuando exista una foto
-            real, reemplazar el <svg> por <Image src="/home/naturalvita-hero.avif" .../>
-            manteniendo el badge "+299 productos seleccionados". */}
+        {/* Columna derecha: escena animada "El jardín del bienestar".
+            Capas (de fondo a frente):
+              - Fondo gradiente cálido
+              - 2 blobs orgánicos rotando muy lento (60s)
+              - Partículas flotantes (12 puntos, fades aleatorios)
+              - Composición botánica central con respiración suave
+              - Palabra rotativa superpuesta (cuenta la narrativa
+                "esto es lo que mejoramos en ti")
+              - Badge "+299 productos seleccionados"
+              - Pista inferior "tu mejora empieza aquí ↗"
+            Todo CSS + SVG, sin libs externas. Respeta prefers-reduced-motion. */}
         <div className="nv-hq__right" aria-hidden="true">
           <div className="nv-hq__brand">
+            {/* Capa 1: blobs orgánicos de fondo (rotan muy lento) */}
+            <div className="nv-hq__blob nv-hq__blob--a" />
+            <div className="nv-hq__blob nv-hq__blob--b" />
+
+            {/* Capa 2: composición botánica central con respiración */}
             <svg
-              className="nv-hq__brand-svg"
+              className="nv-hq__plant"
               viewBox="0 0 400 500"
-              preserveAspectRatio="xMidYMid slice"
+              preserveAspectRatio="xMidYMid meet"
               role="presentation"
             >
               <defs>
-                <radialGradient id="nvHeroGrad1" cx="50%" cy="40%" r="65%">
-                  <stop offset="0%" stopColor="#FFFFFF" />
-                  <stop offset="55%" stopColor="#F5F1E8" />
-                  <stop offset="100%" stopColor="#E8DFD0" />
-                </radialGradient>
-                <radialGradient id="nvHeroGrad2" cx="70%" cy="30%" r="50%">
-                  <stop offset="0%" stopColor="#E5F1E7" stopOpacity="0.9" />
-                  <stop offset="100%" stopColor="#E5F1E7" stopOpacity="0" />
-                </radialGradient>
-                <radialGradient id="nvHeroGrad3" cx="25%" cy="78%" r="42%">
-                  <stop offset="0%" stopColor="#F0EBFA" stopOpacity="0.85" />
-                  <stop offset="100%" stopColor="#F0EBFA" stopOpacity="0" />
+                <radialGradient id="nvHeroBloom" cx="50%" cy="40%" r="40%">
+                  <stop offset="0%" stopColor="#4A2E9A" stopOpacity="0.45" />
+                  <stop offset="60%" stopColor="#4A2E9A" stopOpacity="0.12" />
+                  <stop offset="100%" stopColor="#4A2E9A" stopOpacity="0" />
                 </radialGradient>
               </defs>
-              {/* Fondo crema */}
-              <rect width="400" height="500" fill="url(#nvHeroGrad1)" />
-              {/* Halos suaves verde y púrpura */}
-              <rect width="400" height="500" fill="url(#nvHeroGrad2)" />
-              <rect width="400" height="500" fill="url(#nvHeroGrad3)" />
-              {/* Composición botánica: tallo + hojas + flor abstracta */}
+              {/* Tallo principal */}
               <g
                 stroke="#1E7D2E"
-                strokeWidth="2.5"
+                strokeWidth="3"
                 strokeLinecap="round"
                 fill="none"
-                opacity="0.55"
+                opacity="0.6"
               >
                 <path d="M210 470 C208 400, 204 320, 200 230" />
                 <path d="M178 360 C175 348, 172 335, 174 320 C188 322, 198 335, 200 352" />
@@ -263,27 +262,57 @@ export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
                 <path d="M188 280 C180 270, 174 258, 174 244 C188 246, 196 258, 200 274" />
                 <path d="M222 250 C228 240, 232 228, 230 214 C216 216, 208 228, 204 244" />
               </g>
-              <g fill="#1E7D2E" opacity="0.22">
+              {/* Hojas con fill */}
+              <g fill="#1E7D2E" opacity="0.25">
                 <path d="M178 360 C175 348, 172 335, 174 320 C188 322, 198 335, 200 352 Z" />
                 <path d="M226 320 C230 308, 232 295, 230 280 C216 282, 206 295, 204 312 Z" />
                 <path d="M188 280 C180 270, 174 258, 174 244 C188 246, 196 258, 200 274 Z" />
                 <path d="M222 250 C228 240, 232 228, 230 214 C216 216, 208 228, 204 244 Z" />
               </g>
-              {/* Flor / brote en la punta */}
-              <circle cx="200" cy="200" r="34" fill="#4A2E9A" opacity="0.08" />
-              <circle cx="200" cy="200" r="22" fill="#4A2E9A" opacity="0.15" />
-              <circle cx="200" cy="200" r="10" fill="#4A2E9A" opacity="0.55" />
-              {/* Puntitos decorativos */}
-              <circle cx="142" cy="156" r="4" fill="#1E7D2E" opacity="0.35" />
-              <circle cx="268" cy="178" r="3" fill="#4A2E9A" opacity="0.35" />
-              <circle cx="118" cy="232" r="2.5" fill="#1E7D2E" opacity="0.3" />
-              <circle cx="284" cy="262" r="3" fill="#4A2E9A" opacity="0.25" />
-              <circle cx="156" cy="396" r="2" fill="#1E7D2E" opacity="0.4" />
-              <circle cx="252" cy="412" r="2.5" fill="#1E7D2E" opacity="0.3" />
+              {/* Halo radial púrpura tras la flor */}
+              <circle cx="200" cy="200" r="60" fill="url(#nvHeroBloom)" />
+              {/* Flor abstracta */}
+              <g opacity="0.7">
+                <circle cx="200" cy="200" r="9" fill="#4A2E9A" />
+                <circle cx="184" cy="210" r="5" fill="#4A2E9A" opacity="0.65" />
+                <circle cx="216" cy="210" r="5" fill="#4A2E9A" opacity="0.65" />
+                <circle cx="192" cy="188" r="4" fill="#4A2E9A" opacity="0.55" />
+                <circle cx="208" cy="188" r="4" fill="#4A2E9A" opacity="0.55" />
+              </g>
             </svg>
+
+            {/* Capa 3: partículas flotantes (12 puntos, fade y suben) */}
+            <div className="nv-hq__particles">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <span key={i} className={`nv-hq__particle nv-hq__particle--${i + 1}`} />
+              ))}
+            </div>
+
+            {/* Capa 4: palabra rotativa superpuesta */}
+            <div className="nv-hq__rotator">
+              <span className="nv-hq__rot-eyebrow">Mejoramos tu</span>
+              <div className="nv-hq__rot-stack" role="presentation">
+                <span className="nv-hq__rot-word" style={{ animationDelay: "0s" }}>Energía</span>
+                <span className="nv-hq__rot-word" style={{ animationDelay: "2.5s" }}>Calma</span>
+                <span className="nv-hq__rot-word" style={{ animationDelay: "5s" }}>Belleza</span>
+                <span className="nv-hq__rot-word" style={{ animationDelay: "7.5s" }}>Defensas</span>
+                <span className="nv-hq__rot-word" style={{ animationDelay: "10s" }}>Digestión</span>
+                <span className="nv-hq__rot-word" style={{ animationDelay: "12.5s" }}>Huesos</span>
+                <span className="nv-hq__rot-word" style={{ animationDelay: "15s" }}>Articulaciones</span>
+                <span className="nv-hq__rot-word" style={{ animationDelay: "17.5s" }}>Peso</span>
+              </div>
+            </div>
+
+            {/* Capa 5: badge "+299 productos" */}
             <div className="nv-hq__brand-badge">
               <span className="nv-hq__brand-badge-num">+299</span>
               <span className="nv-hq__brand-badge-lbl">productos seleccionados</span>
+            </div>
+
+            {/* Capa 6: pista inferior con flecha hacia el quiz */}
+            <div className="nv-hq__hint">
+              <span className="nv-hq__hint-arrow" aria-hidden="true">↖</span>
+              <span>Tu mejora empieza aquí</span>
             </div>
           </div>
         </div>
@@ -437,13 +466,145 @@ function HeroQuizStyles() {
 .nv-hq__tag--adj { background: #F0EBFA; color: #4A2E9A; }
 .nv-hq__disclaimer { font-size: 11.5px; color: #A8A39B; margin: 14px 0 0; line-height: 1.5; }
 .nv-hq__right { height: 100%; display: flex; align-items: center; }
+/* ─────────────────────────────────────────────────────────────────────
+   Escena animada "El jardín del bienestar"
+   ───────────────────────────────────────────────────────────────────── */
 .nv-hq__brand {
-  position: relative; width: 100%; aspect-ratio: 4 / 5; border-radius: 24px; overflow: hidden;
-  background: #F5F1E8;
-  box-shadow: 0 1px 2px rgba(42,39,34,.04), 0 18px 40px rgba(42,39,34,.08);
+  position: relative; width: 100%; aspect-ratio: 4 / 5;
+  border-radius: 24px; overflow: hidden;
+  background: linear-gradient(160deg, #FFFFFF 0%, #FAF7F2 50%, #F0EBE0 100%);
+  box-shadow: 0 1px 2px rgba(42,39,34,.04), 0 20px 48px rgba(42,39,34,.10);
+  isolation: isolate;
 }
-.nv-hq__brand-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.nv-hq__brand-img { object-fit: cover; }
+
+/* Blobs orgánicos de fondo (rotan muy lento, dan profundidad) */
+.nv-hq__blob {
+  position: absolute; border-radius: 50%; filter: blur(36px);
+  pointer-events: none; z-index: 0;
+  animation: nv-blob-rot 60s linear infinite;
+}
+.nv-hq__blob--a {
+  width: 70%; height: 70%; top: -15%; right: -20%;
+  background: radial-gradient(circle, rgba(30,125,46,.30) 0%, rgba(30,125,46,0) 60%);
+}
+.nv-hq__blob--b {
+  width: 65%; height: 65%; bottom: -10%; left: -18%;
+  background: radial-gradient(circle, rgba(74,46,154,.28) 0%, rgba(74,46,154,0) 60%);
+  animation-direction: reverse; animation-duration: 75s;
+}
+@keyframes nv-blob-rot {
+  from { transform: rotate(0deg) translateX(0); }
+  50%  { transform: rotate(180deg) translateX(8px); }
+  to   { transform: rotate(360deg) translateX(0); }
+}
+
+/* Composición botánica con respiración suave */
+.nv-hq__plant {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  z-index: 2; display: block;
+  animation: nv-plant-breathe 5s ease-in-out infinite;
+  transform-origin: 50% 65%;
+}
+@keyframes nv-plant-breathe {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50%      { transform: scale(1.025) translateY(-2px); }
+}
+
+/* Partículas flotantes — 12 puntitos suben con fade aleatorio */
+.nv-hq__particles {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+}
+.nv-hq__particle {
+  position: absolute; width: 6px; height: 6px; border-radius: 50%;
+  background: #1E7D2E; opacity: 0;
+  animation: nv-particle-rise linear infinite;
+}
+@keyframes nv-particle-rise {
+  0%   { transform: translateY(0)    scale(0.6); opacity: 0; }
+  10%  { opacity: 0.6; }
+  90%  { opacity: 0.4; }
+  100% { transform: translateY(-160px) scale(1.1); opacity: 0; }
+}
+/* posiciones, tamaños, colores y delays distintos para cada partícula */
+.nv-hq__particle--1  { left: 12%; bottom: 8%;  animation-duration: 9s;  animation-delay: 0s;   }
+.nv-hq__particle--2  { left: 88%; bottom: 18%; animation-duration: 11s; animation-delay: 1.2s; background:#4A2E9A; }
+.nv-hq__particle--3  { left: 34%; bottom: 4%;  animation-duration: 13s; animation-delay: 2.4s; width:4px; height:4px; }
+.nv-hq__particle--4  { left: 70%; bottom: 12%; animation-duration: 10s; animation-delay: 3.1s; background:#4A2E9A; width:5px; height:5px; }
+.nv-hq__particle--5  { left: 22%; bottom: 22%; animation-duration: 14s; animation-delay: 1.8s; width:4px; height:4px; }
+.nv-hq__particle--6  { left: 60%; bottom: 6%;  animation-duration: 12s; animation-delay: 4.5s; }
+.nv-hq__particle--7  { left: 8%;  bottom: 38%; animation-duration: 15s; animation-delay: 0.6s; background:#4A2E9A; width:3px; height:3px; }
+.nv-hq__particle--8  { left: 92%; bottom: 50%; animation-duration: 11s; animation-delay: 5.5s; width:5px; height:5px; }
+.nv-hq__particle--9  { left: 46%; bottom: 14%; animation-duration: 13s; animation-delay: 6.8s; width:3px; height:3px; }
+.nv-hq__particle--10 { left: 78%; bottom: 32%; animation-duration: 10s; animation-delay: 2.2s; background:#4A2E9A; width:4px; height:4px; }
+.nv-hq__particle--11 { left: 16%; bottom: 60%; animation-duration: 14s; animation-delay: 7.4s; width:3px; height:3px; }
+.nv-hq__particle--12 { left: 54%; bottom: 70%; animation-duration: 12s; animation-delay: 3.7s; background:#4A2E9A; width:4px; height:4px; }
+
+/* Palabra rotativa superpuesta — "Mejoramos tu [Energía/Calma/...]"
+   20s total = 8 palabras × 2.5s c/u. Cada palabra entra con fade,
+   se queda visible y sale con fade. */
+.nv-hq__rotator {
+  position: absolute; top: 24px; left: 0; right: 0;
+  z-index: 4; display: flex; flex-direction: column; align-items: center;
+  pointer-events: none;
+}
+.nv-hq__rot-eyebrow {
+  font-size: 11px; letter-spacing: 2.4px; text-transform: uppercase;
+  color: rgba(42,39,34,.55); font-weight: 700; margin-bottom: 8px;
+}
+.nv-hq__rot-stack {
+  position: relative; height: 1.2em;
+  font-family: Georgia, serif; font-size: clamp(26px, 3vw, 36px);
+  letter-spacing: -0.4px; color: #4A2E9A;
+}
+.nv-hq__rot-word {
+  position: absolute; left: 50%; top: 0;
+  transform: translateX(-50%) translateY(8px);
+  opacity: 0; white-space: nowrap;
+  animation: nv-word-cycle 20s ease-in-out infinite;
+}
+@keyframes nv-word-cycle {
+  0%, 13.5%   { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  2%, 11.5%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100%        { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+}
+
+/* Pista inferior — "Tu mejora empieza aquí ↖" */
+.nv-hq__hint {
+  position: absolute; bottom: 24px; right: 24px;
+  z-index: 4; display: inline-flex; align-items: center; gap: 8px;
+  font-family: Georgia, serif; font-style: italic; font-size: 13px;
+  color: rgba(42,39,34,.65);
+  background: rgba(255,255,255,.78); backdrop-filter: blur(6px);
+  padding: 8px 14px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.6);
+  box-shadow: 0 1px 2px rgba(42,39,34,.04), 0 8px 20px rgba(42,39,34,.08);
+  animation: nv-hint-bob 3s ease-in-out infinite;
+}
+.nv-hq__hint-arrow {
+  color: #4A2E9A; font-style: normal; font-size: 16px;
+  animation: nv-hint-arrow 2s ease-in-out infinite;
+}
+@keyframes nv-hint-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+@keyframes nv-hint-arrow {
+  0%, 100% { transform: translate(0, 0); }
+  50%      { transform: translate(-3px, 3px); }
+}
+
+/* Respeto a usuarios con prefers-reduced-motion: solo el rotator se
+   queda con fade lento, todo lo demás queda estático. */
+@media (prefers-reduced-motion: reduce) {
+  .nv-hq__blob,
+  .nv-hq__plant,
+  .nv-hq__particle,
+  .nv-hq__hint,
+  .nv-hq__hint-arrow {
+    animation: none;
+  }
+  .nv-hq__rot-word { animation-duration: 30s; }
+}
 .nv-hq__brand-badge {
   position: absolute; bottom: 20px; left: 20px;
   background: rgba(255,255,255,.96);
