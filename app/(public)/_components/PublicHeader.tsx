@@ -40,7 +40,12 @@ export default function PublicHeader() {
           </span>
         </Link>
 
-        {/* Navegación principal · oculta en mobile */}
+        {/* Navegación principal · oculta en mobile.
+            Lógica de los 3 links: catálogo (Tienda) + los dos hubs de
+            confianza que respaldan el catálogo (Laboratorios aliados y
+            Sobre nosotros / Everlife). La búsqueda vive en el SearchBar
+            visible al lado, no es un link aparte. Envíos/devoluciones
+            viven en el footer, no aquí. */}
         <nav className="hidden md:flex items-center gap-6 text-sm">
           <Link
             href="/tienda"
@@ -49,16 +54,16 @@ export default function PublicHeader() {
             Tienda
           </Link>
           <Link
-            href="/buscar"
+            href="/laboratorio"
             className="text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)] font-medium"
           >
-            Buscar
+            Laboratorios
           </Link>
           <Link
-            href="/legal/envios"
+            href="/sobre-nosotros"
             className="text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)] font-medium"
           >
-            Envíos
+            Sobre nosotros
           </Link>
         </nav>
 
@@ -103,16 +108,16 @@ export default function PublicHeader() {
           Tienda
         </Link>
         <Link
-          href="/buscar"
+          href="/laboratorio"
           className="text-[var(--color-earth-700)] whitespace-nowrap"
         >
-          Buscar
+          Laboratorios
         </Link>
         <Link
-          href="/legal/envios"
+          href="/sobre-nosotros"
           className="text-[var(--color-earth-700)] whitespace-nowrap"
         >
-          Envíos
+          Sobre nosotros
         </Link>
       </nav>
     </header>

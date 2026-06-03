@@ -217,17 +217,70 @@ export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
           )}
         </div>
 
-        {/* Columna derecha: composición de marca */}
+        {/* Columna derecha: composición de marca decorativa (SVG inline,
+            sin dependencia de archivo de imagen). Cuando exista una foto
+            real, reemplazar el <svg> por <Image src="/home/naturalvita-hero.avif" .../>
+            manteniendo el badge "+299 productos seleccionados". */}
         <div className="nv-hq__right" aria-hidden="true">
           <div className="nv-hq__brand">
-            <Image
-              src="/home/naturalvita-hero.avif"
-              alt=""
-              fill
-              priority
-              sizes="(max-width: 900px) 100vw, 45vw"
-              className="nv-hq__brand-img"
-            />
+            <svg
+              className="nv-hq__brand-svg"
+              viewBox="0 0 400 500"
+              preserveAspectRatio="xMidYMid slice"
+              role="presentation"
+            >
+              <defs>
+                <radialGradient id="nvHeroGrad1" cx="50%" cy="40%" r="65%">
+                  <stop offset="0%" stopColor="#FFFFFF" />
+                  <stop offset="55%" stopColor="#F5F1E8" />
+                  <stop offset="100%" stopColor="#E8DFD0" />
+                </radialGradient>
+                <radialGradient id="nvHeroGrad2" cx="70%" cy="30%" r="50%">
+                  <stop offset="0%" stopColor="#E5F1E7" stopOpacity="0.9" />
+                  <stop offset="100%" stopColor="#E5F1E7" stopOpacity="0" />
+                </radialGradient>
+                <radialGradient id="nvHeroGrad3" cx="25%" cy="78%" r="42%">
+                  <stop offset="0%" stopColor="#F0EBFA" stopOpacity="0.85" />
+                  <stop offset="100%" stopColor="#F0EBFA" stopOpacity="0" />
+                </radialGradient>
+              </defs>
+              {/* Fondo crema */}
+              <rect width="400" height="500" fill="url(#nvHeroGrad1)" />
+              {/* Halos suaves verde y púrpura */}
+              <rect width="400" height="500" fill="url(#nvHeroGrad2)" />
+              <rect width="400" height="500" fill="url(#nvHeroGrad3)" />
+              {/* Composición botánica: tallo + hojas + flor abstracta */}
+              <g
+                stroke="#1E7D2E"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                fill="none"
+                opacity="0.55"
+              >
+                <path d="M210 470 C208 400, 204 320, 200 230" />
+                <path d="M178 360 C175 348, 172 335, 174 320 C188 322, 198 335, 200 352" />
+                <path d="M226 320 C230 308, 232 295, 230 280 C216 282, 206 295, 204 312" />
+                <path d="M188 280 C180 270, 174 258, 174 244 C188 246, 196 258, 200 274" />
+                <path d="M222 250 C228 240, 232 228, 230 214 C216 216, 208 228, 204 244" />
+              </g>
+              <g fill="#1E7D2E" opacity="0.22">
+                <path d="M178 360 C175 348, 172 335, 174 320 C188 322, 198 335, 200 352 Z" />
+                <path d="M226 320 C230 308, 232 295, 230 280 C216 282, 206 295, 204 312 Z" />
+                <path d="M188 280 C180 270, 174 258, 174 244 C188 246, 196 258, 200 274 Z" />
+                <path d="M222 250 C228 240, 232 228, 230 214 C216 216, 208 228, 204 244 Z" />
+              </g>
+              {/* Flor / brote en la punta */}
+              <circle cx="200" cy="200" r="34" fill="#4A2E9A" opacity="0.08" />
+              <circle cx="200" cy="200" r="22" fill="#4A2E9A" opacity="0.15" />
+              <circle cx="200" cy="200" r="10" fill="#4A2E9A" opacity="0.55" />
+              {/* Puntitos decorativos */}
+              <circle cx="142" cy="156" r="4" fill="#1E7D2E" opacity="0.35" />
+              <circle cx="268" cy="178" r="3" fill="#4A2E9A" opacity="0.35" />
+              <circle cx="118" cy="232" r="2.5" fill="#1E7D2E" opacity="0.3" />
+              <circle cx="284" cy="262" r="3" fill="#4A2E9A" opacity="0.25" />
+              <circle cx="156" cy="396" r="2" fill="#1E7D2E" opacity="0.4" />
+              <circle cx="252" cy="412" r="2.5" fill="#1E7D2E" opacity="0.3" />
+            </svg>
             <div className="nv-hq__brand-badge">
               <span className="nv-hq__brand-badge-num">+299</span>
               <span className="nv-hq__brand-badge-lbl">productos seleccionados</span>
@@ -335,7 +388,9 @@ function HeroQuizStyles() {
 .nv-hq__brand {
   position: relative; width: 100%; aspect-ratio: 4 / 5; border-radius: 24px; overflow: hidden;
   background: #F5F1E8;
+  box-shadow: 0 1px 2px rgba(42,39,34,.04), 0 18px 40px rgba(42,39,34,.08);
 }
+.nv-hq__brand-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .nv-hq__brand-img { object-fit: cover; }
 .nv-hq__brand-badge {
   position: absolute; bottom: 16px; left: 16px; background: rgba(255,255,255,.94);
