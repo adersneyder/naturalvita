@@ -108,7 +108,7 @@ export function LifeStages() {
 
       <style>{`
         .nv-stages {
-          padding: 96px 20px;
+          padding: 72px 20px;
           background:
             radial-gradient(80% 60% at 50% 0%, rgba(30,125,46,.04), transparent 70%),
             #FFFFFF;
@@ -119,7 +119,7 @@ export function LifeStages() {
         }
         .nv-stages__header {
           text-align: center;
-          margin-bottom: 56px;
+          margin-bottom: 44px;
         }
         .nv-stages__eyebrow {
           display: inline-flex;

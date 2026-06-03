@@ -152,7 +152,7 @@ export function EverlifeOrigin() {
 
       <style>{`
         .nv-origin {
-          padding: 104px 20px;
+          padding: 80px 20px;
           background:
             radial-gradient(70% 50% at 0% 100%, rgba(74,46,154,.04), transparent 60%),
             radial-gradient(60% 50% at 100% 0%, rgba(30,125,46,.04), transparent 60%),

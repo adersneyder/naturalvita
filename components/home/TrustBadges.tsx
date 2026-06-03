@@ -70,11 +70,10 @@ export function TrustBadges() {
 
       <style>{`
         .nv-trust {
-          padding: 64px 20px 72px;
+          padding: 56px 20px;
           background:
             radial-gradient(80% 60% at 50% 0%, rgba(30,125,46,.04), transparent 70%),
             #FAF7F2;
-          border-top: 1px solid #ECE4D4;
         }
         .nv-trust__inner {
           max-width: 1100px;

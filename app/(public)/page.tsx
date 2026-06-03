@@ -27,6 +27,7 @@ import { ValueProps } from "@/components/home/ValueProps";
 import { EverlifeOrigin } from "@/components/home/EverlifeOrigin";
 import { PartnerLabs } from "@/components/home/PartnerLabs";
 import { TrustBadges } from "@/components/home/TrustBadges";
+import { SectionDivider } from "@/components/home/SectionDivider";
 import { getActiveNeeds } from "@/lib/quiz/queries";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co";
@@ -96,9 +97,15 @@ export default async function HomePage() {
       <HeroQuiz needs={needs} isLoggedIn={false} />
       <LifeStages />
       <FeaturedProducts />
+      {/* Cambio de fondo blanco → crema: respiración narrativa */}
+      <SectionDivider tone="warm" />
       <ValueProps />
       <EverlifeOrigin />
+      {/* Cambio de fondo crema → blanco */}
+      <SectionDivider tone="cool" />
       <PartnerLabs />
+      {/* Cambio de fondo blanco → crema (banda de cierre) */}
+      <SectionDivider tone="warm" />
       <TrustBadges />
     </>
   );

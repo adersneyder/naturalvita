@@ -56,7 +56,7 @@ export function ValueProps() {
 
       <style>{`
         .nv-values {
-          padding: 88px 20px;
+          padding: 64px 20px;
           background:
             radial-gradient(60% 50% at 50% 0%, rgba(74,46,154,.05), transparent 60%),
             #FAF7F2;

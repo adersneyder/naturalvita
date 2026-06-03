@@ -22,7 +22,7 @@ export default async function FeaturedProducts() {
   return (
     <section
       aria-labelledby="featured-heading"
-      className="mx-auto max-w-6xl px-4 py-14 sm:py-20"
+      className="mx-auto max-w-6xl px-4 py-12 sm:py-16"
     >
       <div className="flex items-end justify-between gap-4 mb-8 sm:mb-12">
         <div>

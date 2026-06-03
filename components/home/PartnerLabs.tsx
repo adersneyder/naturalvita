@@ -73,7 +73,7 @@ export async function PartnerLabs() {
 
       <style>{`
         .nv-labs {
-          padding: 88px 20px;
+          padding: 64px 20px;
           background:
             radial-gradient(70% 50% at 50% 100%, rgba(30,125,46,.04), transparent 70%),
             #FFFFFF;
@@ -84,7 +84,7 @@ export async function PartnerLabs() {
           text-align: center;
         }
         .nv-labs__header {
-          margin-bottom: 44px;
+          margin-bottom: 36px;
         }
         .nv-labs__eyebrow {
           display: inline-flex;
