@@ -26,14 +26,52 @@ type Props = {
  *     Aparece toast de confirmación con acción "Ver carrito".
  *   - "Comprar ahora" (primario, púrpura sólido): suma al carrito Y abre drawer lateral.
  *
+ * El selector de cantidad combina dos UIs: botones − / + a los lados y un
+ * <input type="number"> editable en el centro. El input permite teclear
+ * cantidades grandes directamente (ej. 12 en vez de tocar + once veces).
+ *
  * Si el producto está agotado, ambos botones se deshabilitan con mensaje.
  */
 export default function AddToCartButtons({ product, showQuantitySelector = true }: Props) {
   const { addItem } = useCart();
   const [qty, setQty] = useState(1);
+  // Buffer del input mientras el usuario escribe. Permite estados temporales
+  // vacíos sin que el qty real cambie. Se reconcilia con qty en onBlur.
+  const [qtyInput, setQtyInput] = useState("1");
 
   const isAvailable = !product.track_stock || product.stock > 0;
   const maxQty = product.track_stock ? Math.max(1, product.stock) : 99;
+
+  function clamp(n: number) {
+    if (!Number.isFinite(n) || n < 1) return 1;
+    if (n > maxQty) return maxQty;
+    return Math.floor(n);
+  }
+
+  function setQtyBoth(n: number) {
+    const clamped = clamp(n);
+    setQty(clamped);
+    setQtyInput(String(clamped));
+  }
+
+  function onInputChange(value: string) {
+    // Permite el campo vacío como estado transitorio mientras se teclea.
+    // Si quedan solo dígitos, sincroniza qty al instante (clampeado).
+    setQtyInput(value);
+    if (value === "") return;
+    const n = Number.parseInt(value, 10);
+    if (Number.isFinite(n)) setQty(clamp(n));
+  }
+
+  function onInputBlur() {
+    // Al perder foco, normaliza: si quedó vacío o inválido, vuelve a qty actual.
+    const n = Number.parseInt(qtyInput, 10);
+    if (!Number.isFinite(n) || qtyInput === "") {
+      setQtyInput(String(qty));
+    } else {
+      setQtyBoth(n);
+    }
+  }
 
   function add(openDrawerAfter: boolean) {
     if (!isAvailable) return;
@@ -84,22 +122,28 @@ export default function AddToCartButtons({ product, showQuantitySelector = true 
           <div className="inline-flex items-center bg-white border border-[var(--color-earth-100)] rounded-lg overflow-hidden">
             <button
               type="button"
-              onClick={() => setQty((q) => Math.max(1, q - 1))}
+              onClick={() => setQtyBoth(qty - 1)}
               disabled={qty <= 1}
               className="w-9 h-10 text-[var(--color-leaf-700)] hover:bg-[var(--color-earth-50)] disabled:opacity-40 transition-colors"
               aria-label="Disminuir cantidad"
             >
               −
             </button>
-            <span
-              className="w-10 text-center font-medium tabular-nums select-none"
-              aria-live="polite"
-            >
-              {qty}
-            </span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={maxQty}
+              value={qtyInput}
+              onChange={(e) => onInputChange(e.target.value)}
+              onBlur={onInputBlur}
+              onFocus={(e) => e.target.select()}
+              className="nv-qty-input w-12 h-10 text-center font-medium tabular-nums bg-transparent text-[var(--color-leaf-900)] focus:outline-none focus:bg-[var(--color-earth-50)]"
+              aria-label="Cantidad"
+            />
             <button
               type="button"
-              onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+              onClick={() => setQtyBoth(qty + 1)}
               disabled={qty >= maxQty}
               className="w-9 h-10 text-[var(--color-leaf-700)] hover:bg-[var(--color-earth-50)] disabled:opacity-40 transition-colors"
               aria-label="Aumentar cantidad"
@@ -107,6 +151,16 @@ export default function AddToCartButtons({ product, showQuantitySelector = true 
               +
             </button>
           </div>
+          {/* Oculta los spin buttons nativos de <input type="number"> en
+              Chrome/Safari/Firefox para no duplicar la UI con nuestros − +. */}
+          <style>{`
+            .nv-qty-input::-webkit-outer-spin-button,
+            .nv-qty-input::-webkit-inner-spin-button {
+              -webkit-appearance: none;
+              margin: 0;
+            }
+            .nv-qty-input { -moz-appearance: textfield; }
+          `}</style>
         </div>
       )}
 
