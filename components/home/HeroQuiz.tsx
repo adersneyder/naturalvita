@@ -14,6 +14,7 @@ import Image from "next/image";
 import { LIFE_STAGES, type LifeStage, type QuizNeed, type QuizResult } from "@/lib/quiz/types";
 import { resolveQuizAction, saveQuizResultAction } from "@/lib/quiz/actions";
 import type { HeroSlot } from "@/lib/home/hero-rotator";
+import QuickAddButton from "@/app/(public)/_components/QuickAddButton";
 
 type Step = "objetivo" | "etapa" | "resultado";
 
@@ -223,6 +224,18 @@ export function HeroQuiz({ needs, heroSlots, isLoggedIn = false }: HeroQuizProps
                               ) : (
                                 <span className="nv-hq__tag nv-hq__tag--adj">También ayuda</span>
                               )}
+                            </span>
+                            <span className="nv-hq__card-actions">
+                              <QuickAddButton
+                                product={{
+                                  id: p.productId,
+                                  slug: p.slug,
+                                  name: p.name,
+                                  presentation: null,
+                                  price_cop: p.price ?? 0,
+                                  image_url: p.imageUrl,
+                                }}
+                              />
                             </span>
                           </span>
                         </Link>
@@ -492,6 +505,12 @@ function HeroQuizStyles() {
 .nv-hq__card-name { font-size: 14.5px; font-weight: 600; color: #2A2722; line-height: 1.25; }
 .nv-hq__card-reason { font-size: 12.5px; color: #8B8881; line-height: 1.4; }
 .nv-hq__card-foot { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+.nv-hq__card-actions {
+  display: block;
+  margin-top: 10px;
+  /* El span queda separado del Link envolvente; el componente interno
+     llama a stopPropagation para que la navegación no se dispare. */
+}
 .nv-hq__card-price { font-size: 14px; font-weight: 700; color: #1E7D2E; }
 .nv-hq__tag { font-size: 10.5px; font-weight: 600; padding: 2px 8px; border-radius: 6px; letter-spacing: .3px; }
 .nv-hq__tag--direct { background: #E5F1E7; color: #1E5E34; }
