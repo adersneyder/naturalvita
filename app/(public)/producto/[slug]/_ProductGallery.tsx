@@ -76,8 +76,14 @@ export default function ProductGallery({ images, productName }: Props) {
 
   return (
     <>
-      {/* GALERÍA INLINE */}
-      <div className="md:grid md:grid-cols-[80px_1fr] md:gap-4">
+      {/* GALERÍA INLINE.
+          El grid de [80px | 1fr] solo se aplica cuando hay >= 2 imágenes
+          (hay thumbnails que ocupan la col 1). Con una sola imagen
+          renderizamos la principal a ancho completo: si dejáramos el
+          grid, el único hijo (la imagen) caía en la col 1 de 80px y se
+          mostraba como un cuadradito mientras la col 2 quedaba vacía —
+          ese era el bug visible en productos con una sola foto. */}
+      <div className={hasMultiple ? "md:grid md:grid-cols-[80px_1fr] md:gap-4" : ""}>
         {/* Thumbnails */}
         {hasMultiple && (
           <div className="order-2 md:order-1 mt-3 md:mt-0">
