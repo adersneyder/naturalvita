@@ -14,6 +14,7 @@ import Image from "next/image";
 import { LIFE_STAGES, type LifeStage, type QuizNeed, type QuizResult } from "@/lib/quiz/types";
 import { resolveQuizAction, saveQuizResultAction } from "@/lib/quiz/actions";
 import type { HeroSlot } from "@/lib/home/hero-rotator";
+import QuickAddButton from "@/app/(public)/_components/QuickAddButton";
 
 type Step = "objetivo" | "etapa" | "resultado";
 
@@ -342,6 +343,17 @@ export function HeroQuiz({ needs, heroSlots, isLoggedIn = false }: HeroQuizProps
                         </span>
                       )}
                     </span>
+                    <QuickAddButton
+                      variant="compact"
+                      product={{
+                        id: p.productId,
+                        slug: p.slug,
+                        name: p.name,
+                        presentation: null,
+                        price_cop: p.price ?? 0,
+                        image_url: p.imageUrl,
+                      }}
+                    />
                   </Link>
                 ))}
               </div>

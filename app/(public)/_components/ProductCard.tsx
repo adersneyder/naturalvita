@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { PublicProductSummary } from "@/lib/catalog/types";
 import { calculateDiscount, formatCop } from "@/lib/format/currency";
+import QuickAddButton from "./QuickAddButton";
 
 type Props = {
   product: PublicProductSummary;
@@ -62,6 +63,24 @@ export default function ProductCard({ product, priority = false }: Props) {
           <span className="absolute inset-x-0 bottom-0 bg-[var(--color-earth-900)]/85 text-white text-xs font-medium text-center py-2 tracking-wide uppercase">
             Agotado
           </span>
+        )}
+
+        {/* Botón flotante "Añadir": aparece al hover (desktop) o siempre
+            (táctil). Detiene la propagación del click para que el Link
+            envolvente no navegue al producto. */}
+        {!isOut && (
+          <QuickAddButton
+            variant="card"
+            product={{
+              id: product.id,
+              slug: product.slug,
+              name: product.name,
+              presentation: product.presentation,
+              price_cop: product.price_cop,
+              image_url: product.primary_image?.url ?? null,
+              is_out_of_stock: false,
+            }}
+          />
         )}
       </div>
 
