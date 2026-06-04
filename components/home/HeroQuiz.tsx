@@ -303,15 +303,8 @@ export function HeroQuiz({ needs, heroSlots, isLoggedIn = false }: HeroQuizProps
               </div>
             </div>
 
-            {/* Capa: badge "+299 productos" */}
-            <div className="nv-hq__brand-badge" aria-hidden="true">
-              <span className="nv-hq__brand-badge-num">+299</span>
-              <span className="nv-hq__brand-badge-lbl">productos seleccionados</span>
-            </div>
-
-            {/* Capa: pista superior con flecha hacia el quiz */}
+            {/* Capa: pista superior con marco de contraste */}
             <div className="nv-hq__hint" aria-hidden="true">
-              <span className="nv-hq__hint-arrow">↖</span>
               <span>Tu mejora empieza aquí</span>
             </div>
 
@@ -633,31 +626,25 @@ function HeroQuizStyles() {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Pista superior derecha — "Tu mejora empieza aquí ↖".
-   Se reubica de bottom-right a top-right para no chocar con la fila
-   de tarjetas de producto que ahora vive al pie. */
+/* Pista superior derecha — "Tu mejora empieza aquí".
+   Marco con contraste: fondo blanco sólido + borde verde NV grueso.
+   Legible sobre cualquier foto, sin flecha. Bobbing sutil mantiene
+   vida visual. */
 .nv-hq__hint {
   position: absolute; top: 24px; right: 24px;
-  z-index: 4; display: inline-flex; align-items: center; gap: 8px;
+  z-index: 4; display: inline-flex; align-items: center;
   font-family: Georgia, serif; font-style: italic; font-size: 13px;
-  color: #2A2722;
-  background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
-  padding: 9px 16px; border-radius: 999px;
-  border: 1px solid rgba(255,255,255,.7);
-  box-shadow: 0 1px 2px rgba(42,39,34,.06), 0 10px 24px rgba(42,39,34,.18);
+  font-weight: 500;
+  color: #1E5E34;
+  background: #FFFFFF;
+  padding: 10px 18px; border-radius: 999px;
+  border: 2px solid #1E7D2E;
+  box-shadow: 0 1px 2px rgba(30,125,46,.10), 0 10px 28px rgba(30,125,46,.22);
   animation: nv-hint-bob 3s ease-in-out infinite;
-}
-.nv-hq__hint-arrow {
-  color: #4A2E9A; font-style: normal; font-size: 16px;
-  animation: nv-hint-arrow 2s ease-in-out infinite;
 }
 @keyframes nv-hint-bob {
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-3px); }
-}
-@keyframes nv-hint-arrow {
-  0%, 100% { transform: translate(0, 0); }
-  50%      { transform: translate(-3px, 3px); }
 }
 
 /* Fila de productos al pie del hero — sincronizada con slotIdx.
@@ -728,30 +715,13 @@ function HeroQuizStyles() {
   .nv-hq__slide.is-active .nv-hq__slide-img { animation: none; transform: none; }
   .nv-hq__blob,
   .nv-hq__particle,
-  .nv-hq__hint,
-  .nv-hq__hint-arrow {
+  .nv-hq__hint {
     animation: none;
   }
   .nv-hq__rot-word--active,
   .nv-hq__product {
     animation-duration: 0.15s;
   }
-}
-.nv-hq__brand-badge {
-  position: absolute; bottom: 20px; left: 20px; z-index: 4;
-  background: rgba(255,255,255,.92);
-  backdrop-filter: blur(10px);
-  border-radius: 16px; padding: 14px 20px; display: flex; flex-direction: column;
-  box-shadow: 0 1px 2px rgba(42,39,34,.06), 0 14px 36px rgba(42,39,34,.22);
-  border: 1px solid rgba(255,255,255,.7);
-}
-.nv-hq__brand-badge-num {
-  font-family: Georgia, serif; font-size: 28px; color: #4A2E9A;
-  line-height: 1; font-weight: 400; letter-spacing: -0.5px;
-}
-.nv-hq__brand-badge-lbl {
-  font-size: 11.5px; color: #5C5048; margin-top: 4px;
-  letter-spacing: 0.3px;
 }
 @media (max-width: 900px) {
   .nv-hq__inner { grid-template-columns: 1fr; min-height: auto; gap: 28px; padding: 24px; }
