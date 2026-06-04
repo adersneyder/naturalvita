@@ -93,7 +93,7 @@ export function EverlifeOrigin() {
               <div className="nv-origin__node nv-origin__node--flower">
                 <span className="nv-origin__node-label">Florece en línea</span>
                 <Image
-                  src="/home/naturalvita-logo.png"
+                  src="/home/naturalvita-logo.webp"
                   alt="NaturalVita"
                   width={816}
                   height={502}

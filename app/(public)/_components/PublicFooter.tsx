@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   COMPANY,
   getFormattedAddress,
@@ -132,18 +133,19 @@ export default function PublicFooter() {
             newsletter a la derecha. */}
         <div className="grid md:grid-cols-[1.1fr_1fr] gap-10 md:gap-16 pb-10 border-b border-white/10">
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M12 2c-2 4-6 6-6 11a6 6 0 0012 0c0-5-4-7-6-11z"
-                    fill="white"
-                    opacity="0.9"
-                  />
-                </svg>
-              </span>
-              <span className="font-serif text-xl tracking-tight">{COMPANY.brand}</span>
-            </div>
+            {/* Logo de marca: misma imagen del header y de la metáfora
+                raíz/flor en EverlifeOrigin. brightness/contrast invertidos
+                vía CSS no aplican aquí — el footer es verde oscuro y el
+                logo es transparente, así que se ve sobre cualquier fondo. */}
+            <Link href="/" aria-label="NaturalVita · Inicio" className="inline-block mb-4">
+              <Image
+                src="/home/naturalvita-logo.webp"
+                alt={COMPANY.brand}
+                width={816}
+                height={502}
+                className="h-12 w-auto"
+              />
+            </Link>
             <p className="text-sm text-white/70 leading-relaxed max-w-sm">
               {COMPANY.tagline}. Una marca de {COMPANY.parentBrand}.
             </p>
