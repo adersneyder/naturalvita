@@ -133,17 +133,20 @@ export default function PublicFooter() {
             newsletter a la derecha. */}
         <div className="grid md:grid-cols-[1.1fr_1fr] gap-10 md:gap-16 pb-10 border-b border-white/10">
           <div>
-            {/* Logo de marca: misma imagen del header y de la metáfora
-                raíz/flor en EverlifeOrigin. brightness/contrast invertidos
-                vía CSS no aplican aquí — el footer es verde oscuro y el
-                logo es transparente, así que se ve sobre cualquier fondo. */}
-            <Link href="/" aria-label="NaturalVita · Inicio" className="inline-block mb-4">
+            {/* Logo de marca: misma imagen del header. En el footer (fondo
+                verde oscuro) lo envolvemos en un cuadrito blanco para que
+                se vea con el color original sin pelearse con el fondo. */}
+            <Link
+              href="/"
+              aria-label="NaturalVita · Inicio"
+              className="inline-block mb-4 bg-white rounded-xl px-4 py-2.5 shadow-sm"
+            >
               <Image
                 src="/home/naturalvita-logo.webp"
                 alt={COMPANY.brand}
                 width={816}
                 height={502}
-                className="h-12 w-auto"
+                className="h-10 w-auto block"
               />
             </Link>
             <p className="text-sm text-white/70 leading-relaxed max-w-sm">
