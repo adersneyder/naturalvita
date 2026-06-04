@@ -64,24 +64,6 @@ export default function ProductCard({ product, priority = false }: Props) {
             Agotado
           </span>
         )}
-
-        {/* Botón flotante "Añadir": aparece al hover (desktop) o siempre
-            (táctil). Detiene la propagación del click para que el Link
-            envolvente no navegue al producto. */}
-        {!isOut && (
-          <QuickAddButton
-            variant="card"
-            product={{
-              id: product.id,
-              slug: product.slug,
-              name: product.name,
-              presentation: product.presentation,
-              price_cop: product.price_cop,
-              image_url: product.primary_image?.url ?? null,
-              is_out_of_stock: false,
-            }}
-          />
-        )}
       </div>
 
       {/* Información */}
@@ -98,15 +80,31 @@ export default function ProductCard({ product, priority = false }: Props) {
           </p>
         )}
 
-        {/* Precio anclado abajo */}
-        <div className="mt-auto pt-2 flex items-baseline gap-2 flex-wrap">
-          <span className="text-base font-medium text-[var(--color-leaf-900)] tabular-nums">
-            {formatCop(product.price_cop)}
-          </span>
-          {discount !== null && product.compare_at_price_cop && (
-            <span className="text-xs text-[var(--color-earth-500)] line-through tabular-nums">
-              {formatCop(product.compare_at_price_cop)}
+        {/* Pie con precio a la izquierda y quick-add a la derecha.
+            En mobile (poco ancho) el quick-add cae a otra línea por flex-wrap. */}
+        <div className="mt-auto pt-3 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-base font-medium text-[var(--color-leaf-900)] tabular-nums">
+              {formatCop(product.price_cop)}
             </span>
+            {discount !== null && product.compare_at_price_cop && (
+              <span className="text-xs text-[var(--color-earth-500)] line-through tabular-nums">
+                {formatCop(product.compare_at_price_cop)}
+              </span>
+            )}
+          </div>
+          {!isOut && (
+            <QuickAddButton
+              product={{
+                id: product.id,
+                slug: product.slug,
+                name: product.name,
+                presentation: product.presentation,
+                price_cop: product.price_cop,
+                image_url: product.primary_image?.url ?? null,
+                is_out_of_stock: false,
+              }}
+            />
           )}
         </div>
       </div>

@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { useCart } from "@/lib/cart/use-cart";
 import { openCartDrawer } from "@/lib/cart/use-cart-drawer";
 import { showToast } from "@/lib/cart/use-toasts";
-import type { MouseEvent } from "react";
+import type { ChangeEvent, FocusEvent, MouseEvent } from "react";
 
 type QuickAddProduct = {
   id: string;
@@ -12,47 +13,69 @@ type QuickAddProduct = {
   presentation: string | null;
   price_cop: number;
   image_url: string | null;
-  /** Si el card ya sabe que está agotado, no muestra el botón. */
+  /** Si el card ya sabe que está agotado, no muestra el control. */
   is_out_of_stock?: boolean;
 };
 
 type Props = {
   product: QuickAddProduct;
-  /** "card" para uso en ProductCard (overlay flotante), "compact" para mini-tarjetas del hero. */
-  variant?: "card" | "compact";
-  /** Texto accesible alternativo (se muestra como aria-label). */
-  ariaLabel?: string;
 };
 
 /**
- * Botón "Añadir al carrito" usable dentro de cards de producto que ya
- * son <Link> a la ficha. Detiene la propagación del click para que la
- * navegación del Link envolvente no se dispare.
+ * Control inline "agregar al carrito" con selector de cantidad. Usable
+ * dentro de cards de producto que ya son <Link> a la ficha.
  *
- * Suma 1 unidad al carrito y muestra un toast con acción "Ver carrito".
- * No abre el drawer automáticamente (el usuario sigue navegando el home).
+ * Layout: [− N +] [Añadir 🛒]
+ *   - Botones − / + ajustan en 1
+ *   - El número es <input type="number"> editable (teclea 12, etc.)
+ *   - Botón "Añadir" suma N unidades, muestra toast con acción "Ver carrito"
+ *     y no abre el drawer (deja al usuario seguir navegando).
  *
- * Variantes:
- *   - "card" (default): pill verde con ícono +, se posiciona absoluto
- *     en la esquina inferior derecha del media del ProductCard.
- *   - "compact": botón más pequeño para las mini-tarjetas del hero
- *     (ocupa toda la altura del card al lado derecho).
+ * Detiene la propagación de todos los clicks y de mousedown/touchstart
+ * para que ni el navegado del <Link> envolvente ni el Link sub-tarjetas
+ * se disparen accidentalmente.
  *
- * No requiere stock numérico — pasamos stock_at_add=99 porque desde el
- * home no resolvemos disponibilidad fina (el checkout server-action sí
- * valida stock real antes de cobrar).
+ * Stock: se pasa stock_at_add=99 porque desde el home no resolvemos
+ * disponibilidad fina; el server-action de checkout valida stock real
+ * antes de cobrar.
  */
-export default function QuickAddButton({
-  product,
-  variant = "card",
-  ariaLabel,
-}: Props) {
+export default function QuickAddButton({ product }: Props) {
   const { addItem } = useCart();
+  const [qty, setQty] = useState(1);
+  const [qtyInput, setQtyInput] = useState("1");
 
   if (product.is_out_of_stock) return null;
 
-  function handleClick(e: MouseEvent<HTMLButtonElement>) {
-    // Evita que el <Link> que envuelve al card capture el click.
+  function clamp(n: number) {
+    if (!Number.isFinite(n) || n < 1) return 1;
+    if (n > 99) return 99;
+    return Math.floor(n);
+  }
+  function setQtyBoth(n: number) {
+    const c = clamp(n);
+    setQty(c);
+    setQtyInput(String(c));
+  }
+  function onInputChange(e: ChangeEvent<HTMLInputElement>) {
+    const v = e.target.value;
+    setQtyInput(v);
+    if (v === "") return;
+    const n = Number.parseInt(v, 10);
+    if (Number.isFinite(n)) setQty(clamp(n));
+  }
+  function onInputBlur() {
+    const n = Number.parseInt(qtyInput, 10);
+    if (!Number.isFinite(n) || qtyInput === "") setQtyInput(String(qty));
+    else setQtyBoth(n);
+  }
+
+  /** Stop bubbling para que el <Link> envolvente no navegue al producto. */
+  function stop(e: MouseEvent | FocusEvent) {
+    e.stopPropagation();
+    if ("preventDefault" in e) e.preventDefault();
+  }
+
+  function handleAdd(e: MouseEvent<HTMLButtonElement>) {
     e.preventDefault();
     e.stopPropagation();
 
@@ -64,31 +87,73 @@ export default function QuickAddButton({
       price_cop: product.price_cop,
       image_url: product.image_url,
       stock_at_add: 99,
-      quantity: 1,
+      quantity: qty,
     });
 
     showToast({
       variant: "success",
       title: `${product.name} agregado al carrito`,
+      description: qty > 1 ? `${qty} unidades` : undefined,
       action: { label: "Ver carrito", onClick: openCartDrawer },
     });
   }
 
-  if (variant === "compact") {
-    return (
+  return (
+    <div
+      className="nv-quick-add"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+    >
+      <div className="nv-quick-add__qty">
+        <button
+          type="button"
+          onClick={(e) => {
+            stop(e);
+            setQtyBoth(qty - 1);
+          }}
+          disabled={qty <= 1}
+          className="nv-quick-add__step"
+          aria-label="Disminuir cantidad"
+        >
+          −
+        </button>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={99}
+          value={qtyInput}
+          onChange={onInputChange}
+          onBlur={onInputBlur}
+          onClick={stop}
+          onFocus={(e) => {
+            e.stopPropagation();
+            e.target.select();
+          }}
+          className="nv-quick-add__input"
+          aria-label="Cantidad"
+        />
+        <button
+          type="button"
+          onClick={(e) => {
+            stop(e);
+            setQtyBoth(qty + 1);
+          }}
+          disabled={qty >= 99}
+          className="nv-quick-add__step"
+          aria-label="Aumentar cantidad"
+        >
+          +
+        </button>
+      </div>
       <button
         type="button"
-        onClick={handleClick}
-        aria-label={ariaLabel ?? `Agregar ${product.name} al carrito`}
-        className="nv-quick-add nv-quick-add--compact"
+        onClick={handleAdd}
+        className="nv-quick-add__add"
+        aria-label={`Agregar ${product.name} al carrito`}
       >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          aria-hidden="true"
-        >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path
             d="M3 3h2l2.4 12.4a2 2 0 002 1.6h9.2a2 2 0 002-1.6L23 6H6"
             stroke="currentColor"
@@ -96,116 +161,90 @@ export default function QuickAddButton({
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          <path
-            d="M12 9v6M9 12h6"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
         </svg>
-        <style>{`
-          .nv-quick-add--compact {
-            flex-shrink: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            border-radius: 999px;
-            background: var(--color-leaf-700, #1E7D2E);
-            color: #FFFFFF;
-            border: none;
-            cursor: pointer;
-            box-shadow: 0 1px 2px rgba(30,125,46,.18), 0 4px 10px rgba(30,125,46,.22);
-            transition: transform .18s ease, background .18s ease, box-shadow .18s ease;
-          }
-          .nv-quick-add--compact:hover {
-            background: var(--color-leaf-900, #145824);
-            transform: scale(1.08);
-            box-shadow: 0 2px 4px rgba(30,125,46,.22), 0 8px 18px rgba(30,125,46,.34);
-          }
-          .nv-quick-add--compact:active { transform: scale(0.96); }
-          .nv-quick-add--compact:focus-visible {
-            outline: 2px solid var(--color-iris-700, #4A2E9A);
-            outline-offset: 2px;
-          }
-        `}</style>
+        <span>Añadir</span>
       </button>
-    );
-  }
 
-  // variant === "card": overlay flotante para ProductCard.
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      aria-label={ariaLabel ?? `Agregar ${product.name} al carrito`}
-      className="nv-quick-add nv-quick-add--card"
-    >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        aria-hidden="true"
-      >
-        <path
-          d="M3 3h2l2.4 12.4a2 2 0 002 1.6h9.2a2 2 0 002-1.6L23 6H6"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        <path
-          d="M12 9v6M9 12h6"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-        />
-      </svg>
-      <span>Añadir</span>
       <style>{`
-        .nv-quick-add--card {
-          position: absolute;
-          bottom: 12px;
-          right: 12px;
-          z-index: 2;
+        .nv-quick-add {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .nv-quick-add__qty {
+          display: inline-flex;
+          align-items: center;
+          background: #FFFFFF;
+          border: 1px solid #ECE4D4;
+          border-radius: 8px;
+          overflow: hidden;
+          height: 32px;
+        }
+        .nv-quick-add__step {
+          width: 26px; height: 100%;
+          background: transparent;
+          border: none;
+          color: var(--color-leaf-700, #1E7D2E);
+          font-size: 16px;
+          font-weight: 600;
+          line-height: 1;
+          cursor: pointer;
+          transition: background .15s ease;
+        }
+        .nv-quick-add__step:hover:not(:disabled) {
+          background: #F5F1E8;
+        }
+        .nv-quick-add__step:disabled {
+          opacity: 0.35;
+          cursor: not-allowed;
+        }
+        .nv-quick-add__input {
+          width: 32px; height: 100%;
+          text-align: center;
+          font-size: 13px;
+          font-weight: 600;
+          background: transparent;
+          color: #2A2722;
+          border: none;
+          border-left: 1px solid #ECE4D4;
+          border-right: 1px solid #ECE4D4;
+          -moz-appearance: textfield;
+        }
+        .nv-quick-add__input::-webkit-outer-spin-button,
+        .nv-quick-add__input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        .nv-quick-add__input:focus { outline: none; background: #F5F1E8; }
+        .nv-quick-add__add {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          padding: 8px 12px;
+          height: 32px;
+          padding: 0 12px;
           background: var(--color-leaf-700, #1E7D2E);
           color: #FFFFFF;
           font-size: 12.5px;
           font-weight: 600;
           letter-spacing: 0.2px;
           border: none;
-          border-radius: 999px;
+          border-radius: 8px;
           cursor: pointer;
-          box-shadow: 0 1px 2px rgba(30,125,46,.18), 0 8px 20px rgba(30,125,46,.28);
-          opacity: 0;
-          transform: translateY(6px);
-          transition: transform .22s ease, opacity .22s ease, background .18s ease, box-shadow .18s ease;
+          box-shadow: 0 1px 2px rgba(30,125,46,.18), 0 4px 10px rgba(30,125,46,.18);
+          transition: background .18s ease, transform .15s ease, box-shadow .18s ease;
         }
-        .group:hover .nv-quick-add--card,
-        .nv-quick-add--card:focus-visible {
-          opacity: 1;
-          transform: translateY(0);
-        }
-        @media (hover: none) {
-          /* En táctil siempre visible (no hay hover). */
-          .nv-quick-add--card { opacity: 1; transform: none; }
-        }
-        .nv-quick-add--card:hover {
+        .nv-quick-add__add:hover {
           background: var(--color-leaf-900, #145824);
-          box-shadow: 0 2px 4px rgba(30,125,46,.22), 0 12px 26px rgba(30,125,46,.38);
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(30,125,46,.22), 0 8px 18px rgba(30,125,46,.28);
         }
-        .nv-quick-add--card:active { transform: scale(0.97); }
-        .nv-quick-add--card:focus-visible {
+        .nv-quick-add__add:active { transform: scale(0.97); }
+        .nv-quick-add__add:focus-visible {
           outline: 2px solid var(--color-iris-700, #4A2E9A);
           outline-offset: 2px;
         }
       `}</style>
-    </button>
+    </div>
   );
 }
