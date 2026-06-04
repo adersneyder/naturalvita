@@ -285,11 +285,11 @@ export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
                 <span className="nv-hq__rot-word" style={{ animationDelay: "0s" }}>Energía</span>
                 <span className="nv-hq__rot-word" style={{ animationDelay: "2.5s" }}>Calma</span>
                 <span className="nv-hq__rot-word" style={{ animationDelay: "5s" }}>Belleza</span>
-                <span className="nv-hq__rot-word" style={{ animationDelay: "7.5s" }}>Defensas</span>
+                <span className="nv-hq__rot-word" style={{ animationDelay: "7.5s" }}>Inmunidad</span>
                 <span className="nv-hq__rot-word" style={{ animationDelay: "10s" }}>Digestión</span>
-                <span className="nv-hq__rot-word" style={{ animationDelay: "12.5s" }}>Huesos</span>
-                <span className="nv-hq__rot-word" style={{ animationDelay: "15s" }}>Articulaciones</span>
-                <span className="nv-hq__rot-word" style={{ animationDelay: "17.5s" }}>Peso</span>
+                <span className="nv-hq__rot-word" style={{ animationDelay: "12.5s" }}>Movilidad</span>
+                <span className="nv-hq__rot-word" style={{ animationDelay: "15s" }}>Fuerza</span>
+                <span className="nv-hq__rot-word" style={{ animationDelay: "17.5s" }}>Metabolismo</span>
               </div>
             </div>
 
