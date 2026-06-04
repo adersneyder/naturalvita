@@ -8,16 +8,19 @@
 // de marca a la derecha. Estética del repo: crema/blanco, Georgia serif,
 // acentos verde #1E7D2E y púrpura #4A2E9A. CSS scoped con clases nv-hq-*.
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { LIFE_STAGES, type LifeStage, type QuizNeed, type QuizResult } from "@/lib/quiz/types";
 import { resolveQuizAction, saveQuizResultAction } from "@/lib/quiz/actions";
+import type { HeroSlot } from "@/lib/home/hero-rotator";
 
 type Step = "objetivo" | "etapa" | "resultado";
 
 interface HeroQuizProps {
   needs: QuizNeed[];
+  /** Slots pre-resueltos del rotador del hero. 8 elementos, uno por palabra. */
+  heroSlots: HeroSlot[];
   /** true si hay sesión de cliente (oculta la captura de email). */
   isLoggedIn?: boolean;
 }
@@ -28,7 +31,11 @@ const PESOS = new Intl.NumberFormat("es-CO", {
   maximumFractionDigits: 0,
 });
 
-export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
+/** Tiempo que cada slot del rotador queda visible (ms).
+ *  Era 2.5s; ahora 3.25s = 30% más lento, según la solicitud del cliente. */
+const SLOT_MS = 3250;
+
+export function HeroQuiz({ needs, heroSlots, isLoggedIn = false }: HeroQuizProps) {
   const [step, setStep] = useState<Step>("objetivo");
   const [need, setNeed] = useState<QuizNeed | null>(null);
   const [stage, setStage] = useState<LifeStage | null>(null);
@@ -76,6 +83,21 @@ export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
     setResult(null);
     setSaved(false);
   }, []);
+
+  // ── Rotador del hero ──────────────────────────────────────────────────
+  // Avanza el índice del slot activo cada SLOT_MS. Comparte ritmo entre
+  // imagen de fondo, palabra superpuesta y los 3 productos al pie.
+  const slotCount = heroSlots.length;
+  const [slotIdx, setSlotIdx] = useState(0);
+  useEffect(() => {
+    if (slotCount === 0) return;
+    const id = setInterval(
+      () => setSlotIdx((i) => (i + 1) % slotCount),
+      SLOT_MS,
+    );
+    return () => clearInterval(id);
+  }, [slotCount]);
+  const activeSlot = heroSlots[slotIdx];
 
   return (
     <section className="nv-hq" aria-label="Encuentra tu producto ideal">
@@ -217,93 +239,120 @@ export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
           )}
         </div>
 
-        {/* Columna derecha: escena animada "El jardín del bienestar".
-            Capas (de fondo a frente):
-              - 3 imágenes en rotación con crossfade + Ken Burns (5s c/u,
-                15s loop total): naturaleza → suplementos → familia.
-              - Velo gradient sutil para asegurar legibilidad del texto
-                superpuesto en cualquier foto.
-              - 2 blobs orgánicos rotando muy lento (60s)
-              - 6 partículas flotantes con opacidad baja
-              - Palabra rotativa superpuesta (cuenta la narrativa
-                "esto es lo que mejoramos en ti")
-              - Badge "+299 productos seleccionados"
-              - Pista inferior "tu mejora empieza aquí ↗"
-            Todo CSS, sin libs externas. Respeta prefers-reduced-motion. */}
-        <div className="nv-hq__right" aria-hidden="true">
+        {/* Columna derecha: escena animada con rotación sincronizada.
+            8 slots (uno por palabra del rotador) se ciclan cada 3.25s
+            (loop total 26s, 30% más lento que la versión anterior).
+            Cada slot pinta:
+              - Imagen de fondo con crossfade + Ken Burns
+              - Palabra superpuesta ("Mejoramos tu …")
+              - 3 productos teaser al pie, sincronizados con la palabra
+            Click en la imagen de fondo → /tienda.
+            Click en una tarjeta de producto → /producto/[slug].
+            Todo client-side reactivo a slotIdx; respeta prefers-reduced-motion. */}
+        <div className="nv-hq__right">
           <div className="nv-hq__brand">
-            {/* Capa base: 3 imágenes rotando con crossfade + Ken Burns */}
-            <div className="nv-hq__slides">
-              <div className="nv-hq__slide nv-hq__slide--1">
-                <Image
-                  src="/home/hero-1-naturaleza.webp"
-                  alt=""
-                  fill
-                  priority
-                  sizes="(max-width: 900px) 100vw, 45vw"
-                  className="nv-hq__slide-img"
-                />
-              </div>
-              <div className="nv-hq__slide nv-hq__slide--2">
-                <Image
-                  src="/home/hero-2-suplementos.webp"
-                  alt=""
-                  fill
-                  sizes="(max-width: 900px) 100vw, 45vw"
-                  className="nv-hq__slide-img"
-                />
-              </div>
-              <div className="nv-hq__slide nv-hq__slide--3">
-                <Image
-                  src="/home/hero-3-familia.webp"
-                  alt=""
-                  fill
-                  sizes="(max-width: 900px) 100vw, 45vw"
-                  className="nv-hq__slide-img"
-                />
-              </div>
-            </div>
+            {/* Capa base: 8 imágenes apiladas, opacidad controlada por slotIdx.
+                El contenedor es un link a /tienda para que cualquier click
+                fuera de los productos lleve al catálogo. */}
+            <Link
+              href="/tienda"
+              className="nv-hq__slides"
+              aria-label="Explorar toda la tienda"
+            >
+              {heroSlots.map((slot, i) => (
+                <div
+                  key={slot.needSlug}
+                  className={`nv-hq__slide ${i === slotIdx ? "is-active" : ""}`}
+                  aria-hidden="true"
+                >
+                  <Image
+                    src={`/home/${slot.imageFile}`}
+                    alt=""
+                    fill
+                    priority={i === 0}
+                    sizes="(max-width: 900px) 100vw, 45vw"
+                    className="nv-hq__slide-img"
+                  />
+                </div>
+              ))}
+            </Link>
 
             {/* Velo gradient para legibilidad del texto encima */}
-            <div className="nv-hq__veil" />
+            <div className="nv-hq__veil" aria-hidden="true" />
 
             {/* Capa: blobs orgánicos de fondo (rotan muy lento, sutiles) */}
-            <div className="nv-hq__blob nv-hq__blob--a" />
-            <div className="nv-hq__blob nv-hq__blob--b" />
+            <div className="nv-hq__blob nv-hq__blob--a" aria-hidden="true" />
+            <div className="nv-hq__blob nv-hq__blob--b" aria-hidden="true" />
 
             {/* Capa: partículas flotantes — 6 puntos con fade */}
-            <div className="nv-hq__particles">
+            <div className="nv-hq__particles" aria-hidden="true">
               {Array.from({ length: 6 }).map((_, i) => (
                 <span key={i} className={`nv-hq__particle nv-hq__particle--${i + 1}`} />
               ))}
             </div>
 
-            {/* Capa: palabra rotativa superpuesta */}
-            <div className="nv-hq__rotator">
+            {/* Capa: palabra rotativa superpuesta. key={slotIdx} hace que
+                React re-monte el span y se vuelva a disparar la animación
+                de entrada al cambiar de slot. */}
+            <div className="nv-hq__rotator" aria-hidden="true">
               <span className="nv-hq__rot-eyebrow">Mejoramos tu</span>
               <div className="nv-hq__rot-stack" role="presentation">
-                <span className="nv-hq__rot-word" style={{ animationDelay: "0s" }}>Energía</span>
-                <span className="nv-hq__rot-word" style={{ animationDelay: "2.5s" }}>Calma</span>
-                <span className="nv-hq__rot-word" style={{ animationDelay: "5s" }}>Belleza</span>
-                <span className="nv-hq__rot-word" style={{ animationDelay: "7.5s" }}>Inmunidad</span>
-                <span className="nv-hq__rot-word" style={{ animationDelay: "10s" }}>Digestión</span>
-                <span className="nv-hq__rot-word" style={{ animationDelay: "12.5s" }}>Movilidad</span>
-                <span className="nv-hq__rot-word" style={{ animationDelay: "15s" }}>Fuerza</span>
-                <span className="nv-hq__rot-word" style={{ animationDelay: "17.5s" }}>Metabolismo</span>
+                <span key={slotIdx} className="nv-hq__rot-word nv-hq__rot-word--active">
+                  {activeSlot?.word ?? ""}
+                </span>
               </div>
             </div>
 
             {/* Capa: badge "+299 productos" */}
-            <div className="nv-hq__brand-badge">
+            <div className="nv-hq__brand-badge" aria-hidden="true">
               <span className="nv-hq__brand-badge-num">+299</span>
               <span className="nv-hq__brand-badge-lbl">productos seleccionados</span>
             </div>
 
-            {/* Capa: pista inferior con flecha hacia el quiz */}
-            <div className="nv-hq__hint">
-              <span className="nv-hq__hint-arrow" aria-hidden="true">↖</span>
+            {/* Capa: pista superior con flecha hacia el quiz */}
+            <div className="nv-hq__hint" aria-hidden="true">
+              <span className="nv-hq__hint-arrow">↖</span>
               <span>Tu mejora empieza aquí</span>
             </div>
+
+            {/* Capa inferior: 3 tarjetas de producto, sincronizadas con el slot.
+                key={slotIdx} re-monta el contenedor al cambiar de slot, lo que
+                dispara la animación de entrada (slide-up + fade con stagger). */}
+            {activeSlot && activeSlot.products.length > 0 && (
+              <div key={slotIdx} className="nv-hq__products">
+                {activeSlot.products.map((p, i) => (
+                  <Link
+                    key={p.productId}
+                    href={`/producto/${p.slug}`}
+                    className="nv-hq__product"
+                    style={{ animationDelay: `${i * 80}ms` }}
+                    aria-label={p.name}
+                  >
+                    <span className="nv-hq__product-media">
+                      {p.imageUrl ? (
+                        <Image
+                          src={p.imageUrl}
+                          alt=""
+                          width={56}
+                          height={56}
+                          className="nv-hq__product-img"
+                        />
+                      ) : (
+                        <span className="nv-hq__product-img nv-hq__product-img--ph" />
+                      )}
+                    </span>
+                    <span className="nv-hq__product-body">
+                      <span className="nv-hq__product-name">{p.name}</span>
+                      {p.price != null && (
+                        <span className="nv-hq__product-price">
+                          {PESOS.format(p.price)}
+                        </span>
+                      )}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -467,40 +516,33 @@ function HeroQuizStyles() {
   isolation: isolate;
 }
 
-/* Capa base: contenedor de los slides */
-.nv-hq__slides { position: absolute; inset: 0; z-index: 0; }
+/* Capa base: contenedor de los slides. Es un <Link> a /tienda. */
+.nv-hq__slides {
+  position: absolute; inset: 0; z-index: 0;
+  display: block; cursor: pointer;
+  text-decoration: none;
+}
 
-/* Cada slide: ocupa todo el contenedor, fade y zoom in/out 15s loop.
-   3 slides × 5s c/u = 15s total. Cada slide visible ~5s con crossfade
-   de 0.5s al inicio y final. */
+/* Cada slide: ocupa todo el contenedor. La opacidad la controla React
+   (clase .is-active según slotIdx). La transición da el crossfade. */
 .nv-hq__slide {
   position: absolute; inset: 0;
   opacity: 0;
-  animation: nv-slide-fade 15s ease-in-out infinite,
-             nv-slide-zoom 15s ease-out infinite;
-  will-change: opacity, transform;
+  transition: opacity 0.6s ease-in-out;
+  will-change: opacity;
 }
-.nv-hq__slide--1 { animation-delay: 0s,  0s;  }
-.nv-hq__slide--2 { animation-delay: 5s,  5s;  }
-.nv-hq__slide--3 { animation-delay: 10s, 10s; }
-
+.nv-hq__slide.is-active { opacity: 1; z-index: 1; }
 .nv-hq__slide-img { object-fit: cover; }
 
-/* Fade: visible de 0 a 33% (0-5s) con entrada/salida suave */
-@keyframes nv-slide-fade {
-  0%               { opacity: 0; }
-  3.3%             { opacity: 1; }   /* fade-in completo a los 0.5s */
-  30%              { opacity: 1; }   /* permanece hasta 4.5s */
-  33.3%, 100%      { opacity: 0; }   /* fade-out a los 5s */
+/* Ken Burns: zoom muy lento solo en el slide activo, dura 3.25s
+   (igual que el tiempo de visibilidad del slot). Cuando React quita
+   la clase .is-active, la animación se detiene y vuelve a scale 1. */
+.nv-hq__slide.is-active .nv-hq__slide-img {
+  animation: nv-ken-burns 3.25s ease-out forwards;
 }
-
-/* Ken Burns: zoom muy lento de 1.0 a 1.06 durante el slot visible.
-   El zoom corre durante los 5s de visibilidad de cada slide; el resto
-   del ciclo no se ve (opacity 0). */
-@keyframes nv-slide-zoom {
-  0%   { transform: scale(1.0); }
-  33%  { transform: scale(1.06); }
-  100% { transform: scale(1.0); }
+@keyframes nv-ken-burns {
+  from { transform: scale(1.0); }
+  to   { transform: scale(1.07); }
 }
 
 /* Velo gradient encima de las imágenes: oscurece esquinas para que el
@@ -562,45 +604,44 @@ function HeroQuizStyles() {
 .nv-hq__particle--5 { left: 24%; bottom: 30%; animation-duration: 14s; animation-delay: 2.4s; width:4px; height:4px; }
 .nv-hq__particle--6 { left: 62%; bottom: 40%; animation-duration: 13s; animation-delay: 6s;   width:3px; height:3px; }
 
-/* Palabra rotativa superpuesta — "Mejoramos tu [Energía/Calma/...]"
-   20s total = 8 palabras × 2.5s c/u. Cada palabra entra con fade,
-   se queda visible y sale con fade. Estilo de píldora glassmorphism
-   para legibilidad sobre cualquier foto. */
+/* Palabra rotativa superpuesta — "Mejoramos tu [Energía/Calma/...]".
+   El componente renderiza una sola palabra a la vez con key={slotIdx};
+   cada vez que React la re-monta, dispara la animación de entrada. */
 .nv-hq__rotator {
-  position: absolute; top: 24px; left: 24px; right: 24px;
+  position: absolute; top: 24px; left: 24px;
+  max-width: 60%;
   z-index: 4; display: flex; flex-direction: column; align-items: flex-start;
   pointer-events: none;
 }
 .nv-hq__rot-eyebrow {
   font-size: 10.5px; letter-spacing: 2.4px; text-transform: uppercase;
   color: #FFFFFF; font-weight: 700; margin-bottom: 6px;
-  text-shadow: 0 1px 6px rgba(0,0,0,.35);
+  text-shadow: 0 1px 6px rgba(0,0,0,.45);
 }
 .nv-hq__rot-stack {
-  position: relative; height: 1.2em;
+  position: relative; min-height: 1.2em;
   font-family: Georgia, serif; font-size: clamp(28px, 3.4vw, 40px);
   font-style: italic; letter-spacing: -0.4px; color: #FFFFFF;
-  text-shadow: 0 2px 12px rgba(0,0,0,.40), 0 1px 3px rgba(0,0,0,.25);
+  text-shadow: 0 2px 12px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.30);
 }
-.nv-hq__rot-word {
-  position: absolute; left: 0; top: 0;
-  transform: translateY(8px);
-  opacity: 0; white-space: nowrap;
-  animation: nv-word-cycle 20s ease-in-out infinite;
+.nv-hq__rot-word--active {
+  display: inline-block; white-space: nowrap;
+  opacity: 0; transform: translateY(10px);
+  animation: nv-word-in 0.55s cubic-bezier(.2,.8,.2,1) 0.05s forwards;
 }
-@keyframes nv-word-cycle {
-  0%, 13.5%   { opacity: 0; transform: translateY(8px); }
-  2%, 11.5%   { opacity: 1; transform: translateY(0); }
-  100%        { opacity: 0; transform: translateY(-8px); }
+@keyframes nv-word-in {
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* Pista inferior — "Tu mejora empieza aquí ↖" */
+/* Pista superior derecha — "Tu mejora empieza aquí ↖".
+   Se reubica de bottom-right a top-right para no chocar con la fila
+   de tarjetas de producto que ahora vive al pie. */
 .nv-hq__hint {
-  position: absolute; bottom: 24px; right: 24px;
+  position: absolute; top: 24px; right: 24px;
   z-index: 4; display: inline-flex; align-items: center; gap: 8px;
   font-family: Georgia, serif; font-style: italic; font-size: 13px;
   color: #2A2722;
-  background: rgba(255,255,255,.88); backdrop-filter: blur(8px);
+  background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
   padding: 9px 16px; border-radius: 999px;
   border: 1px solid rgba(255,255,255,.7);
   box-shadow: 0 1px 2px rgba(42,39,34,.06), 0 10px 24px rgba(42,39,34,.18);
@@ -619,20 +660,82 @@ function HeroQuizStyles() {
   50%      { transform: translate(-3px, 3px); }
 }
 
-/* Respeto a usuarios con prefers-reduced-motion: muestran solo la
-   primera imagen estática, sin rotación, sin Ken Burns, sin partículas.
-   El rotator de palabras conserva un fade muy lento para que el contenido
-   no desaparezca completamente. */
+/* Fila de productos al pie del hero — sincronizada con slotIdx.
+   3 mini-cards con imagen + nombre + precio. Cada una es <Link> al
+   producto. Entrada con stagger (delay 0/80/160ms) al re-montarse. */
+.nv-hq__products {
+  position: absolute; bottom: 18px; left: 18px; right: 18px;
+  z-index: 5; display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  pointer-events: none;  /* el div es transparente; los links sí captan clicks */
+}
+.nv-hq__product {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,.94);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  text-decoration: none;
+  color: #2A2722;
+  border: 1px solid rgba(255,255,255,.7);
+  box-shadow: 0 1px 2px rgba(42,39,34,.04), 0 10px 24px rgba(42,39,34,.20);
+  opacity: 0; transform: translateY(20px);
+  animation: nv-product-in 0.55s cubic-bezier(.2,.8,.2,1) forwards;
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  min-width: 0;
+}
+.nv-hq__product:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 2px 6px rgba(42,39,34,.06), 0 16px 36px rgba(42,39,34,.28);
+}
+@keyframes nv-product-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+.nv-hq__product-media { flex-shrink: 0; }
+.nv-hq__product-img {
+  width: 40px; height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #F5F1E8;
+  display: block;
+}
+.nv-hq__product-img--ph { background: #ECE4D4; }
+.nv-hq__product-body {
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0; flex: 1;
+}
+.nv-hq__product-name {
+  font-size: 10.5px; font-weight: 600; color: #2A2722;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.nv-hq__product-price {
+  font-size: 11px; font-weight: 700; color: #1E7D2E;
+  line-height: 1;
+}
+
+/* Respeto a usuarios con prefers-reduced-motion: deshabilita Ken Burns,
+   blobs, partículas y bobs. Las transiciones de slide (opacidad) y los
+   cambios de palabra/productos siguen ocurriendo (el rotador lo controla
+   React; deshabilitarlo por completo ocultaría el contenido). */
 @media (prefers-reduced-motion: reduce) {
-  .nv-hq__slide { animation: none; opacity: 0; }
-  .nv-hq__slide--1 { opacity: 1; }
+  .nv-hq__slide { transition: opacity 0.2s linear; }
+  .nv-hq__slide.is-active .nv-hq__slide-img { animation: none; transform: none; }
   .nv-hq__blob,
   .nv-hq__particle,
   .nv-hq__hint,
   .nv-hq__hint-arrow {
     animation: none;
   }
-  .nv-hq__rot-word { animation-duration: 30s; }
+  .nv-hq__rot-word--active,
+  .nv-hq__product {
+    animation-duration: 0.15s;
+  }
 }
 .nv-hq__brand-badge {
   position: absolute; bottom: 20px; left: 20px; z-index: 4;
@@ -653,9 +756,17 @@ function HeroQuizStyles() {
 @media (max-width: 900px) {
   .nv-hq__inner { grid-template-columns: 1fr; min-height: auto; gap: 28px; padding: 24px; }
   .nv-hq__right { order: -1; }
-  .nv-hq__brand { aspect-ratio: 16 / 10; }
+  .nv-hq__brand { aspect-ratio: 4 / 5; }
   .nv-hq__needs { grid-template-columns: 1fr; }
   .nv-hq__stages { grid-template-columns: 1fr 1fr; }
+  /* En mobile reducimos a 2 productos visibles para que cada tarjeta
+     respire (con 3 quedaban ilegibles). El tercero se oculta vía CSS;
+     React sigue rotándolo aunque no se vea. */
+  .nv-hq__products { grid-template-columns: repeat(2, 1fr); }
+  .nv-hq__product:nth-child(3) { display: none; }
+  .nv-hq__product-name { font-size: 11px; }
+  .nv-hq__product-price { font-size: 12px; }
+  .nv-hq__hint { font-size: 12px; padding: 7px 12px; }
 }
     `}</style>
   );
