@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCartCount } from "@/lib/cart/use-cart";
 import { useCartDrawer } from "@/lib/cart/use-cart-drawer";
 import SearchBar from "./SearchBar";
@@ -13,34 +14,30 @@ export default function PublicHeader() {
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-[var(--color-earth-100)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-        {/* Logo */}
+        {/* Logo de marca: imagen oficial del manual (la misma flor que
+            aparece arriba en la metáfora raíz/flor de EverlifeOrigin).
+            El PNG ya contiene la marca completa "NaturalVita" + ícono. */}
         <Link
           href="/"
-          className="flex items-center gap-2 shrink-0"
-          aria-label="NaturalVita inicio"
+          className="shrink-0 inline-flex items-center"
+          aria-label="NaturalVita · Inicio"
         >
-          <span className="w-8 h-8 rounded-full bg-[var(--color-leaf-700)] flex items-center justify-center">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 2c-2 4-6 6-6 11a6 6 0 0012 0c0-5-4-7-6-11z"
-                fill="white"
-                opacity="0.95"
-              />
-              <path
-                d="M12 8c-1 2-3 3-3 6"
-                stroke="var(--color-leaf-700)"
-                strokeWidth="0.8"
-                strokeLinecap="round"
-                opacity="0.6"
-              />
-            </svg>
-          </span>
-          <span className="font-serif text-xl text-[var(--color-leaf-900)] hidden sm:inline tracking-tight">
-            NaturalVita
-          </span>
+          <Image
+            src="/home/naturalvita-logo.webp"
+            alt="NaturalVita"
+            width={816}
+            height={502}
+            priority
+            className="h-11 w-auto"
+          />
         </Link>
 
-        {/* Navegación principal · oculta en mobile */}
+        {/* Navegación principal · oculta en mobile.
+            Lógica de los 3 links: catálogo (Tienda) + los dos hubs de
+            confianza que respaldan el catálogo (Laboratorios aliados y
+            Sobre nosotros / Everlife). La búsqueda vive en el SearchBar
+            visible al lado, no es un link aparte. Envíos/devoluciones
+            viven en el footer, no aquí. */}
         <nav className="hidden md:flex items-center gap-6 text-sm">
           <Link
             href="/tienda"
@@ -49,16 +46,16 @@ export default function PublicHeader() {
             Tienda
           </Link>
           <Link
-            href="/buscar"
+            href="/laboratorio"
             className="text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)] font-medium"
           >
-            Buscar
+            Laboratorios
           </Link>
           <Link
-            href="/legal/envios"
+            href="/sobre-nosotros"
             className="text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)] font-medium"
           >
-            Envíos
+            Sobre nosotros
           </Link>
         </nav>
 
@@ -103,16 +100,16 @@ export default function PublicHeader() {
           Tienda
         </Link>
         <Link
-          href="/buscar"
+          href="/laboratorio"
           className="text-[var(--color-earth-700)] whitespace-nowrap"
         >
-          Buscar
+          Laboratorios
         </Link>
         <Link
-          href="/legal/envios"
+          href="/sobre-nosotros"
           className="text-[var(--color-earth-700)] whitespace-nowrap"
         >
-          Envíos
+          Sobre nosotros
         </Link>
       </nav>
     </header>

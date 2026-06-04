@@ -8,16 +8,19 @@
 // de marca a la derecha. Estética del repo: crema/blanco, Georgia serif,
 // acentos verde #1E7D2E y púrpura #4A2E9A. CSS scoped con clases nv-hq-*.
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { LIFE_STAGES, type LifeStage, type QuizNeed, type QuizResult } from "@/lib/quiz/types";
 import { resolveQuizAction, saveQuizResultAction } from "@/lib/quiz/actions";
+import type { HeroSlot } from "@/lib/home/hero-rotator";
 
 type Step = "objetivo" | "etapa" | "resultado";
 
 interface HeroQuizProps {
   needs: QuizNeed[];
+  /** Slots pre-resueltos del rotador del hero. 8 elementos, uno por palabra. */
+  heroSlots: HeroSlot[];
   /** true si hay sesión de cliente (oculta la captura de email). */
   isLoggedIn?: boolean;
 }
@@ -28,7 +31,11 @@ const PESOS = new Intl.NumberFormat("es-CO", {
   maximumFractionDigits: 0,
 });
 
-export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
+/** Tiempo que cada slot del rotador queda visible (ms).
+ *  Era 2.5s; ahora 3.25s = 30% más lento, según la solicitud del cliente. */
+const SLOT_MS = 3250;
+
+export function HeroQuiz({ needs, heroSlots, isLoggedIn = false }: HeroQuizProps) {
   const [step, setStep] = useState<Step>("objetivo");
   const [need, setNeed] = useState<QuizNeed | null>(null);
   const [stage, setStage] = useState<LifeStage | null>(null);
@@ -76,6 +83,21 @@ export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
     setResult(null);
     setSaved(false);
   }, []);
+
+  // ── Rotador del hero ──────────────────────────────────────────────────
+  // Avanza el índice del slot activo cada SLOT_MS. Comparte ritmo entre
+  // imagen de fondo, palabra superpuesta y los 3 productos al pie.
+  const slotCount = heroSlots.length;
+  const [slotIdx, setSlotIdx] = useState(0);
+  useEffect(() => {
+    if (slotCount === 0) return;
+    const id = setInterval(
+      () => setSlotIdx((i) => (i + 1) % slotCount),
+      SLOT_MS,
+    );
+    return () => clearInterval(id);
+  }, [slotCount]);
+  const activeSlot = heroSlots[slotIdx];
 
   return (
     <section className="nv-hq" aria-label="Encuentra tu producto ideal">
@@ -217,21 +239,113 @@ export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
           )}
         </div>
 
-        {/* Columna derecha: composición de marca */}
-        <div className="nv-hq__right" aria-hidden="true">
+        {/* Columna derecha: escena animada con rotación sincronizada.
+            8 slots (uno por palabra del rotador) se ciclan cada 3.25s
+            (loop total 26s, 30% más lento que la versión anterior).
+            Cada slot pinta:
+              - Imagen de fondo con crossfade + Ken Burns
+              - Palabra superpuesta ("Mejoramos tu …")
+              - 3 productos teaser al pie, sincronizados con la palabra
+            Click en la imagen de fondo → /tienda.
+            Click en una tarjeta de producto → /producto/[slug].
+            Todo client-side reactivo a slotIdx; respeta prefers-reduced-motion. */}
+        <div className="nv-hq__right">
           <div className="nv-hq__brand">
-            <Image
-              src="/home/naturalvita-hero.avif"
-              alt=""
-              fill
-              priority
-              sizes="(max-width: 900px) 100vw, 45vw"
-              className="nv-hq__brand-img"
-            />
-            <div className="nv-hq__brand-badge">
-              <span className="nv-hq__brand-badge-num">+299</span>
-              <span className="nv-hq__brand-badge-lbl">productos seleccionados</span>
+            {/* Capa base: 8 imágenes apiladas, opacidad controlada por slotIdx.
+                El contenedor es un link a /tienda para que cualquier click
+                fuera de los productos lleve al catálogo. */}
+            <Link
+              href="/tienda"
+              className="nv-hq__slides"
+              aria-label="Explorar toda la tienda"
+            >
+              {heroSlots.map((slot, i) => (
+                <div
+                  key={slot.needSlug}
+                  className={`nv-hq__slide ${i === slotIdx ? "is-active" : ""}`}
+                  aria-hidden="true"
+                >
+                  <Image
+                    src={`/home/${slot.imageFile}`}
+                    alt=""
+                    fill
+                    priority={i === 0}
+                    sizes="(max-width: 900px) 100vw, 45vw"
+                    className="nv-hq__slide-img"
+                  />
+                </div>
+              ))}
+            </Link>
+
+            {/* Velo gradient para legibilidad del texto encima */}
+            <div className="nv-hq__veil" aria-hidden="true" />
+
+            {/* Capa: blobs orgánicos de fondo (rotan muy lento, sutiles) */}
+            <div className="nv-hq__blob nv-hq__blob--a" aria-hidden="true" />
+            <div className="nv-hq__blob nv-hq__blob--b" aria-hidden="true" />
+
+            {/* Capa: partículas flotantes — 6 puntos con fade */}
+            <div className="nv-hq__particles" aria-hidden="true">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <span key={i} className={`nv-hq__particle nv-hq__particle--${i + 1}`} />
+              ))}
             </div>
+
+            {/* Capa: palabra rotativa superpuesta. key={slotIdx} hace que
+                React re-monte el span y se vuelva a disparar la animación
+                de entrada al cambiar de slot. */}
+            <div className="nv-hq__rotator" aria-hidden="true">
+              <span className="nv-hq__rot-eyebrow">Mejoramos tu</span>
+              <div className="nv-hq__rot-stack" role="presentation">
+                <span key={slotIdx} className="nv-hq__rot-word nv-hq__rot-word--active">
+                  {activeSlot?.word ?? ""}
+                </span>
+              </div>
+            </div>
+
+            {/* Capa: pista superior con marco de contraste */}
+            <div className="nv-hq__hint" aria-hidden="true">
+              <span>Tu mejora empieza aquí</span>
+            </div>
+
+            {/* Capa inferior: 3 tarjetas de producto, sincronizadas con el slot.
+                key={slotIdx} re-monta el contenedor al cambiar de slot, lo que
+                dispara la animación de entrada (slide-up + fade con stagger). */}
+            {activeSlot && activeSlot.products.length > 0 && (
+              <div key={slotIdx} className="nv-hq__products">
+                {activeSlot.products.map((p, i) => (
+                  <Link
+                    key={p.productId}
+                    href={`/producto/${p.slug}`}
+                    className="nv-hq__product"
+                    style={{ animationDelay: `${i * 80}ms` }}
+                    aria-label={p.name}
+                  >
+                    <span className="nv-hq__product-media">
+                      {p.imageUrl ? (
+                        <Image
+                          src={p.imageUrl}
+                          alt=""
+                          width={56}
+                          height={56}
+                          className="nv-hq__product-img"
+                        />
+                      ) : (
+                        <span className="nv-hq__product-img nv-hq__product-img--ph" />
+                      )}
+                    </span>
+                    <span className="nv-hq__product-body">
+                      <span className="nv-hq__product-name">{p.name}</span>
+                      {p.price != null && (
+                        <span className="nv-hq__product-price">
+                          {PESOS.format(p.price)}
+                        </span>
+                      )}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -246,54 +360,100 @@ export function HeroQuiz({ needs, isLoggedIn = false }: HeroQuizProps) {
 function HeroQuizStyles() {
   return (
     <style>{`
-.nv-hq { background: linear-gradient(180deg,#FFFFFF 0%,#FAF7F2 100%); }
-.nv-hq__inner {
-  max-width: 1200px; margin: 0 auto; padding: 0 24px;
-  min-height: 62vh; display: grid; grid-template-columns: 1.05fr 0.95fr;
-  gap: 48px; align-items: center;
+/* Hero con profundidad: gradiente vertical + dos blobs radiales muy
+   suaves (verde y púrpura) que dan textura sin distraer. */
+.nv-hq {
+  position: relative;
+  background:
+    radial-gradient(60% 50% at 85% 12%, rgba(30,125,46,.07), transparent 60%),
+    radial-gradient(50% 50% at 8% 85%, rgba(74,46,154,.06), transparent 60%),
+    linear-gradient(180deg,#FFFFFF 0%,#FAF7F2 100%);
+  overflow: hidden;
 }
-.nv-hq__left { padding: 40px 0; }
+.nv-hq__inner {
+  position: relative;
+  max-width: 1200px; margin: 0 auto; padding: 0 24px;
+  min-height: 72vh; display: grid; grid-template-columns: 1.05fr 0.95fr;
+  gap: 56px; align-items: center;
+}
+.nv-hq__left { padding: 56px 0; }
 .nv-hq__eyebrow {
-  font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase;
-  color: #1E7D2E; font-weight: 600; margin: 0 0 12px;
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 13px; letter-spacing: 1.8px; text-transform: uppercase;
+  color: #1E7D2E; font-weight: 700; margin: 0 0 16px;
+}
+.nv-hq__eyebrow::before {
+  content: ""; display: inline-block; width: 28px; height: 2px;
+  background: #1E7D2E; border-radius: 2px;
 }
 .nv-hq__headline {
   font-family: Georgia, 'Times New Roman', serif; font-weight: 400;
-  font-size: clamp(28px, 4vw, 44px); line-height: 1.12; color: #2A2722;
-  margin: 0 0 24px; letter-spacing: -0.5px;
+  font-size: clamp(32px, 5vw, 56px); line-height: 1.08; color: #2A2722;
+  margin: 0 0 28px; letter-spacing: -0.8px;
 }
-.nv-hq__headline-accent { color: #5C5048; }
-.nv-hq__steps { display: flex; gap: 8px; margin-bottom: 20px; }
+.nv-hq__headline-accent {
+  color: #4A2E9A;
+  font-style: italic;
+}
+.nv-hq__steps { display: flex; gap: 8px; margin-bottom: 22px; }
 .nv-hq__dot {
-  width: 28px; height: 4px; border-radius: 2px; background: #E8DFD0; transition: background .25s;
+  width: 32px; height: 4px; border-radius: 2px; background: #E8DFD0;
+  transition: background .25s, transform .25s;
 }
-.nv-hq__dot.is-active { background: #4A2E9A; }
+.nv-hq__dot.is-active { background: #4A2E9A; transform: scaleX(1.15); transform-origin: left; }
 .nv-hq__dot.is-done { background: #1E7D2E; }
-.nv-hq__panel { animation: nv-hq-fade .3s ease; }
-@keyframes nv-hq-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.nv-hq__panel {
+  background: #FFFFFF;
+  border: 1px solid #ECE4D4;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 1px 2px rgba(42,39,34,.04), 0 18px 48px rgba(42,39,34,.07);
+  animation: nv-hq-fade .35s ease;
+}
+@keyframes nv-hq-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .nv-hq__q {
-  font-family: Georgia, serif; font-weight: 400; font-size: 22px; color: #2A2722; margin: 0 0 6px;
+  font-family: Georgia, serif; font-weight: 400; font-size: 24px;
+  color: #2A2722; margin: 0 0 6px; letter-spacing: -0.2px;
 }
 .nv-hq__q-sub { font-size: 14px; color: #8B8881; margin: 0 0 18px; }
 .nv-hq__q-sub strong { color: #4A2E9A; font-weight: 600; }
 .nv-hq__needs {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px;
 }
 .nv-hq__need {
-  text-align: left; background: #FFFFFF; border: 1px solid #E8DFD0; border-radius: 14px;
-  padding: 14px 16px; cursor: pointer; transition: all .18s; display: flex; flex-direction: column; gap: 3px;
+  position: relative; text-align: left; background: #FFFFFF;
+  border: 1.5px solid #ECE4D4; border-radius: 14px;
+  padding: 14px 16px; cursor: pointer;
+  transition: border-color .22s ease, box-shadow .22s ease, transform .22s ease;
+  display: flex; flex-direction: column; gap: 3px;
 }
-.nv-hq__need:hover { border-color: #4A2E9A; box-shadow: 0 4px 16px rgba(74,46,154,.08); transform: translateY(-1px); }
-.nv-hq__need-name { font-size: 14.5px; font-weight: 600; color: #2A2722; }
-.nv-hq__need-tag { font-size: 12px; color: #8B8881; line-height: 1.3; }
-.nv-hq__stages { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 16px; }
+.nv-hq__need::after {
+  content: "→"; position: absolute; top: 14px; right: 14px;
+  font-size: 14px; color: #C7BFB1; transition: color .22s, transform .22s;
+}
+.nv-hq__need:hover {
+  border-color: #4A2E9A;
+  box-shadow: 0 2px 6px rgba(74,46,154,.05), 0 12px 28px rgba(74,46,154,.12);
+  transform: translateY(-2px);
+}
+.nv-hq__need:hover::after { color: #4A2E9A; transform: translateX(3px); }
+.nv-hq__need-name { font-size: 15px; font-weight: 600; color: #2A2722; padding-right: 16px; }
+.nv-hq__need-tag { font-size: 12.5px; color: #8B8881; line-height: 1.35; }
+.nv-hq__stages { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 18px; }
 .nv-hq__stage {
-  text-align: center; background: #FFFFFF; border: 1px solid #E8DFD0; border-radius: 14px;
-  padding: 14px 8px; cursor: pointer; transition: all .18s; display: flex; flex-direction: column; gap: 2px;
+  text-align: center; background: #FFFFFF;
+  border: 1.5px solid #ECE4D4; border-radius: 14px;
+  padding: 16px 8px; cursor: pointer;
+  transition: border-color .22s ease, box-shadow .22s ease, transform .22s ease;
+  display: flex; flex-direction: column; gap: 3px;
 }
-.nv-hq__stage:hover { border-color: #1E7D2E; box-shadow: 0 4px 16px rgba(30,125,46,.08); transform: translateY(-1px); }
-.nv-hq__stage-label { font-size: 14px; font-weight: 600; color: #2A2722; }
-.nv-hq__stage-hint { font-size: 11px; color: #8B8881; }
+.nv-hq__stage:hover {
+  border-color: #1E7D2E;
+  box-shadow: 0 2px 6px rgba(30,125,46,.05), 0 12px 28px rgba(30,125,46,.12);
+  transform: translateY(-2px);
+}
+.nv-hq__stage-label { font-size: 14.5px; font-weight: 600; color: #2A2722; }
+.nv-hq__stage-hint { font-size: 11.5px; color: #8B8881; }
 .nv-hq__back {
   background: none; border: none; color: #8B8881; font-size: 13px; cursor: pointer;
   padding: 0; margin-bottom: 14px; transition: color .15s;
@@ -313,12 +473,18 @@ function HeroQuizStyles() {
   padding: 10px 18px; font-size: 14px; font-weight: 600; text-decoration: none; transition: all .18s;
 }
 .nv-hq__cta-ghost:hover { background: #4A2E9A; color: #fff; }
-.nv-hq__cards { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.nv-hq__cards { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .nv-hq__card {
-  display: flex; gap: 14px; align-items: center; background: #FFFFFF; border: 1px solid #E8DFD0;
-  border-radius: 14px; padding: 12px; text-decoration: none; transition: all .18s;
+  display: flex; gap: 14px; align-items: center;
+  background: #FFFFFF; border: 1.5px solid #ECE4D4; border-radius: 14px;
+  padding: 14px; text-decoration: none;
+  transition: border-color .22s ease, box-shadow .22s ease, transform .22s ease;
 }
-.nv-hq__card:hover { border-color: #4A2E9A; box-shadow: 0 6px 20px rgba(74,46,154,.10); transform: translateY(-1px); }
+.nv-hq__card:hover {
+  border-color: #4A2E9A;
+  box-shadow: 0 2px 6px rgba(74,46,154,.05), 0 14px 32px rgba(74,46,154,.14);
+  transform: translateY(-2px);
+}
 .nv-hq__card-media { flex-shrink: 0; }
 .nv-hq__card-img { width: 64px; height: 64px; border-radius: 10px; object-fit: cover; background: #F5F1E8; }
 .nv-hq__card-img--ph { display: block; }
@@ -332,24 +498,245 @@ function HeroQuizStyles() {
 .nv-hq__tag--adj { background: #F0EBFA; color: #4A2E9A; }
 .nv-hq__disclaimer { font-size: 11.5px; color: #A8A39B; margin: 14px 0 0; line-height: 1.5; }
 .nv-hq__right { height: 100%; display: flex; align-items: center; }
+/* ─────────────────────────────────────────────────────────────────────
+   Escena del hero: 3 imágenes en rotación con crossfade + Ken Burns
+   ───────────────────────────────────────────────────────────────────── */
 .nv-hq__brand {
-  position: relative; width: 100%; aspect-ratio: 4 / 5; border-radius: 24px; overflow: hidden;
+  position: relative; width: 100%; aspect-ratio: 4 / 5;
+  border-radius: 24px; overflow: hidden;
   background: #F5F1E8;
+  box-shadow: 0 1px 2px rgba(42,39,34,.04), 0 20px 48px rgba(42,39,34,.10);
+  isolation: isolate;
 }
-.nv-hq__brand-img { object-fit: cover; }
-.nv-hq__brand-badge {
-  position: absolute; bottom: 16px; left: 16px; background: rgba(255,255,255,.94);
-  backdrop-filter: blur(6px); border-radius: 14px; padding: 12px 16px; display: flex;
-  flex-direction: column; box-shadow: 0 6px 24px rgba(42,39,34,.12);
+
+/* Capa base: contenedor de los slides. Es un <Link> a /tienda. */
+.nv-hq__slides {
+  position: absolute; inset: 0; z-index: 0;
+  display: block; cursor: pointer;
+  text-decoration: none;
 }
-.nv-hq__brand-badge-num { font-family: Georgia, serif; font-size: 22px; color: #4A2E9A; line-height: 1; }
-.nv-hq__brand-badge-lbl { font-size: 11px; color: #5C5048; margin-top: 3px; }
+
+/* Cada slide: ocupa todo el contenedor. La opacidad la controla React
+   (clase .is-active según slotIdx). La transición da el crossfade. */
+.nv-hq__slide {
+  position: absolute; inset: 0;
+  opacity: 0;
+  transition: opacity 0.6s ease-in-out;
+  will-change: opacity;
+}
+.nv-hq__slide.is-active { opacity: 1; z-index: 1; }
+.nv-hq__slide-img { object-fit: cover; }
+
+/* Ken Burns: zoom muy lento solo en el slide activo, dura 3.25s
+   (igual que el tiempo de visibilidad del slot). Cuando React quita
+   la clase .is-active, la animación se detiene y vuelve a scale 1. */
+.nv-hq__slide.is-active .nv-hq__slide-img {
+  animation: nv-ken-burns 3.25s ease-out forwards;
+}
+@keyframes nv-ken-burns {
+  from { transform: scale(1.0); }
+  to   { transform: scale(1.07); }
+}
+
+/* Velo gradient encima de las imágenes: oscurece esquinas para que el
+   texto blanco/púrpura superpuesto sea legible sin tapar la foto. */
+.nv-hq__veil {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background:
+    linear-gradient(180deg,
+      rgba(255,255,255,0.55) 0%,
+      rgba(255,255,255,0.20) 18%,
+      rgba(0,0,0,0) 40%,
+      rgba(0,0,0,0) 60%,
+      rgba(0,0,0,0.20) 88%,
+      rgba(0,0,0,0.35) 100%);
+}
+
+/* Blobs orgánicos de fondo: muy sutiles (no compiten con la foto). */
+.nv-hq__blob {
+  position: absolute; border-radius: 50%; filter: blur(60px);
+  pointer-events: none; z-index: 2; mix-blend-mode: screen;
+  animation: nv-blob-rot 60s linear infinite;
+}
+.nv-hq__blob--a {
+  width: 60%; height: 60%; top: -10%; right: -15%;
+  background: radial-gradient(circle, rgba(30,125,46,.22) 0%, rgba(30,125,46,0) 70%);
+}
+.nv-hq__blob--b {
+  width: 55%; height: 55%; bottom: -8%; left: -12%;
+  background: radial-gradient(circle, rgba(74,46,154,.20) 0%, rgba(74,46,154,0) 70%);
+  animation-direction: reverse; animation-duration: 75s;
+}
+@keyframes nv-blob-rot {
+  from { transform: rotate(0deg) translateX(0); }
+  50%  { transform: rotate(180deg) translateX(8px); }
+  to   { transform: rotate(360deg) translateX(0); }
+}
+
+/* Partículas flotantes — 6 puntos con opacidad reducida (no compiten
+   con las fotos, solo añaden vida). */
+.nv-hq__particles {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none;
+}
+.nv-hq__particle {
+  position: absolute; width: 6px; height: 6px; border-radius: 50%;
+  background: #FFFFFF; opacity: 0;
+  animation: nv-particle-rise linear infinite;
+  filter: drop-shadow(0 0 4px rgba(255,255,255,0.6));
+}
+@keyframes nv-particle-rise {
+  0%   { transform: translateY(0)    scale(0.6); opacity: 0; }
+  10%  { opacity: 0.45; }
+  90%  { opacity: 0.35; }
+  100% { transform: translateY(-160px) scale(1.1); opacity: 0; }
+}
+.nv-hq__particle--1 { left: 14%; bottom: 12%; animation-duration: 11s; animation-delay: 0s; }
+.nv-hq__particle--2 { left: 86%; bottom: 22%; animation-duration: 13s; animation-delay: 1.8s; width:5px; height:5px; }
+.nv-hq__particle--3 { left: 38%; bottom: 8%;  animation-duration: 15s; animation-delay: 3.2s; width:4px; height:4px; }
+.nv-hq__particle--4 { left: 72%; bottom: 14%; animation-duration: 12s; animation-delay: 4.6s; width:5px; height:5px; }
+.nv-hq__particle--5 { left: 24%; bottom: 30%; animation-duration: 14s; animation-delay: 2.4s; width:4px; height:4px; }
+.nv-hq__particle--6 { left: 62%; bottom: 40%; animation-duration: 13s; animation-delay: 6s;   width:3px; height:3px; }
+
+/* Palabra rotativa superpuesta — "Mejoramos tu [Energía/Calma/...]".
+   El componente renderiza una sola palabra a la vez con key={slotIdx};
+   cada vez que React la re-monta, dispara la animación de entrada. */
+.nv-hq__rotator {
+  position: absolute; top: 24px; left: 24px;
+  max-width: 60%;
+  z-index: 4; display: flex; flex-direction: column; align-items: flex-start;
+  pointer-events: none;
+}
+.nv-hq__rot-eyebrow {
+  font-size: 10.5px; letter-spacing: 2.4px; text-transform: uppercase;
+  color: #FFFFFF; font-weight: 700; margin-bottom: 6px;
+  text-shadow: 0 1px 6px rgba(0,0,0,.45);
+}
+.nv-hq__rot-stack {
+  position: relative; min-height: 1.2em;
+  font-family: Georgia, serif; font-size: clamp(28px, 3.4vw, 40px);
+  font-style: italic; letter-spacing: -0.4px; color: #FFFFFF;
+  text-shadow: 0 2px 12px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.30);
+}
+.nv-hq__rot-word--active {
+  display: inline-block; white-space: nowrap;
+  opacity: 0; transform: translateY(10px);
+  animation: nv-word-in 0.55s cubic-bezier(.2,.8,.2,1) 0.05s forwards;
+}
+@keyframes nv-word-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Pista superior derecha — "Tu mejora empieza aquí".
+   Marco con contraste: fondo blanco sólido + borde verde NV grueso.
+   Legible sobre cualquier foto, sin flecha. Bobbing sutil mantiene
+   vida visual. */
+.nv-hq__hint {
+  position: absolute; top: 24px; right: 24px;
+  z-index: 4; display: inline-flex; align-items: center;
+  font-family: Georgia, serif; font-style: italic; font-size: 13px;
+  font-weight: 500;
+  color: #1E5E34;
+  background: #FFFFFF;
+  padding: 10px 18px; border-radius: 999px;
+  border: 2px solid #1E7D2E;
+  box-shadow: 0 1px 2px rgba(30,125,46,.10), 0 10px 28px rgba(30,125,46,.22);
+  animation: nv-hint-bob 3s ease-in-out infinite;
+}
+@keyframes nv-hint-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+}
+
+/* Fila de productos al pie del hero — sincronizada con slotIdx.
+   3 mini-cards con imagen + nombre + precio. Cada una es <Link> al
+   producto. Entrada con stagger (delay 0/80/160ms) al re-montarse. */
+.nv-hq__products {
+  position: absolute; bottom: 18px; left: 18px; right: 18px;
+  z-index: 5; display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  pointer-events: none;  /* el div es transparente; los links sí captan clicks */
+}
+.nv-hq__product {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,.94);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  text-decoration: none;
+  color: #2A2722;
+  border: 1px solid rgba(255,255,255,.7);
+  box-shadow: 0 1px 2px rgba(42,39,34,.04), 0 10px 24px rgba(42,39,34,.20);
+  opacity: 0; transform: translateY(20px);
+  animation: nv-product-in 0.55s cubic-bezier(.2,.8,.2,1) forwards;
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  min-width: 0;
+}
+.nv-hq__product:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 2px 6px rgba(42,39,34,.06), 0 16px 36px rgba(42,39,34,.28);
+}
+@keyframes nv-product-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+.nv-hq__product-media { flex-shrink: 0; }
+.nv-hq__product-img {
+  width: 40px; height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #F5F1E8;
+  display: block;
+}
+.nv-hq__product-img--ph { background: #ECE4D4; }
+.nv-hq__product-body {
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0; flex: 1;
+}
+.nv-hq__product-name {
+  font-size: 10.5px; font-weight: 600; color: #2A2722;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.nv-hq__product-price {
+  font-size: 11px; font-weight: 700; color: #1E7D2E;
+  line-height: 1;
+}
+
+/* Respeto a usuarios con prefers-reduced-motion: deshabilita Ken Burns,
+   blobs, partículas y bobs. Las transiciones de slide (opacidad) y los
+   cambios de palabra/productos siguen ocurriendo (el rotador lo controla
+   React; deshabilitarlo por completo ocultaría el contenido). */
+@media (prefers-reduced-motion: reduce) {
+  .nv-hq__slide { transition: opacity 0.2s linear; }
+  .nv-hq__slide.is-active .nv-hq__slide-img { animation: none; transform: none; }
+  .nv-hq__blob,
+  .nv-hq__particle,
+  .nv-hq__hint {
+    animation: none;
+  }
+  .nv-hq__rot-word--active,
+  .nv-hq__product {
+    animation-duration: 0.15s;
+  }
+}
 @media (max-width: 900px) {
   .nv-hq__inner { grid-template-columns: 1fr; min-height: auto; gap: 28px; padding: 24px; }
   .nv-hq__right { order: -1; }
-  .nv-hq__brand { aspect-ratio: 16 / 10; }
+  .nv-hq__brand { aspect-ratio: 4 / 5; }
   .nv-hq__needs { grid-template-columns: 1fr; }
   .nv-hq__stages { grid-template-columns: 1fr 1fr; }
+  /* En mobile reducimos a 2 productos visibles para que cada tarjeta
+     respire (con 3 quedaban ilegibles). El tercero se oculta vía CSS;
+     React sigue rotándolo aunque no se vea. */
+  .nv-hq__products { grid-template-columns: repeat(2, 1fr); }
+  .nv-hq__product:nth-child(3) { display: none; }
+  .nv-hq__product-name { font-size: 11px; }
+  .nv-hq__product-price { font-size: 12px; }
+  .nv-hq__hint { font-size: 12px; padding: 7px 12px; }
 }
     `}</style>
   );

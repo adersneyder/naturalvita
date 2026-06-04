@@ -47,7 +47,24 @@ export async function PartnerLabs() {
           {labs.map((lab) => (
             <li key={lab.slug} className="nv-labs__item">
               <Link href={`/tienda?lab=${lab.slug}`} className="nv-labs__chip">
-                {lab.name}
+                <svg
+                  className="nv-labs__check"
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="11" fill="#E5F1E7" />
+                  <path
+                    d="M7.5 12.2l3 3 6-6.5"
+                    stroke="#1E7D2E"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                  />
+                </svg>
+                <span className="nv-labs__chip-name">{lab.name}</span>
               </Link>
             </li>
           ))}
@@ -56,8 +73,10 @@ export async function PartnerLabs() {
 
       <style>{`
         .nv-labs {
-          padding: 72px 20px;
-          background: #FFFFFF;
+          padding: 64px 20px;
+          background:
+            radial-gradient(70% 50% at 50% 100%, rgba(30,125,46,.04), transparent 70%),
+            #FFFFFF;
         }
         .nv-labs__inner {
           max-width: 1000px;
@@ -65,30 +84,40 @@ export async function PartnerLabs() {
           text-align: center;
         }
         .nv-labs__header {
-          margin-bottom: 40px;
+          margin-bottom: 36px;
         }
         .nv-labs__eyebrow {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
           font-family: Arial, Helvetica, sans-serif;
           font-size: 12px;
           text-transform: uppercase;
-          letter-spacing: 2px;
+          letter-spacing: 2.2px;
           color: #1E7D2E;
-          margin: 0 0 12px;
-          font-weight: 600;
+          margin: 0 0 14px;
+          font-weight: 700;
+        }
+        .nv-labs__eyebrow::before,
+        .nv-labs__eyebrow::after {
+          content: "";
+          width: 28px; height: 2px;
+          background: #1E7D2E;
+          border-radius: 2px;
         }
         .nv-labs__title {
           font-family: Georgia, 'Times New Roman', serif;
-          font-size: clamp(24px, 3.6vw, 34px);
+          font-size: clamp(26px, 4vw, 38px);
           font-weight: 400;
-          line-height: 1.25;
+          line-height: 1.2;
           color: #2A2722;
-          margin: 0 0 14px;
-          letter-spacing: -0.3px;
+          margin: 0 0 16px;
+          letter-spacing: -0.5px;
         }
         .nv-labs__sub {
           font-family: Arial, Helvetica, sans-serif;
-          font-size: 15px;
-          line-height: 1.6;
+          font-size: 15.5px;
+          line-height: 1.65;
           color: #8B8881;
           max-width: 560px;
           margin: 0 auto;
@@ -100,26 +129,31 @@ export async function PartnerLabs() {
           display: flex;
           flex-wrap: wrap;
           justify-content: center;
-          gap: 14px;
+          gap: 12px;
         }
         .nv-labs__chip {
-          display: inline-block;
-          padding: 14px 26px;
-          background: #FAF7F2;
-          border: 1px solid #E8DFD0;
-          border-radius: 12px;
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 14px 22px;
+          background: #FFFFFF;
+          border: 1px solid #ECE4D4;
+          border-radius: 999px;
           font-family: Georgia, 'Times New Roman', serif;
           font-size: 17px;
           color: #2A2722;
           text-decoration: none;
-          transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+          box-shadow: 0 1px 2px rgba(42,39,34,.03), 0 4px 14px rgba(42,39,34,.04);
+          transition: border-color .22s ease, transform .22s ease, box-shadow .22s ease, color .22s ease;
         }
         .nv-labs__chip:hover {
-          border-color: #4A2E9A;
-          color: #4A2E9A;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(74, 46, 154, 0.1);
+          border-color: #1E7D2E;
+          color: #1E5E34;
+          transform: translateY(-3px);
+          box-shadow: 0 2px 6px rgba(30,125,46,.06), 0 14px 28px rgba(30,125,46,.15);
         }
+        .nv-labs__check { flex-shrink: 0; }
+        .nv-labs__chip-name { line-height: 1; }
       `}</style>
     </section>
   );

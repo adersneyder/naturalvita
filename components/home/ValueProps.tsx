@@ -56,34 +56,48 @@ export function ValueProps() {
 
       <style>{`
         .nv-values {
-          padding: 72px 20px;
-          background: #FAF7F2;
+          padding: 64px 20px;
+          background:
+            radial-gradient(60% 50% at 50% 0%, rgba(74,46,154,.05), transparent 60%),
+            #FAF7F2;
         }
         .nv-values__inner {
-          max-width: 1060px;
+          max-width: 1100px;
           margin: 0 auto;
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 36px;
+          gap: 24px;
         }
         @media (max-width: 800px) {
           .nv-values__inner {
             grid-template-columns: 1fr;
-            gap: 32px;
-            max-width: 460px;
+            gap: 20px;
+            max-width: 500px;
           }
         }
         .nv-values__item {
           text-align: center;
+          background: #FFFFFF;
+          border: 1px solid #ECE4D4;
+          border-radius: 20px;
+          padding: 36px 28px;
+          box-shadow: 0 1px 2px rgba(42,39,34,.03), 0 6px 20px rgba(42,39,34,.04);
+          transition: transform .28s cubic-bezier(.2,.8,.2,1), box-shadow .28s ease, border-color .28s ease;
+        }
+        .nv-values__item:hover {
+          transform: translateY(-4px);
+          border-color: #D4C9B0;
+          box-shadow: 0 4px 10px rgba(42,39,34,.05), 0 20px 40px rgba(42,39,34,.10);
         }
         @media (max-width: 800px) {
           .nv-values__item {
             display: grid;
-            grid-template-columns: 52px 1fr;
+            grid-template-columns: 56px 1fr;
             grid-template-rows: auto auto;
             column-gap: 18px;
             text-align: left;
-            align-items: center;
+            align-items: start;
+            padding: 24px 22px;
           }
           .nv-values__icon { grid-row: 1 / 3; }
         }
@@ -93,33 +107,40 @@ export function ValueProps() {
           justify-content: center;
           width: 56px;
           height: 56px;
-          border-radius: 50%;
-          background: #F3EEFB;
+          border-radius: 14px;
+          background: linear-gradient(135deg, #F3EEFB 0%, #E8E0F5 100%);
           color: #4A2E9A;
-          margin-bottom: 18px;
+          margin-bottom: 20px;
+          box-shadow: 0 1px 2px rgba(74,46,154,.06), 0 8px 18px rgba(74,46,154,.10);
         }
         @media (max-width: 800px) {
           .nv-values__icon { margin-bottom: 0; }
         }
+        /* Variantes de color de ícono por columna — alterna verde y púrpura
+           para dar vida sin perder coherencia. */
+        .nv-values__item:nth-child(2) .nv-values__icon {
+          background: linear-gradient(135deg, #E5F1E7 0%, #D4E8D8 100%);
+          color: #1E7D2E;
+          box-shadow: 0 1px 2px rgba(30,125,46,.06), 0 8px 18px rgba(30,125,46,.10);
+        }
         .nv-values__title {
           font-family: Georgia, 'Times New Roman', serif;
-          font-size: 19px;
+          font-size: 21px;
           font-weight: 400;
           color: #2A2722;
-          margin: 0 0 8px;
+          margin: 0 0 10px;
+          letter-spacing: -0.2px;
         }
         .nv-values__body {
           font-family: Arial, Helvetica, sans-serif;
           font-size: 14.5px;
           line-height: 1.65;
           color: #5C5048;
-          margin: 0;
+          margin: 0 auto;
           max-width: 320px;
-          margin-left: auto;
-          margin-right: auto;
         }
         @media (max-width: 800px) {
-          .nv-values__body { margin-left: 0; }
+          .nv-values__body { margin: 0; }
         }
       `}</style>
     </section>

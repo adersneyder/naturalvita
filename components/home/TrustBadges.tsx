@@ -70,27 +70,39 @@ export function TrustBadges() {
 
       <style>{`
         .nv-trust {
-          padding: 40px 20px;
-          background: #FFFFFF;
-          border-top: 1px solid #E8DFD0;
+          padding: 56px 20px;
+          background:
+            radial-gradient(80% 60% at 50% 0%, rgba(30,125,46,.04), transparent 70%),
+            #FAF7F2;
         }
         .nv-trust__inner {
-          max-width: 1060px;
+          max-width: 1100px;
           margin: 0 auto;
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          gap: 24px;
+          gap: 16px;
         }
         @media (max-width: 860px) {
-          .nv-trust__inner { grid-template-columns: repeat(2, 1fr); gap: 28px 24px; }
+          .nv-trust__inner { grid-template-columns: repeat(2, 1fr); gap: 16px; }
         }
         @media (max-width: 440px) {
           .nv-trust__inner { grid-template-columns: 1fr; }
         }
         .nv-trust__item {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           gap: 14px;
+          background: #FFFFFF;
+          border: 1px solid #ECE4D4;
+          border-radius: 16px;
+          padding: 20px;
+          box-shadow: 0 1px 2px rgba(42,39,34,.03), 0 4px 14px rgba(42,39,34,.04);
+          transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+        }
+        .nv-trust__item:hover {
+          transform: translateY(-3px);
+          border-color: #D4C9B0;
+          box-shadow: 0 2px 6px rgba(42,39,34,.05), 0 14px 28px rgba(42,39,34,.08);
         }
         .nv-trust__icon {
           display: inline-flex;
@@ -98,27 +110,30 @@ export function TrustBadges() {
           justify-content: center;
           width: 44px;
           height: 44px;
-          border-radius: 50%;
-          background: #E5F1E7;
+          border-radius: 12px;
+          background: linear-gradient(135deg, #E5F1E7 0%, #D4E8D8 100%);
           color: #1E7D2E;
           flex-shrink: 0;
+          box-shadow: 0 1px 2px rgba(30,125,46,.06), 0 6px 14px rgba(30,125,46,.10);
         }
         .nv-trust__text {
           display: flex;
           flex-direction: column;
-          gap: 2px;
+          gap: 4px;
+          min-width: 0;
         }
         .nv-trust__title {
           font-family: Arial, Helvetica, sans-serif;
           font-size: 14.5px;
-          font-weight: 600;
+          font-weight: 700;
           color: #2A2722;
+          letter-spacing: -0.1px;
         }
         .nv-trust__caption {
           font-family: Arial, Helvetica, sans-serif;
-          font-size: 12.5px;
+          font-size: 13px;
           color: #8B8881;
-          line-height: 1.4;
+          line-height: 1.45;
         }
       `}</style>
     </section>

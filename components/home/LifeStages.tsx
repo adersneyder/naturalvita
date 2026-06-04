@@ -99,6 +99,7 @@ export function LifeStages() {
               <div className="nv-stages__caption">
                 <span className="nv-stages__card-title">{card.title}</span>
                 <span className="nv-stages__card-sub">{card.caption}</span>
+                <span className="nv-stages__card-arrow" aria-hidden="true">→</span>
               </div>
             </Link>
           ))}
@@ -107,8 +108,10 @@ export function LifeStages() {
 
       <style>{`
         .nv-stages {
-          padding: 80px 20px;
-          background: #FFFFFF;
+          padding: 72px 20px;
+          background:
+            radial-gradient(80% 60% at 50% 0%, rgba(30,125,46,.04), transparent 70%),
+            #FFFFFF;
         }
         .nv-stages__inner {
           max-width: 1120px;
@@ -116,30 +119,40 @@ export function LifeStages() {
         }
         .nv-stages__header {
           text-align: center;
-          margin-bottom: 48px;
+          margin-bottom: 44px;
         }
         .nv-stages__eyebrow {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
           font-family: Arial, Helvetica, sans-serif;
           font-size: 12px;
           text-transform: uppercase;
-          letter-spacing: 2px;
+          letter-spacing: 2.2px;
           color: #1E7D2E;
-          margin: 0 0 12px;
-          font-weight: 600;
+          margin: 0 0 14px;
+          font-weight: 700;
+        }
+        .nv-stages__eyebrow::before,
+        .nv-stages__eyebrow::after {
+          content: "";
+          width: 28px; height: 2px;
+          background: #1E7D2E;
+          border-radius: 2px;
         }
         .nv-stages__title {
           font-family: Georgia, 'Times New Roman', serif;
-          font-size: clamp(24px, 4vw, 36px);
+          font-size: clamp(28px, 4.5vw, 42px);
           font-weight: 400;
-          line-height: 1.25;
+          line-height: 1.18;
           color: #2A2722;
           margin: 0;
-          letter-spacing: -0.3px;
+          letter-spacing: -0.5px;
         }
         .nv-stages__grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
-          gap: 18px;
+          gap: 22px;
         }
         @media (max-width: 1024px) {
           .nv-stages__grid { grid-template-columns: repeat(2, 1fr); }
@@ -150,11 +163,12 @@ export function LifeStages() {
         .nv-stages__card {
           display: block;
           text-decoration: none;
-          border-radius: 18px;
+          border-radius: 20px;
           overflow: hidden;
-          background: #FAF7F2;
-          border: 1px solid #E8DFD0;
-          transition: transform 0.22s ease, box-shadow 0.22s ease;
+          background: #FFFFFF;
+          border: 1px solid #ECE4D4;
+          box-shadow: 0 1px 2px rgba(42,39,34,.03), 0 8px 24px rgba(42,39,34,.05);
+          transition: transform 0.28s cubic-bezier(.2,.8,.2,1), box-shadow 0.28s ease, border-color 0.28s ease;
           animation: nvStageIn 0.5s ease both;
         }
         @keyframes nvStageIn {
@@ -162,11 +176,13 @@ export function LifeStages() {
           to { opacity: 1; transform: translateY(0); }
         }
         @media (prefers-reduced-motion: reduce) {
-          .nv-stages__card { animation: none; }
+          .nv-stages__card { animation: none; transition: none; }
+          .nv-stages__card:hover { transform: none; }
         }
         .nv-stages__card:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 14px 34px rgba(42, 39, 34, 0.1);
+          transform: translateY(-6px);
+          border-color: #D4C9B0;
+          box-shadow: 0 4px 12px rgba(42,39,34,.06), 0 24px 48px rgba(42,39,34,.14);
         }
         .nv-stages__img-wrap {
           position: relative;
@@ -176,26 +192,45 @@ export function LifeStages() {
         }
         .nv-stages__img {
           object-fit: cover;
-          transition: transform 0.4s ease;
+          transition: transform 0.5s ease;
         }
         .nv-stages__card:hover .nv-stages__img {
-          transform: scale(1.04);
+          transform: scale(1.06);
+        }
+        /* Sutil scrim gradient en la parte baja de la imagen para que el
+           caption respire visualmente con la foto. */
+        .nv-stages__img-wrap::after {
+          content: "";
+          position: absolute; inset: auto 0 0 0; height: 35%;
+          background: linear-gradient(180deg, transparent, rgba(0,0,0,.18));
+          pointer-events: none;
         }
         .nv-stages__caption {
-          padding: 18px 20px;
+          padding: 20px 22px 22px;
           display: flex;
           flex-direction: column;
-          gap: 3px;
+          gap: 4px;
+          position: relative;
         }
         .nv-stages__card-title {
           font-family: Georgia, serif;
-          font-size: 19px;
+          font-size: 21px;
           color: #2A2722;
+          letter-spacing: -0.2px;
         }
         .nv-stages__card-sub {
           font-family: Arial, Helvetica, sans-serif;
-          font-size: 13px;
+          font-size: 13.5px;
           color: #8B8881;
+          line-height: 1.45;
+        }
+        .nv-stages__card-arrow {
+          position: absolute; bottom: 22px; right: 22px;
+          font-size: 18px; color: #C7BFB1;
+          transition: color .25s, transform .25s;
+        }
+        .nv-stages__card:hover .nv-stages__card-arrow {
+          color: #1E7D2E; transform: translateX(4px);
         }
       `}</style>
     </section>

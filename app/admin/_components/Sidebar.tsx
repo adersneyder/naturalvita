@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-type NavItem = { label: string; href: string; badge?: number };
+type NavItem = {
+  label: string;
+  href: string;
+  badge?: number;
+  /** Ruta aún no construida: se muestra deshabilitada con etiqueta. */
+  comingSoon?: boolean;
+};
 type NavGroup = { title: string; items: NavItem[] };
 
 const NAV_GROUPS: NavGroup[] = [
@@ -21,21 +27,21 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Productos", href: "/admin/productos" },
       { label: "Fuentes de datos", href: "/admin/fuentes" },
       { label: "Categorías", href: "/admin/categorias" },
-      { label: "Inventario", href: "/admin/inventario" },
+      { label: "Inventario", href: "/admin/inventario", comingSoon: true },
     ],
   },
   {
     title: "Marketing",
     items: [
-      { label: "Cupones", href: "/admin/cupones" },
-      { label: "Email & Klaviyo", href: "/admin/email" },
-      { label: "Analytics", href: "/admin/analytics" },
+      { label: "Cupones", href: "/admin/cupones", comingSoon: true },
+      { label: "Email", href: "/admin/email", comingSoon: true },
+      { label: "Analytics", href: "/admin/analytics", comingSoon: true },
     ],
   },
   {
     title: "Sistema",
     items: [
-      { label: "Usuarios admin", href: "/admin/usuarios" },
+      { label: "Usuarios admin", href: "/admin/usuarios", comingSoon: true },
       { label: "Configuración", href: "/admin/configuracion" },
     ],
   },
@@ -58,6 +64,25 @@ export default function Sidebar() {
             {group.title}
           </p>
           {group.items.map((item) => {
+            // Rutas aún no construidas: se muestran deshabilitadas, sin link,
+            // con etiqueta "Pronto". Evita 404 sin ocultar el roadmap.
+            if (item.comingSoon) {
+              return (
+                <div
+                  key={item.href}
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[13px] mb-0.5 text-[var(--color-earth-500)] cursor-default select-none"
+                  aria-disabled="true"
+                  title="Próximamente"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-[var(--color-earth-500)] opacity-30" />
+                  <span>{item.label}</span>
+                  <span className="ml-auto text-[9px] bg-[var(--color-earth-100)] text-[var(--color-earth-500)] px-1.5 py-0.5 rounded-lg font-medium uppercase tracking-wide">
+                    Pronto
+                  </span>
+                </div>
+              );
+            }
+
             const isActive =
               pathname === item.href ||
               (item.href !== "/admin" && pathname.startsWith(item.href));

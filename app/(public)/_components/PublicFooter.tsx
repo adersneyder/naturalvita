@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   COMPANY,
   getFormattedAddress,
@@ -41,210 +42,170 @@ function FacebookIcon() {
   );
 }
 
-function InstagramLink() {
-  const url = COMPANY.social.instagram;
-  if (!url) {
-    return null;
-  }
-  return (
-    <li>
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-white/70 hover:text-white transition-colors"
-        aria-label="Instagram"
-      >
-        <InstagramIcon />
-      </a>
-    </li>
-  );
-}
-
-function FacebookLink() {
-  const url = COMPANY.social.facebook;
-  if (!url) {
-    return null;
-  }
-  return (
-    <li>
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-white/70 hover:text-white transition-colors"
-        aria-label="Facebook"
-      >
-        <FacebookIcon />
-      </a>
-    </li>
-  );
-}
-
 function SocialLinks() {
   const hasAny = COMPANY.social.instagram || COMPANY.social.facebook;
-  if (!hasAny) {
-    return null;
-  }
+  if (!hasAny) return null;
   return (
-    <ul className="flex gap-3">
-      <InstagramLink />
-      <FacebookLink />
+    <ul className="flex gap-3 mt-5">
+      {COMPANY.social.instagram && (
+        <li>
+          <a
+            href={COMPANY.social.instagram}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-white/15 text-white/70 hover:text-white hover:border-white/40 hover:bg-white/5 transition-colors"
+            aria-label="Instagram"
+          >
+            <InstagramIcon />
+          </a>
+        </li>
+      )}
+      {COMPANY.social.facebook && (
+        <li>
+          <a
+            href={COMPANY.social.facebook}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-white/15 text-white/70 hover:text-white hover:border-white/40 hover:bg-white/5 transition-colors"
+            aria-label="Facebook"
+          >
+            <FacebookIcon />
+          </a>
+        </li>
+      )}
     </ul>
   );
 }
 
-function NavSeparator() {
-  return <li className="text-white/30">·</li>;
-}
-
-function EmailLink() {
-  const href = `mailto:${COMPANY.email.public}`;
-  return (
-    <a href={href} className="hover:text-white transition-colors">
-      {COMPANY.email.public}
-    </a>
-  );
-}
+/**
+ * Columnas del footer.
+ *
+ * 4 columnas en desktop con título + lista de enlaces, alineadas verticalmente.
+ * Estructura:
+ *   - Catálogo: lo comercial
+ *   - Empresa: quiénes somos
+ *   - Ayuda: soporte al cliente
+ *   - Legal: cumplimiento
+ *
+ * El newsletter y el bloque de marca van arriba, ancho completo / 2 col.
+ */
+const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
+  {
+    title: "Catálogo",
+    links: [
+      { label: "Tienda", href: "/tienda" },
+      { label: "Buscar productos", href: "/buscar" },
+      { label: "Mi cuenta", href: "/mi-cuenta" },
+    ],
+  },
+  {
+    title: "Empresa",
+    links: [
+      { label: "Sobre nosotros", href: "/sobre-nosotros" },
+      { label: "Laboratorios", href: "/laboratorio" },
+    ],
+  },
+  {
+    title: "Ayuda",
+    links: [
+      { label: "Preguntas frecuentes", href: "/preguntas-frecuentes" },
+      { label: "Contacto", href: "/contacto" },
+    ],
+  },
+  {
+    title: "Legal",
+    links: [
+      { label: "Política de datos", href: "/legal/privacidad" },
+      { label: "Términos", href: "/legal/terminos" },
+      { label: "Envíos y devoluciones", href: "/legal/envios" },
+    ],
+  },
+];
 
 export default function PublicFooter() {
   const year = new Date().getFullYear();
+  const emailHref = `mailto:${COMPANY.email.public}`;
 
   return (
-    <footer className="mt-20 bg-[var(--color-leaf-900)] text-white">
-      {/* Seccion 1 - Zona principal */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12">
-        <div className="grid md:grid-cols-2 gap-10 md:gap-16">
-          {/* Brand + tagline + redes */}
+    <footer className="mt-16 bg-[var(--color-leaf-900)] text-white">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-12 pb-8">
+        {/* Fila superior: brand + tagline + redes a la izquierda,
+            newsletter a la derecha. */}
+        <div className="grid md:grid-cols-[1.1fr_1fr] gap-10 md:gap-16 pb-10 border-b border-white/10">
           <div>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M12 2c-2 4-6 6-6 11a6 6 0 0012 0c0-5-4-7-6-11z"
-                    fill="white"
-                    opacity="0.9"
-                  />
-                </svg>
-              </span>
-              <span className="font-serif text-xl">{COMPANY.brand}</span>
-            </div>
-            <p className="text-sm text-white/70 leading-relaxed mb-5 max-w-sm">
+            {/* Logo de marca: misma imagen del header. En el footer (fondo
+                verde oscuro) lo envolvemos en un cuadrito blanco para que
+                se vea con el color original sin pelearse con el fondo. */}
+            <Link
+              href="/"
+              aria-label="NaturalVita · Inicio"
+              className="inline-block mb-4 bg-white rounded-xl px-4 py-2.5 shadow-sm"
+            >
+              <Image
+                src="/home/naturalvita-logo.webp"
+                alt={COMPANY.brand}
+                width={816}
+                height={502}
+                className="h-10 w-auto block"
+              />
+            </Link>
+            <p className="text-sm text-white/70 leading-relaxed max-w-sm">
               {COMPANY.tagline}. Una marca de {COMPANY.parentBrand}.
             </p>
             <SocialLinks />
           </div>
 
-          {/* Newsletter */}
           <div className="md:max-w-md md:justify-self-end w-full">
-            <h3 className="font-serif text-lg mb-1">
+            <h3 className="font-serif text-lg mb-1.5">
               Recibe novedades y ofertas
             </h3>
             <p className="text-xs text-white/65 leading-relaxed mb-3">
-              Suscribete y recibe un cupon de bienvenida para tu primera
+              Suscríbete y recibe un cupón de bienvenida para tu primera
               compra. Sin spam, puedes cancelar cuando quieras.
             </p>
             <NewsletterForm />
           </div>
         </div>
 
-        {/* Navegacion inline */}
-        <nav className="mt-12 pt-8 border-t border-white/10">
-          <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-white/85">
-            <li>
-              <Link
-                href="/tienda"
-                className="hover:text-white transition-colors"
-              >
-                Tienda
-              </Link>
-            </li>
-            <NavSeparator />
-            <li>
-              <Link
-                href="/buscar"
-                className="hover:text-white transition-colors"
-              >
-                Buscar productos
-              </Link>
-            </li>
-            <NavSeparator />
-            <li>
-              <Link
-                href="/sobre-nosotros"
-                className="hover:text-white transition-colors"
-              >
-                Sobre nosotros
-              </Link>
-            </li>
-            <NavSeparator />
-            <li>
-              <Link
-                href="/preguntas-frecuentes"
-                className="hover:text-white transition-colors"
-              >
-                Preguntas frecuentes
-              </Link>
-            </li>
-            <NavSeparator />
-            <li>
-              <Link
-                href="/contacto"
-                className="hover:text-white transition-colors"
-              >
-                Contacto
-              </Link>
-            </li>
-            <NavSeparator />
-            <li>
-              <Link
-                href="/mi-cuenta"
-                className="hover:text-white transition-colors"
-              >
-                Mi cuenta
-              </Link>
-            </li>
-            <NavSeparator />
-            <li>
-              <Link
-                href="/legal/privacidad"
-                className="hover:text-white transition-colors"
-              >
-                Politica de datos
-              </Link>
-            </li>
-            <NavSeparator />
-            <li>
-              <Link
-                href="/legal/terminos"
-                className="hover:text-white transition-colors"
-              >
-                Terminos
-              </Link>
-            </li>
-            <NavSeparator />
-            <li>
-              <Link
-                href="/legal/envios"
-                className="hover:text-white transition-colors"
-              >
-                Envios
-              </Link>
-            </li>
-          </ul>
+        {/* Cuatro columnas estructuradas */}
+        <nav
+          aria-label="Pie de página"
+          className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-6 pt-10"
+        >
+          {COLUMNS.map((col) => (
+            <div key={col.title}>
+              <h4 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55 mb-4">
+                {col.title}
+              </h4>
+              <ul className="flex flex-col gap-2.5 text-sm text-white/80">
+                {col.links.map((link) => (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      className="hover:text-white transition-colors"
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </nav>
       </div>
 
-      {/* Seccion 2 - Bottom legal compacta */}
+      {/* Bottom legal compacto */}
       <div className="border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col md:flex-row md:items-center md:justify-between gap-2 text-xs text-white/55">
-          <p>
-            {"\u00A9"} {year} {COMPANY.legalName} {" \u00B7 "}
-            {getFormattedAddress()} {" \u00B7 "}
-            <EmailLink />
+          <p className="leading-relaxed">
+            &copy; {year} {COMPANY.legalName} &middot;{" "}
+            {getFormattedAddress()} &middot;{" "}
+            <a href={emailHref} className="hover:text-white transition-colors">
+              {COMPANY.email.public}
+            </a>
           </p>
           <p className="md:text-right">
-            Pagos seguros con Bold {" \u00B7 "} Despachos a toda Colombia
+            Pagos seguros con Bold &middot; Despachos a toda Colombia
           </p>
         </div>
       </div>

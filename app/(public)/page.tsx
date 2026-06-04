@@ -27,7 +27,9 @@ import { ValueProps } from "@/components/home/ValueProps";
 import { EverlifeOrigin } from "@/components/home/EverlifeOrigin";
 import { PartnerLabs } from "@/components/home/PartnerLabs";
 import { TrustBadges } from "@/components/home/TrustBadges";
+import { SectionDivider } from "@/components/home/SectionDivider";
 import { getActiveNeeds } from "@/lib/quiz/queries";
+import { getHeroSlots } from "@/lib/home/hero-rotator";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co";
 
@@ -83,9 +85,13 @@ const websiteSchema = {
 };
 
 export default async function HomePage() {
-  // Necesidades activas del quiz (objetivo-primero). Se cargan en el servidor
-  // y se pasan al HeroQuiz. Si la consulta falla, devuelve [] y el quiz no rompe.
-  const needs = await getActiveNeeds();
+  // Necesidades activas del quiz (objetivo-primero) y slots pre-resueltos
+  // del rotador del hero (8 slots con imagen + palabra + 3 productos).
+  // Ambas se cargan en paralelo en el servidor para no encadenar latencias.
+  const [needs, heroSlots] = await Promise.all([
+    getActiveNeeds(),
+    getHeroSlots(),
+  ]);
 
   return (
     <>
@@ -93,12 +99,18 @@ export default async function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
       />
-      <HeroQuiz needs={needs} isLoggedIn={false} />
+      <HeroQuiz needs={needs} heroSlots={heroSlots} isLoggedIn={false} />
       <LifeStages />
       <FeaturedProducts />
+      {/* Cambio de fondo blanco → crema: respiración narrativa */}
+      <SectionDivider tone="warm" />
       <ValueProps />
       <EverlifeOrigin />
+      {/* Cambio de fondo crema → blanco */}
+      <SectionDivider tone="cool" />
       <PartnerLabs />
+      {/* Cambio de fondo blanco → crema (banda de cierre) */}
+      <SectionDivider tone="warm" />
       <TrustBadges />
     </>
   );

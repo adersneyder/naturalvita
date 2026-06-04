@@ -1,0 +1,35 @@
+name: CI
+
+# Verifica que el código tipo-checkee en cada PR y push a main.
+# Mantener mínimo y rápido. Lint queda pendiente: Next 15.5 deprecó
+# `next lint` y la migración al CLI de ESLint con flat config se hace en
+# un commit aparte para no mezclar deps con esta CI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Type-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
