@@ -206,73 +206,129 @@ El pivote a Resend (§2) dejó lista toda la fontanería de envío. Esto YA func
 ## 7. SAVIA — motor de automatización de marketing (LO QUE SIGUE, prioridad alta)
 
 ### Propósito (no perderlo de vista)
-SAVIA **no es "un enviador de correos"**. Es el motor de **automatización** de
-marketing propio de NaturalVita: decide **qué** enviar, **a quién** y **cuándo**, y
-lo hace **solo**. Reemplaza a Klaviyo (descartado por branding + costo). Su norte son
-dos palabras: **automático y eficiente**.
+**Savia decide, Resend entrega.** Separación estricta de responsabilidades:
+Savia es el motor propio de **automatización** de marketing — flows, segmentación,
+triggers, lógica de qué enviar a quién y cuándo. Resend es el ESP (SMTP, cartero
+físico). Reemplaza a Klaviyo (descartado por branding del tier gratuito y costo
+PayG). Norte en dos palabras: **automático y eficiente**.
 
 - **Automático / hands-off**: dispara ante eventos del negocio (suscripción, carrito
-  abandonado, recompra a 30d, reactivación a 60d) sin que nadie apriete un botón. El
-  modelo a imitar es el `quiz-reco-sync`, que se recalcula solo con triggers + crons.
-  SAVIA debe correr igual: una vez definidos los flows, no se toca.
-- **Eficiente / segura para la reputación**: todo pasa por una **cola** (nunca envíos
-  sueltos en marketing), con **throttle de warmup** (50/min mes 1 → 200/min mes 2)
-  para no quemar la reputación del subdominio nuevo, **suppression** respetada en cada
-  envío, **texto plano** automático, y medición de apertura/click **reaprovechando el
-  webhook nativo de Resend** (sin infraestructura de tracking propia).
+  abandonado, recompra a 30d, reactivación a 60d) sin que nadie apriete un botón.
+  Modelo a imitar: `quiz-reco-sync` (triggers + crons, una vez definido no se toca).
+- **Eficiente / segura para la reputación**: **todo pasa por una cola** (nunca envío
+  directo en marketing), **throttle de warmup** (50/min mes 1 → 200/min mes 2),
+  **suppression** respetada en cada envío, **texto plano** automático, tracking
+  open/click **reaprovechando el webhook nativo de Resend** (sin pixel propio).
+- **Aislamiento de reputación**: envío desde `hola@news.naturalvita.co` con **API key
+  dedicada** de Resend, distinta a la transaccional de `notificaciones@`.
 
-Arquitectura **declarativa**: un flow se describe una sola vez (trigger + pasos con
-delays + template) y el sistema materializa y despacha los envíos. Datos en Supabase,
-envío vía Resend desde `hola@news.naturalvita.co` (reputación de subdominio aislada
-de la transaccional).
-
-### Estado real (verificado en BD y código, sesión actual)
-Los **cimientos de envío ya están** (ver §6: transporte Resend, suppression, webhook
-de bounce/complaint, List-Unsubscribe, texto plano, desuscripción, plantilla welcome).
-Lo que falta es **el motor de automatización en sí**:
+### Estado real (verificado en BD y código)
+Los cimientos de envío ya están (ver §6: transporte unificado sobre Resend,
+`email_suppressions`, webhook Svix, List-Unsubscribe básico, texto plano,
+desuscripción, plantilla welcome). Lo que falta es el **motor de automatización**:
 - **Existe en BD**: `email_suppressions`, `events`, `newsletter_subscribers`.
-- **NO existe** (confirmado): `email_jobs`, `email_flows`, `email_flow_steps`,
-  `email_events`; Edge Function `savia-dispatch`; cron de dispatch; carpeta
-  `lib/savia/flows/`; y la **serie** de bienvenida (hoy es un único correo directo,
-  sin cola ni delay).
+- **NO existe**: `email_jobs`, `email_flows`, `email_flow_steps`, `email_events`;
+  Edge Function `savia-dispatch`; cron de dispatch; `lib/savia/flows/`; y la
+  **serie** de bienvenida (hoy es un único correo directo, sin cola ni delay).
+- **Renombrar**: `lib/savia/transport/ses.ts` → `resend.ts` (el archivo ya manda por
+  Resend; el nombre es heredado del Sprint 1).
+- **Infraestructura SES/SNS dormida**: el Topic SNS
+  `arn:aws:sns:us-east-1:264911721808:naturalvita-ses-events` queda en stand-by por si
+  se reapela el sandbox de AWS en mes 2-3. Hoy NO se usa.
 
-### Corrección al plan viejo (por el pivote SES → Resend)
-Dos pasos del plan original quedaron **obsoletos** y NO se deben construir:
-- ❌ **Endpoints propios de pixel/click** (`/api/savia/open`, `/api/savia/click`):
-  innecesarios. Resend trae open/click nativo; los eventos entran por el **webhook ya
-  existente**, que solo hay que ampliar para persistirlos.
-- ♻️ **`email_events`** se rediseña como **sumidero del webhook de Resend**
-  (correlación por `message_id`/`job`), no como sistema de tracking paralelo.
-Ya hechos y fuera del plan: transporte, webhook, List-Unsubscribe, texto plano.
+### Esquema concreto de las 4 tablas (Sesión B)
 
-### Plan vigente (orden de construcción)
-1. **Migración núcleo** (RLS completa en todas):
-   - `email_flows` — flow declarativo (slug, trigger, activo).
-   - `email_flow_steps` — pasos (orden, `delay` relativo, template, asunto).
-   - `email_jobs` — la **cola** (scheduled_at, status queued/sent/failed/skipped, to,
-     template, payload, refs a flow/step, message_id, intentos).
-   - `email_events` — sumidero del webhook (open/click/delivered/bounce/complaint),
-     correlacionado por message_id/job.
-2. **Enrolador de flows**: al ocurrir el trigger, materializar los jobs del flow
-   (`enroll_in_flow(flow, subscriber, context)`: email 1 a `now()`, email 2 a
-   `now()+3d`, …). Respeta suppression y evita doble-enrolamiento.
-3. **Dispatcher**: Edge Function `supabase/functions/savia-dispatch` — lee `email_jobs`
-   con `scheduled_at <= now()` y `status='queued'`, respeta el throttle de warmup,
-   envía por el transporte (`saviaSendEmail`), marca `sent` + `message_id`, o `failed`
-   con backoff.
-4. **Cron**: pg_cron cada 1 min → `savia-dispatch` (mismo patrón que los crons del quiz).
-5. **Ingesta de eventos**: ampliar `/api/webhooks/resend` para **persistir**
-   open/click/delivered en `email_events` (hoy solo loguea). Sin endpoints propios.
-6. **Welcome series declarativa**: flow `welcome-series` en `lib/savia/flows/`
-   (trigger `newsletter_subscribed` → email 1 inmediato → delay 3d → email 2) y
-   **reemplazar el envío directo** actual del welcome por un enrolamiento en la cola.
-7. **Validar**: mail-tester ≥9/10 e inbox real en Gmail/Outlook/Hotmail/Yahoo/iCloud.
+**`email_flows`** — definición declarativa de un flow.
+```
+id text PK              -- slug (ej. 'welcome-series')
+name text not null
+trigger_event text      -- 'newsletter_subscribed', 'cart_abandoned_1h', ...
+active boolean default true
+config jsonb            -- parámetros del flow (delays default, ramas, etc.)
+created_at timestamptz default now()
+```
+
+**`email_flow_steps`** — pasos ordenados dentro de cada flow.
+```
+id uuid PK
+flow_id text FK email_flows(id) on delete cascade
+step_order int not null
+delay_seconds int default 0   -- relativo al paso anterior (0 = inmediato)
+template text not null        -- slug del template (lookup en registry)
+subject text not null
+active boolean default true
+unique(flow_id, step_order)
+```
+
+**`email_jobs`** — la cola.
+```
+id uuid PK
+to_email text not null
+subject text not null
+template text not null
+payload jsonb               -- datos para render del template
+scheduled_at timestamptz not null
+status text not null        -- 'queued' | 'sending' | 'sent' | 'failed' | 'skipped'
+attempts int default 0
+message_id text             -- id devuelto por Resend (correlación con eventos)
+flow_id text                -- nullable (envíos one-off no son de un flow)
+flow_step_id uuid           -- nullable
+idempotency_key text unique -- '{flow}:{step}:{enrollment}', evita doble-encolado
+last_error text
+created_at timestamptz default now()
+updated_at timestamptz default now()
+```
+Índice: `(status, scheduled_at)` para el dispatcher; índice en `message_id` para correlación de eventos.
+
+**`email_events`** — sumidero del webhook de Resend.
+```
+id uuid PK
+job_id uuid FK email_jobs   -- nullable (correlación por message_id)
+message_id text             -- siempre presente
+event_type text             -- 'sent'|'delivered'|'opened'|'clicked'|'bounced'|'complained'|'failed'
+metadata jsonb              -- payload original del webhook
+created_at timestamptz default now()
+```
+Índice: `(job_id, event_type)` y `(message_id)`.
+
+**RLS** en todas: SELECT/INSERT/UPDATE solo `service_role`. Sin acceso público.
+
+### Plan vigente (orden de construcción — Sesión B)
+1. **Migración por MCP** (las 4 tablas + RLS + índices).
+2. **Transporte** — renombrar `lib/savia/transport/ses.ts` → `resend.ts`, alinear a la
+   interfaz `SaviaMessage` del brief (`to`, `subject`, `react`, `unsubscribeToken`,
+   `flowId`, `jobId?`). Pequeño refactor de `sendEmail()` para aceptar API key
+   alternativa según categoría → `RESEND_SAVIA_API_KEY` para marketing,
+   `RESEND_API_KEY` sigue para transaccional. Reintento exponencial en 429 (máx 3).
+3. **List-Unsubscribe RFC 8058 completo**: header con `mailto:hola@news...?subject=unsubscribe`
+   **+** `https://naturalvita.co/api/savia/unsubscribe?token=…`. Nuevo endpoint POST
+   `app/api/savia/unsubscribe/route.ts` (one-click, añade a `email_suppressions`).
+   La página GET `/newsletter/desuscribir/[token]` ya existe y se mantiene para confirmación humana.
+4. **Edge Function** `supabase/functions/savia-dispatch/index.ts` (Deno, imports `npm:` y `jsr:`):
+   lee hasta 50 jobs con `status='queued'` y `scheduled_at <= now()`, render con
+   `@react-email/render`, envía vía transporte, registra evento en `email_events`,
+   actualiza job a `sent`+`message_id` o `failed`+`attempts++`. Si `attempts >= 3`, queda
+   `failed` definitivo. Protegida por `Authorization: Bearer SAVIA_DISPATCH_TOKEN`.
+5. **pg_cron cada 1 min** → `savia-dispatch` (con token desde Vault). Mismo patrón que `quiz-reco-debounce-sync`.
+6. **Ingesta de eventos**: ampliar `/api/webhooks/resend` para **persistir**
+   open/click/delivered en `email_events` (hoy solo loguean). Correlación por `message_id`.
+7. **Welcome series declarativa**: insertar el flow en BD + crear `lib/savia/flows/welcome-series.ts`
+   (sólo la definición tipada y el enrolador `enrollInFlow(slug, subscriber, ctx)`) +
+   **reemplazar el envío directo** del welcome actual en `app/(public)/_actions/newsletter.ts`
+   y `app/_actions/quiz-subscribe.tsx` por `enrollInFlow('welcome-series', ...)`.
+8. **Validar**: mail-tester ≥9/10 e inbox real en Gmail/Outlook/Hotmail/Yahoo/iCloud.
+
+### Variables de entorno a configurar (Vercel + Edge Function secrets)
+- `RESEND_SAVIA_API_KEY` — API key dedicada de Resend para `news.naturalvita.co` (reputación aislada).
+- `SAVIA_DISPATCH_TOKEN` — Bearer 256-bit aleatorio para proteger el endpoint del dispatcher.
+- (Existentes que se siguen usando): `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`,
+  `RESEND_FROM_MARKETING`, `RESEND_REPLY_TO`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
 
 ### Aprendizaje aplicable
 Reputación nueva del subdominio puede dar spam temporal en Outlook/Hotmail → warmup
-gradual (50/min mes 1, escalar a 200/min mes 2); por eso **todo va por la cola con
+gradual (50/min mes 1, escalar a 200/min mes 2). **Por eso todo va por la cola con
 throttle**, nunca envío directo en marketing. Precisión de schemas: validar con logs
-en vivo (un fallo silencioso de Klaviyo creó perfiles sin vincular).
+en vivo (un fallo silencioso de Klaviyo creó perfiles sin vincular en el pasado).
 
 ---
 
