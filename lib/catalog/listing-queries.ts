@@ -639,6 +639,59 @@ export async function listBestSellersThumbnails(
   return out;
 }
 
+export type BestSellerEmailItem = {
+  name: string;
+  slug: string;
+  imageUrl: string | null;
+};
+
+/**
+ * Top best-sellers con nombre + slug + imagen, para incrustar en correos
+ * de Savia (ej. seguimiento de bienvenida). Se resuelve en el momento del
+ * envío (render dinámico): el correo encolado guarda solo la intención
+ * "muestra los más vendidos", y al despacharse refleja el catálogo ACTUAL,
+ * no el de hace 3 días. Solo productos activos con imagen.
+ */
+export async function listBestSellersForEmail(
+  limit = 3,
+): Promise<BestSellerEmailItem[]> {
+  const ids = await listBestSellerProductIds(limit * 3);
+  if (ids.length === 0) return [];
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("products")
+    .select(
+      `id, name, slug,
+       images:product_images!product_id(url, is_primary, sort_order)`,
+    )
+    .in("id", ids)
+    .eq("status", "active");
+
+  const byId = new Map((data ?? []).map((r) => [r.id as string, r] as const));
+
+  const out: BestSellerEmailItem[] = [];
+  for (const id of ids) {
+    const row = byId.get(id);
+    if (!row) continue;
+    const imgs = (row.images ?? []) as Array<{
+      url: string;
+      is_primary: boolean;
+      sort_order: number | null;
+    }>;
+    const primary =
+      imgs.find((i) => i.is_primary) ??
+      [...imgs].sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999))[0];
+    out.push({
+      name: row.name as string,
+      slug: row.slug as string,
+      imageUrl: primary?.url ?? null,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 /**
  * Productos destacados del catálogo (is_featured=true). Para el carrusel
  * de la landing /tienda. Usa la misma forma de PublicProductSummary para

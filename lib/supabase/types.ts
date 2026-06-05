@@ -241,6 +241,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ai_generation_log_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "ai_generation_log_triggered_by_fkey"
             columns: ["triggered_by"]
             isOneToOne: false
@@ -290,6 +297,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cart_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
             referencedColumns: ["id"]
           },
         ]
@@ -814,6 +828,178 @@ export type Database = {
           },
         ]
       }
+      email_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          job_id: string | null
+          message_id: string | null
+          metadata: Json
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          job_id?: string | null
+          message_id?: string | null
+          metadata?: Json
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          job_id?: string | null
+          message_id?: string | null
+          metadata?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_events_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "email_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_flow_steps: {
+        Row: {
+          active: boolean
+          created_at: string
+          delay_seconds: number
+          flow_id: string
+          id: string
+          step_order: number
+          subject: string
+          template: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          delay_seconds?: number
+          flow_id: string
+          id?: string
+          step_order: number
+          subject: string
+          template: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          delay_seconds?: number
+          flow_id?: string
+          id?: string
+          step_order?: number
+          subject?: string
+          template?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_flow_steps_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "email_flows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_flows: {
+        Row: {
+          active: boolean
+          config: Json
+          created_at: string
+          id: string
+          name: string
+          trigger_event: string | null
+        }
+        Insert: {
+          active?: boolean
+          config?: Json
+          created_at?: string
+          id: string
+          name: string
+          trigger_event?: string | null
+        }
+        Update: {
+          active?: boolean
+          config?: Json
+          created_at?: string
+          id?: string
+          name?: string
+          trigger_event?: string | null
+        }
+        Relationships: []
+      }
+      email_jobs: {
+        Row: {
+          attempts: number
+          created_at: string
+          flow_id: string | null
+          flow_step_id: string | null
+          id: string
+          idempotency_key: string | null
+          last_error: string | null
+          message_id: string | null
+          payload: Json
+          scheduled_at: string
+          status: string
+          subject: string
+          template: string
+          to_email: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          flow_id?: string | null
+          flow_step_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          last_error?: string | null
+          message_id?: string | null
+          payload?: Json
+          scheduled_at?: string
+          status?: string
+          subject: string
+          template: string
+          to_email: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          flow_id?: string | null
+          flow_step_id?: string | null
+          id?: string
+          idempotency_key?: string | null
+          last_error?: string | null
+          message_id?: string | null
+          payload?: Json
+          scheduled_at?: string
+          status?: string
+          subject?: string
+          template?: string
+          to_email?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_jobs_flow_id_fkey"
+            columns: ["flow_id"]
+            isOneToOne: false
+            referencedRelation: "email_flows"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_jobs_flow_step_id_fkey"
+            columns: ["flow_step_id"]
+            isOneToOne: false
+            referencedRelation: "email_flow_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_suppressions: {
         Row: {
           created_at: string
@@ -925,6 +1111,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
             referencedColumns: ["id"]
           },
           {
@@ -1099,6 +1292,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
+            referencedColumns: ["id"]
+          },
         ]
       }
       orders: {
@@ -1120,6 +1320,7 @@ export type Database = {
           order_number: string
           paid_at: string | null
           payment_status: string
+          savia_attribution_job_id: string | null
           shipped_at: string | null
           shipping_carrier: string | null
           shipping_city: string
@@ -1156,6 +1357,7 @@ export type Database = {
           order_number: string
           paid_at?: string | null
           payment_status?: string
+          savia_attribution_job_id?: string | null
           shipped_at?: string | null
           shipping_carrier?: string | null
           shipping_city: string
@@ -1192,6 +1394,7 @@ export type Database = {
           order_number?: string
           paid_at?: string | null
           payment_status?: string
+          savia_attribution_job_id?: string | null
           shipped_at?: string | null
           shipping_carrier?: string | null
           shipping_city?: string
@@ -1223,6 +1426,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_savia_attribution_job_id_fkey"
+            columns: ["savia_attribution_job_id"]
+            isOneToOne: false
+            referencedRelation: "email_jobs"
             referencedColumns: ["id"]
           },
         ]
@@ -1342,6 +1552,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "product_attribute_values_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
+            referencedColumns: ["id"]
+          },
         ]
       }
       product_attributes: {
@@ -1417,6 +1634,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "product_collections_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
+            referencedColumns: ["id"]
+          },
         ]
       }
       product_images: {
@@ -1453,6 +1677,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_images_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
             referencedColumns: ["id"]
           },
         ]
@@ -1498,6 +1729,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_inventory_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
             referencedColumns: ["id"]
           },
         ]
@@ -1567,6 +1805,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "product_reviews_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
+            referencedColumns: ["id"]
+          },
         ]
       }
       products: {
@@ -1582,6 +1827,7 @@ export type Database = {
           data_source_id: string | null
           description: string | null
           dosage: string | null
+          equivalence_group: string | null
           external_id: string | null
           full_description: string | null
           id: string
@@ -1600,6 +1846,9 @@ export type Database = {
           presentation: string | null
           presentation_type: string | null
           price_cop: number
+          reco_content_hash: string | null
+          reco_synced_at: string | null
+          reco_synced_hash: string | null
           scrape_url: string | null
           scraped_at: string | null
           search_keywords: string | null
@@ -1633,6 +1882,7 @@ export type Database = {
           data_source_id?: string | null
           description?: string | null
           dosage?: string | null
+          equivalence_group?: string | null
           external_id?: string | null
           full_description?: string | null
           id?: string
@@ -1651,6 +1901,9 @@ export type Database = {
           presentation?: string | null
           presentation_type?: string | null
           price_cop: number
+          reco_content_hash?: string | null
+          reco_synced_at?: string | null
+          reco_synced_hash?: string | null
           scrape_url?: string | null
           scraped_at?: string | null
           search_keywords?: string | null
@@ -1684,6 +1937,7 @@ export type Database = {
           data_source_id?: string | null
           description?: string | null
           dosage?: string | null
+          equivalence_group?: string | null
           external_id?: string | null
           full_description?: string | null
           id?: string
@@ -1702,6 +1956,9 @@ export type Database = {
           presentation?: string | null
           presentation_type?: string | null
           price_cop?: number
+          reco_content_hash?: string | null
+          reco_synced_at?: string | null
+          reco_synced_hash?: string | null
           scrape_url?: string | null
           scraped_at?: string | null
           search_keywords?: string | null
@@ -1789,6 +2046,142 @@ export type Database = {
           recommendations?: Json
         }
         Relationships: []
+      }
+      quiz_needs: {
+        Row: {
+          created_at: string
+          description: string | null
+          icon: string | null
+          id: string
+          is_active: boolean
+          name: string
+          slug: string
+          sort_order: number
+          tagline: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          slug: string
+          sort_order?: number
+          tagline?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          slug?: string
+          sort_order?: number
+          tagline?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      quiz_reco_sync_runs: {
+        Row: {
+          dirty_count: number
+          error_detail: string | null
+          failed: number
+          finished_at: string | null
+          id: string
+          processed: number
+          started_at: string
+          status: string
+          trigger_source: string
+        }
+        Insert: {
+          dirty_count?: number
+          error_detail?: string | null
+          failed?: number
+          finished_at?: string | null
+          id?: string
+          processed?: number
+          started_at?: string
+          status?: string
+          trigger_source: string
+        }
+        Update: {
+          dirty_count?: number
+          error_detail?: string | null
+          failed?: number
+          finished_at?: string | null
+          id?: string
+          processed?: number
+          started_at?: string
+          status?: string
+          trigger_source?: string
+        }
+        Relationships: []
+      }
+      quiz_recommendations: {
+        Row: {
+          generated_at: string
+          generated_by: string | null
+          id: string
+          need_id: string
+          product_id: string
+          reason: string | null
+          relevance_tier: string
+          review_status: string
+          score: number
+          suitable_stages: string[]
+        }
+        Insert: {
+          generated_at?: string
+          generated_by?: string | null
+          id?: string
+          need_id: string
+          product_id: string
+          reason?: string | null
+          relevance_tier: string
+          review_status?: string
+          score?: number
+          suitable_stages?: string[]
+        }
+        Update: {
+          generated_at?: string
+          generated_by?: string | null
+          id?: string
+          need_id?: string
+          product_id?: string
+          reason?: string | null
+          relevance_tier?: string
+          review_status?: string
+          score?: number
+          suitable_stages?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quiz_recommendations_need_id_fkey"
+            columns: ["need_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_needs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_recommendations_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quiz_recommendations_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       quiz_results: {
         Row: {
@@ -2086,6 +2479,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "wishlist_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
@@ -2109,12 +2509,66 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "product_reviews_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_reco_dirty_products"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      quiz_reco_dirty_products: {
+        Row: {
+          id: string | null
+          name: string | null
+          reco_content_hash: string | null
+          reco_synced_at: string | null
+          reco_synced_hash: string | null
+        }
+        Insert: {
+          id?: string | null
+          name?: string | null
+          reco_content_hash?: string | null
+          reco_synced_at?: string | null
+          reco_synced_hash?: string | null
+        }
+        Update: {
+          id?: string | null
+          name?: string | null
+          reco_content_hash?: string | null
+          reco_synced_at?: string | null
+          reco_synced_hash?: string | null
+        }
+        Relationships: []
       }
     }
     Functions: {
       cleanup_expired_quiz_cache: { Args: never; Returns: undefined }
+      compute_reco_content_hash: {
+        Args: { p_product_id: string }
+        Returns: string
+      }
       current_admin_role: { Args: never; Returns: string }
+      get_home_featured: {
+        Args: { p_limit?: number }
+        Returns: {
+          image_url: string
+          name: string
+          price_cop: number
+          priority: number
+          product_id: string
+          slug: string
+          source: string
+        }[]
+      }
+      home_top_selling_product_ids: {
+        Args: { p_days?: number; p_limit?: number }
+        Returns: {
+          product_id: string
+          units_sold: number
+        }[]
+      }
       increment_coupon_uses: {
         Args: { p_coupon_id: string }
         Returns: undefined
@@ -2124,6 +2578,52 @@ export type Database = {
         Returns: undefined
       }
       is_email_suppressed: { Args: { p_email: string }; Returns: boolean }
+      resolve_quiz: {
+        Args: {
+          p_min_adjuvant_score?: number
+          p_need_slug: string
+          p_stage: string
+        }
+        Returns: {
+          average_rating: number
+          image_url: string
+          name: string
+          price_cop: number
+          product_id: string
+          reason: string
+          review_count: number
+          rnk: number
+          score: number
+          slug: string
+          tier: string
+        }[]
+      }
+      savia_claim_jobs: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          created_at: string
+          flow_id: string | null
+          flow_step_id: string | null
+          id: string
+          idempotency_key: string | null
+          last_error: string | null
+          message_id: string | null
+          payload: Json
+          scheduled_at: string
+          status: string
+          subject: string
+          template: string
+          to_email: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "email_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       search_products: {
         Args: { page_offset?: number; page_size?: number; q: string }
         Returns: {
@@ -2131,6 +2631,7 @@ export type Database = {
           rank: number
         }[]
       }
+      trigger_quiz_reco_sync: { Args: { p_source?: string }; Returns: number }
     }
     Enums: {
       [_ in never]: never

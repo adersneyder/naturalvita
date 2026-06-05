@@ -145,21 +145,46 @@ const REPLY_TO_DEFAULT =
 // Singletons lazy (Resend client + Supabase admin)
 // ─────────────────────────────────────────────────────────────────────────────
 
-let _resend: Resend | null = null;
+// Dos clientes lazy: marketing (Savia) usa una API key dedicada para
+// aislar la reputación del subdominio news.naturalvita.co de la
+// transaccional. Si RESEND_SAVIA_API_KEY no está, cae a la key general.
+let _resendTransactional: Resend | null = null;
+let _resendMarketing: Resend | null = null;
 
-function getResendClient(): Resend {
-  if (_resend) return _resend;
+function getResendClient(category: EmailCategory): Resend {
+  if (category === "marketing") {
+    if (_resendMarketing) return _resendMarketing;
+    const key =
+      process.env.RESEND_SAVIA_API_KEY ?? process.env.RESEND_API_KEY;
+    if (!key) {
+      throw new Error(
+        "[email/client] Falta RESEND_SAVIA_API_KEY (o RESEND_API_KEY) para marketing.",
+      );
+    }
+    _resendMarketing = new Resend(key);
+    return _resendMarketing;
+  }
 
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
+  if (_resendTransactional) return _resendTransactional;
+  const key = process.env.RESEND_API_KEY;
+  if (!key) {
     throw new Error(
       "[email/client] RESEND_API_KEY no está configurada en variables de entorno.",
     );
   }
-
-  _resend = new Resend(apiKey);
-  return _resend;
+  _resendTransactional = new Resend(key);
+  return _resendTransactional;
 }
+
+/** Detecta si un error de Resend es por rate limit (429) y conviene reintentar. */
+function isRateLimitError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const e = error as { name?: string; statusCode?: number };
+  return e.name === "rate_limit_exceeded" || e.statusCode === 429;
+}
+
+const RATE_LIMIT_MAX_RETRIES = 3;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let _supabaseAdmin: ReturnType<typeof createClient> | null = null;
 
@@ -328,36 +353,51 @@ export async function sendEmail(
     text = textInput ?? stripHtml(html);
   }
 
-  // Envío vía Resend
+  // Envío vía Resend, con reintento exponencial ante 429 (rate limit).
+  // El warmup de Savia (50/min mes 1) hace que el 429 sea esperable bajo
+  // ráfagas del dispatcher; reintentar evita perder el correo.
   try {
-    const resend = getResendClient();
+    const resend = getResendClient(category);
     const from = resolveFrom(category, fromOverride);
 
-    const { data, error } = await resend.emails.send({
-      from,
-      to,
-      subject,
-      html,
-      text,
-      replyTo,
-      headers,
-      tags,
-    });
+    let lastError: { message?: string } | null = null;
 
-    if (error) {
-      console.error("[email/client] Resend devolvió error:", error);
-      return {
-        success: false,
-        ok: false,
-        error: "transport_error",
-        errorMessage: error.message,
-      };
+    for (let attempt = 0; attempt <= RATE_LIMIT_MAX_RETRIES; attempt++) {
+      const { data, error } = await resend.emails.send({
+        from,
+        to,
+        subject,
+        html,
+        text,
+        replyTo,
+        headers,
+        tags,
+      });
+
+      if (!error) {
+        return { success: true, ok: true, messageId: data?.id };
+      }
+
+      lastError = error;
+
+      // Solo reintentamos rate limit; cualquier otro error es definitivo.
+      if (!isRateLimitError(error) || attempt === RATE_LIMIT_MAX_RETRIES) {
+        break;
+      }
+
+      const backoffMs = 500 * 2 ** attempt; // 500ms, 1s, 2s
+      console.warn(
+        `[email/client] 429 de Resend, reintento ${attempt + 1}/${RATE_LIMIT_MAX_RETRIES} en ${backoffMs}ms`,
+      );
+      await sleep(backoffMs);
     }
 
+    console.error("[email/client] Resend devolvió error:", lastError);
     return {
-      success: true,
-      ok: true,
-      messageId: data?.id,
+      success: false,
+      ok: false,
+      error: "transport_error",
+      errorMessage: lastError?.message ?? "Error de transporte desconocido.",
     };
   } catch (err) {
     const message =

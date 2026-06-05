@@ -162,6 +162,25 @@ export async function unsubscribeFromNewsletter(
     return { ok: false, error: "No pudimos procesar la desuscripción" };
   }
 
+  // Compuerta global: añadir a email_suppressions para que CUALQUIER envío
+  // de marketing (no solo newsletter) respete el opt-out. sendEmail()
+  // consulta esta tabla antes de cada envío.
+  const { error: suppressErr } = await supabase.from("email_suppressions").upsert(
+    {
+      email: subscriber.email.toLowerCase(),
+      reason: "unsubscribe",
+      source: "savia",
+    },
+    { onConflict: "email" },
+  );
+  if (suppressErr) {
+    // No es fatal: el suscriptor ya quedó 'unsubscribed'. Solo lo registramos.
+    console.warn(
+      "[newsletter] no se pudo añadir a email_suppressions:",
+      suppressErr.message,
+    );
+  }
+
   return { ok: true, email: subscriber.email };
 }
 

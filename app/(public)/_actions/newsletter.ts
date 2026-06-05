@@ -6,8 +6,8 @@ import {
   publicApiRatelimit,
   getClientIpFromHeaders,
 } from "@/lib/ratelimit";
-import { sendEmail } from "@/lib/email/client";
-import { NewsletterWelcome } from "@/lib/email/templates/newsletter-welcome";
+import { enrollInFlow } from "@/lib/savia/enroll";
+import { WELCOME_SERIES_SLUG } from "@/lib/savia/flows/welcome-series";
 
 export type NewsletterSignupState = {
   ok: boolean;
@@ -76,32 +76,19 @@ export async function subscribeNewsletterAction(
 
   // 5. Side effects vía after() — solo si suscripción es nueva o reactivada
   if (result.created) {
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co";
-    const unsubscribeUrl = `${baseUrl}/newsletter/desuscribir/${result.unsubscribe_token}`;
-
     after(async () => {
-      // Email de bienvenida con cupón (Resend)
+      // Enrolar en la serie de bienvenida de Savia (correo 1 inmediato +
+      // correo 2 a 3 días). El dispatcher los envía desde la cola; aquí solo
+      // encolamos. Reemplaza el envío directo anterior.
       try {
-        await sendEmail({
-          to: email,
-          subject: "Bienvenido a NaturalVita · cupón WELCOME10 dentro",
-          react: NewsletterWelcome({
-            customerName: null,
-            couponCode: "WELCOME10",
-            couponDescription:
-              "10% en tu primera compra · mínimo $30.000 · descuento máximo $50.000",
-            shopUrl: `${baseUrl}/tienda`,
-            unsubscribeUrl,
-          }),
-          tags: [
-            { name: "type", value: "newsletter_welcome" },
-            { name: "source", value: "footer" },
-          ],
+        await enrollInFlow(WELCOME_SERIES_SLUG, {
+          email,
+          unsubscribeToken: result.unsubscribe_token,
+          customerName: null,
         });
       } catch (err) {
         console.error(
-          "[newsletter-action after] error enviando welcome:",
+          "[newsletter-action after] error enrolando en welcome-series:",
           err,
         );
       }

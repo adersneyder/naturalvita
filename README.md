@@ -222,19 +222,57 @@ PayG). Norte en dos palabras: **automático y eficiente**.
 - **Aislamiento de reputación**: envío desde `hola@news.naturalvita.co` con **API key
   dedicada** de Resend, distinta a la transaccional de `notificaciones@`.
 
-### Estado real (verificado en BD y código)
-Los cimientos de envío ya están (ver §6: transporte unificado sobre Resend,
-`email_suppressions`, webhook Svix, List-Unsubscribe básico, texto plano,
-desuscripción, plantilla welcome). Lo que falta es el **motor de automatización**:
-- **Existe en BD**: `email_suppressions`, `events`, `newsletter_subscribers`.
-- **NO existe**: `email_jobs`, `email_flows`, `email_flow_steps`, `email_events`;
-  Edge Function `savia-dispatch`; cron de dispatch; `lib/savia/flows/`; y la
-  **serie** de bienvenida (hoy es un único correo directo, sin cola ni delay).
-- **Renombrar**: `lib/savia/transport/ses.ts` → `resend.ts` (el archivo ya manda por
-  Resend; el nombre es heredado del Sprint 1).
-- **Infraestructura SES/SNS dormida**: el Topic SNS
-  `arn:aws:sns:us-east-1:264911721808:naturalvita-ses-events` queda en stand-by por si
-  se reapela el sandbox de AWS en mes 2-3. Hoy NO se usa.
+### Estado real — Sesión B CONSTRUIDA (5-jun-2026)
+El núcleo de envío quedó implementado y verificado (typecheck verde + smoke test
+de la cola a nivel BD). Construido en esta sesión:
+- **4 tablas** `email_flows`, `email_flow_steps`, `email_jobs`, `email_events` (RLS
+  service_role, índices) + columna `orders.savia_attribution_job_id`. Migraciones
+  `migrations/20260605_create_savia_core.sql` (+ funciones `savia_claim_jobs`,
+  `savia_trigger_dispatch` aplicadas por MCP).
+- **Transporte** `lib/savia/transport/resend.ts` (renombrado desde ses.ts): contrato
+  `SaviaMessage`, List-Unsubscribe RFC 8058 (mailto + https one-click), tags flow/step/job.
+- **API key dedicada**: `lib/email/client.ts` usa `RESEND_SAVIA_API_KEY` para marketing
+  (cae a `RESEND_API_KEY` si falta) + reintento exponencial ante 429.
+- **Dispatcher** `app/api/savia/dispatch/route.ts` (ruta Next protegida por Bearer, NO
+  Edge Function — decisión registrada abajo). Claim atómico vía `savia_claim_jobs`
+  (FOR UPDATE SKIP LOCKED, sin doble-envío), throttle 50/invocación.
+- **Cron** `savia-dispatch` (`* * * * *`) → `savia_trigger_dispatch()`: lee el token de
+  Vault y postea a la ruta. No-op silencioso si falta el secret (arranca solo al
+  provisionarlo) y si la cola está vacía.
+- **One-click unsubscribe** `app/api/savia/unsubscribe` (POST RFC 8058 + GET a la
+  página). `unsubscribeFromNewsletter` ahora también añade a `email_suppressions`
+  (compuerta global).
+- **Ingesta de eventos**: `/api/webhooks/resend` persiste open/click/delivered/
+  bounce/complaint/failed en `email_events`, correlacionado por `message_id`.
+- **Welcome series** sembrada en BD (`welcome-series`: email 1 inmediato + email 2 a
+  3d) + `lib/savia/flows/welcome-series.ts` + enrolador `lib/savia/enroll.ts`
+  (predicates de suppression + idempotencia). `newsletter.ts` ahora **enrola** en vez
+  de enviar directo.
+- **Mejoras de ingresos**: #1 atribución de revenue (cookie `savia_jid` por middleware
+  → `orders.savia_attribution_job_id`, fuera de la ruta crítica del checkout); #3
+  predicates en el enrolador; #4 render dinámico (los más vendidos del email 2 se
+  resuelven al despachar, vía `listBestSellersForEmail`).
+
+**Decisión arquitectónica registrada**: el dispatcher es una **ruta Next**, no una Edge
+Function Deno (como pedía el brief). Razón: reutiliza plantillas react-email, transporte,
+suppression y reintento 429 ya existentes en `lib/`; cero duplicación. pg_cron y el Bearer
+token se mantienen igual. Aprobado en sesión.
+
+**Divergencia deliberada**: `app/_actions/quiz-subscribe.tsx` mantiene su envío DIRECTO
+(no encolado) porque es el resultado **personalizado** del quiz, inmediato; no es un
+welcome automatizado. Candidato a unificar bajo el transporte de Savia en el futuro.
+
+**Infraestructura SES/SNS dormida**: el Topic SNS
+`arn:aws:sns:us-east-1:264911721808:naturalvita-ses-events` queda en stand-by por si se
+reapela el sandbox de AWS en mes 2-3. Hoy NO se usa.
+
+### Pendiente de Ader para activar Savia (provisión de secretos, §3.10)
+El código está listo; el cron es no-op hasta que existan estos secretos:
+1. **`SAVIA_DISPATCH_TOKEN`** (256-bit aleatorio) en Vercel **Y** en Supabase Vault con
+   nombre `savia_dispatch_token` (mismo valor). Sin esto el dispatcher no se invoca.
+2. **`RESEND_SAVIA_API_KEY`** en Vercel: API key dedicada de Resend para
+   `news.naturalvita.co` (reputación aislada). Sin esto, marketing cae a `RESEND_API_KEY`.
+3. Verificar el dominio `news.naturalvita.co` en Resend (SPF/DKIM/DMARC) si aún no.
 
 ### Esquema concreto de las 4 tablas (Sesión B)
 

@@ -324,6 +324,33 @@ export async function createPendingOrder(
     }
   }
 
+  // 8.6 Atribución de Savia (#1): si el visitante llegó desde un correo
+  //     (cookie savia_jid puesta por el middleware), enlazamos el pedido al
+  //     job que lo originó. FUERA de la ruta crítica: cualquier fallo aquí
+  //     (cookie inválida, job inexistente) jamás afecta el checkout.
+  try {
+    const { cookies } = await import("next/headers");
+    const saviaJid = (await cookies()).get("savia_jid")?.value;
+    if (saviaJid && /^[0-9a-f-]{36}$/i.test(saviaJid)) {
+      const { createAdminClient } = await import("@/lib/supabase/admin");
+      const admin = createAdminClient();
+      // Verificamos que el job exista antes de escribir (evita violar el FK).
+      const { data: job } = await admin
+        .from("email_jobs")
+        .select("id")
+        .eq("id", saviaJid)
+        .maybeSingle();
+      if (job?.id) {
+        await admin
+          .from("orders")
+          .update({ savia_attribution_job_id: job.id })
+          .eq("id", order.id);
+      }
+    }
+  } catch (err) {
+    console.error("[createPendingOrder] atribución Savia falló (ignorado):", err);
+  }
+
   // 9. Generar firma de integridad para Bold
   const signature = generateIntegritySignature({
     orderId: order.order_number,

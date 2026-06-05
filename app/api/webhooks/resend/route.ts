@@ -146,6 +146,53 @@ async function processOpenOrClick(event: ResendEvent) {
   );
 }
 
+/**
+ * Persiste el evento en email_events (sumidero de Savia), correlacionando
+ * con el job vía message_id. Idempotente-tolerante: si no hay job (correo
+ * transaccional, no de Savia) igual guarda el evento con job_id nulo.
+ */
+async function recordEmailEvent(
+  event: ResendEvent,
+  eventType:
+    | "delivered"
+    | "opened"
+    | "clicked"
+    | "bounced"
+    | "complained"
+    | "failed",
+) {
+  const supabase = createAdminClient();
+  const messageId = event.data.email_id;
+
+  let jobId: string | null = null;
+  if (messageId) {
+    const { data: job } = await supabase
+      .from("email_jobs")
+      .select("id")
+      .eq("message_id", messageId)
+      .maybeSingle();
+    jobId = job?.id ?? null;
+  }
+
+  const { error } = await supabase.from("email_events").insert({
+    job_id: jobId,
+    message_id: messageId ?? null,
+    event_type: eventType,
+    metadata: {
+      to: event.data.to?.[0] ?? null,
+      subject: event.data.subject ?? null,
+      tags: event.data.tags ?? null,
+      click: event.data.click ?? null,
+    },
+  });
+  if (error) {
+    console.error(
+      `[webhooks/resend] error guardando email_event ${eventType}:`,
+      error.message,
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   const secret = process.env.RESEND_WEBHOOK_SECRET;
   if (!secret) {
@@ -190,20 +237,32 @@ export async function POST(request: NextRequest) {
       switch (event.type) {
         case "email.bounced":
           await processBounce(event);
+          await recordEmailEvent(event, "bounced");
           break;
         case "email.complained":
           await processComplaint(event);
+          await recordEmailEvent(event, "complained");
           break;
         case "email.delivered":
           await processDelivery(event);
+          await recordEmailEvent(event, "delivered");
           break;
         case "email.opened":
+          await processOpenOrClick(event);
+          await recordEmailEvent(event, "opened");
+          break;
         case "email.clicked":
           await processOpenOrClick(event);
+          await recordEmailEvent(event, "clicked");
+          break;
+        case "email.failed":
+          console.info(
+            `[webhooks/resend] ${event.type}: ${event.data.email_id}`,
+          );
+          await recordEmailEvent(event, "failed");
           break;
         case "email.sent":
         case "email.delivery_delayed":
-        case "email.failed":
           console.info(
             `[webhooks/resend] ${event.type}: ${event.data.email_id}`,
           );

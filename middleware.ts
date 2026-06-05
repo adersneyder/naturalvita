@@ -43,6 +43,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
+  // Atribución de Savia (#1): si el visitante llega desde un enlace de correo
+  // con ?sj=<job_id>, guardamos el job en una cookie de 7 días. Al crear un
+  // pedido la leemos para atribuir el revenue al correo que lo originó.
+  const sj = request.nextUrl.searchParams.get("sj");
+  if (sj && /^[0-9a-f-]{36}$/i.test(sj)) {
+    response.cookies.set("savia_jid", sj, {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: 60 * 60 * 24 * 7,
+      path: "/",
+    });
+  }
+
   return response;
 }
 
