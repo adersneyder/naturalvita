@@ -28,13 +28,14 @@ export default function SobreNosotrosPage() {
           Sobre {COMPANY.brandName}
         </p>
         <h1 className="font-serif text-3xl md:text-5xl text-[var(--color-leaf-900)] tracking-tight leading-[1.1]">
-          Conectamos laboratorios colombianos con tu bienestar diario
+          Conectamos los mejores laboratorios con tu bienestar diario
         </h1>
         <p className="mt-5 text-base md:text-lg text-[var(--color-earth-700)] leading-relaxed max-w-2xl">
           {COMPANY.brandName} es una marca de {COMPANY.parentBrand} que selecciona,
-          curaduría y entrega suplementos y productos naturales a hogares en
-          toda Colombia. Nuestro modelo es simple: trabajamos con laboratorios
-          colombianos verificados y los acercamos a quienes buscan vivir mejor.
+          evalúa y entrega suplementos y productos naturales a hogares en
+          toda Colombia. Nuestro modelo es simple: elegimos los mejores
+          productos de laboratorios establecidos legalmente en Colombia y los
+          acercamos a quienes buscan vivir mejor.
         </p>
       </header>
 
@@ -72,12 +73,12 @@ export default function SobreNosotrosPage() {
           <Step
             number="1"
             title="Selección de laboratorios"
-            description={`Trabajamos solo con laboratorios colombianos que cuentan con todos sus registros sanitarios al día. Antes de incluir un proveedor verificamos su INVIMA, sus certificados de buenas prácticas de manufactura y la consistencia de su catálogo.`}
+            description={`Trabajamos con laboratorios establecidos legalmente en Colombia que cuentan con todos sus registros sanitarios al día. Antes de incluir un proveedor verificamos su INVIMA, sus certificados de buenas prácticas de manufactura y la consistencia de su catálogo.`}
           />
           <Step
             number="2"
-            title="Curaduría de productos"
-            description={`No listamos todo. De cada laboratorio escogemos los productos con mejor reputación, evidencia de uso y demanda real. Si un producto no convence, no entra.`}
+            title="Selección de productos"
+            description={`No listamos todo. De cada laboratorio escogemos los mejores productos: los de mejor reputación, evidencia de uso y demanda real. Si un producto no convence, no entra.`}
           />
           <Step
             number="3"
