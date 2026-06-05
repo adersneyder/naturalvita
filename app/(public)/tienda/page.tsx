@@ -116,34 +116,35 @@ export default async function TiendaPage({
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbsJsonLd) }}
       />
 
-      {/* Hero principal cuando NO hay filtros aplicados. Más generoso visualmente. */}
+      {/* Hero superior compacto. El catálogo es el protagonista; el hero solo
+          orienta. Mantenemos breadcrumbs + título corto + tagline breve. */}
       {!hasAnyFilter ? (
         <section className="bg-[var(--color-earth-50)] border-b border-[var(--color-earth-100)]">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-16">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-4 pb-5 md:pt-6 md:pb-7">
             <Breadcrumbs items={[{ label: "Tienda" }]} />
-            <div className="mt-3 md:mt-4 max-w-3xl">
-              <h1 className="font-serif text-2xl md:text-5xl text-[var(--color-leaf-900)] tracking-tight leading-tight">
+            <div className="mt-2 md:mt-3 max-w-3xl">
+              <h1 className="font-serif text-xl md:text-3xl text-[var(--color-leaf-900)] tracking-tight leading-tight">
                 Productos naturales seleccionados con criterio.
               </h1>
-              <p className="mt-2 md:mt-4 text-sm md:text-lg text-[var(--color-earth-700)] leading-relaxed">
+              <p className="mt-1.5 md:mt-2 text-sm md:text-base text-[var(--color-earth-700)] leading-snug">
                 Suplementos, vitaminas, fitoterápicos y dermocosmética de los
-                laboratorios más reconocidos de Colombia. Despacho a todo el país.
+                laboratorios más reconocidos de Colombia.
               </p>
             </div>
           </div>
         </section>
       ) : (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-4 pb-3 md:pt-5 md:pb-4">
           <Breadcrumbs items={[{ label: "Tienda" }]} />
-          <header className="mt-6 mb-6 max-w-2xl">
-            <h1 className="font-serif text-3xl md:text-4xl text-[var(--color-leaf-900)] tracking-tight">
+          <header className="mt-3 mb-3 max-w-2xl">
+            <h1 className="font-serif text-2xl md:text-3xl text-[var(--color-leaf-900)] tracking-tight">
               Tienda
             </h1>
           </header>
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-8 md:pt-6 md:pb-12">
         {/* Bloque curado (solo en landing limpia): colecciones destacadas.
             El carrusel de productos destacados se removió: los destacados
             viven ahora en el Home. La tienda va directa al catálogo. */}

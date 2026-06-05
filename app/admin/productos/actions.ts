@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/admin-auth";
+import {
+  revalidatePublicCatalog,
+  revalidatePublicProduct,
+} from "@/lib/cache/revalidate-catalog";
 
 export type ActionResult = { success: boolean; error?: string; affected?: number };
 
@@ -159,6 +163,7 @@ export async function updateProduct(
   }
 
   revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
   revalidatePath(`/admin/productos/${productId}`);
   return { success: true };
 }
@@ -224,6 +229,7 @@ export async function setProductStatus(
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
   revalidatePath(`/admin/productos/${productId}`);
   return { success: true };
 }
@@ -248,6 +254,7 @@ export async function bulkSetCategory(
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
   return { success: true, affected: count ?? productIds.length };
 }
 
@@ -266,6 +273,7 @@ export async function bulkSetTaxRate(
 
   if (error) return { success: false, error: error.message };
   revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
   return { success: true, affected: count ?? productIds.length };
 }
 
@@ -300,6 +308,7 @@ export async function bulkSetStatus(
 
   if (error) return { success: false, error: error.message };
   revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
   return { success: true, affected: count ?? productIds.length };
 }
 
@@ -330,6 +339,9 @@ export async function deleteProductImage(imageId: string): Promise<ActionResult>
   if (error) return { success: false, error: error.message };
 
   revalidatePath(`/admin/productos/${img.product_id}`);
+  // Borrar una imagen puede dejar un producto sin imagen → deja de ser
+  // publicable en la grilla pública. Revalidamos para que desaparezca.
+  await revalidatePublicProductBySlug(supabase, img.product_id);
   return { success: true };
 }
 
@@ -352,6 +364,8 @@ export async function setMainImage(
 
   if (error) return { success: false, error: error.message };
   revalidatePath(`/admin/productos/${productId}`);
+  // El thumbnail de la grilla y la ficha pública usan la imagen primaria.
+  await revalidatePublicProductBySlug(supabase, productId);
   return { success: true };
 }
 
@@ -369,7 +383,22 @@ export async function reorderImages(
   );
 
   revalidatePath(`/admin/productos/${productId}`);
+  // El orden afecta cuál se elige como portada cuando no hay primary.
+  await revalidatePublicProductBySlug(supabase, productId);
   return { success: true };
+}
+
+/** Resuelve el slug del producto y revalida su ficha + grilla pública. */
+async function revalidatePublicProductBySlug(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  productId: string,
+): Promise<void> {
+  const { data } = await supabase
+    .from("products")
+    .select("slug")
+    .eq("id", productId)
+    .maybeSingle();
+  revalidatePublicProduct(data?.slug ?? null);
 }
 
 // =====================================================
@@ -404,6 +433,7 @@ export async function bulkAddToCollection(
 
   if (toInsert.length === 0) {
     revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
     return { success: true, affected: 0 };
   }
 
@@ -411,6 +441,7 @@ export async function bulkAddToCollection(
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
   return { success: true, affected: toInsert.length };
 }
 
@@ -434,6 +465,7 @@ export async function bulkRemoveFromCollection(
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
   return { success: true, affected: count ?? 0 };
 }
 
@@ -504,6 +536,7 @@ export async function bulkSetAttributeValue(
     }
 
     revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
     return { success: true, affected: productIds.length };
   }
 
@@ -549,6 +582,7 @@ export async function bulkSetAttributeValue(
 
   if (rows.length === 0) {
     revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
     return { success: true, affected: 0 };
   }
 
@@ -556,6 +590,7 @@ export async function bulkSetAttributeValue(
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
   return { success: true, affected: rows.length };
 }
 
@@ -579,5 +614,6 @@ export async function bulkRemoveAttribute(
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin/productos");
+  revalidatePublicCatalog();
   return { success: true, affected: count ?? 0 };
 }

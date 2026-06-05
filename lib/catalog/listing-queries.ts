@@ -444,16 +444,40 @@ export async function listFilterableAttributes(): Promise<FilterableAttribute[]>
   }));
 }
 
+/**
+ * Devuelve solo laboratorios que tienen al menos UN producto activo
+ * y publicable. La regla:
+ *   - laboratories.is_active = true
+ *   - existe products.laboratory_id con status='active' AND is_active=true
+ *
+ * Esto evita mostrar en el sidebar de filtros laboratorios sin
+ * catálogo (ej. recién creados o pendientes de scrapping). El listado
+ * se refresca solo cuando la página /tienda revalida (cada 300s o por
+ * `revalidatePublicCatalog`).
+ */
 export async function listActiveLaboratories(): Promise<
   Array<{ slug: string; name: string }>
 > {
   const supabase = await createClient();
+  // Inner-join contra products: PostgREST exige !inner en el embed para
+  // que el filtro de products afecte el padre.
   const { data } = await supabase
     .from("laboratories")
-    .select("slug, name")
+    .select("slug, name, products!inner(id)")
     .eq("is_active", true)
+    .eq("products.is_active", true)
+    .eq("products.status", "active")
     .order("name", { ascending: true });
-  return data ?? [];
+
+  // Deduplicar (el join devuelve una fila por producto).
+  const seen = new Set<string>();
+  const out: Array<{ slug: string; name: string }> = [];
+  for (const row of data ?? []) {
+    if (seen.has(row.slug)) continue;
+    seen.add(row.slug);
+    out.push({ slug: row.slug, name: row.name });
+  }
+  return out;
 }
 
 export async function listActiveCategoriesTree(): Promise<

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/admin-auth";
+import { revalidatePublicCatalog } from "@/lib/cache/revalidate-catalog";
 
 export type ActionResult = { success: boolean; error?: string };
 
@@ -59,6 +60,7 @@ export async function createLaboratory(formData: FormData): Promise<ActionResult
   }
 
   revalidatePath("/admin/configuracion/laboratorios");
+  revalidatePublicCatalog();
   return { success: true };
 }
 
@@ -103,6 +105,7 @@ export async function updateLaboratory(
   }
 
   revalidatePath("/admin/configuracion/laboratorios");
+  revalidatePublicCatalog();
   return { success: true };
 }
 
@@ -139,5 +142,6 @@ export async function deleteLaboratory(id: string): Promise<ActionResult> {
   if (error) return { success: false, error: error.message };
 
   revalidatePath("/admin/configuracion/laboratorios");
+  revalidatePublicCatalog();
   return { success: true };
 }

@@ -5,6 +5,7 @@ import { getAdminUser } from "@/lib/admin-auth";
 import { getScraper } from "@/lib/scrapers";
 import { downloadAndUploadImage } from "@/lib/scrapers/image-downloader";
 import type { ScrapedProduct } from "@/lib/scrapers/types";
+import { revalidatePublicCatalog } from "@/lib/cache/revalidate-catalog";
 
 export const maxDuration = 60; // segundos máximo por request
 
@@ -272,6 +273,13 @@ async function processBatch(
   }
 
   await supabase.from("scraping_jobs").update(updates).eq("id", jobId);
+
+  // Si en este batch se crearon o actualizaron productos, los filtros y
+  // conteos públicos (sidebar de /tienda, /laboratorio, /laboratorio/[slug])
+  // necesitan refrescarse para reflejar el nuevo catálogo.
+  if (created > 0 || updated > 0) {
+    revalidatePublicCatalog();
+  }
 
   return NextResponse.json({
     status: isComplete ? "completed" : "running",
