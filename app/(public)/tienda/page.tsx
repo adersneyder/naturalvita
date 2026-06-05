@@ -13,6 +13,7 @@ import {
   listActiveCategoriesTree,
   listActiveCollections,
   listFeaturedCollections,
+  listFeaturedProductThumbnails,
   getPriceRange,
   type CatalogSort,
 } from "@/lib/catalog/listing-queries";
@@ -63,6 +64,7 @@ export default async function TiendaPage({
     collections,
     priceRange,
     featuredCollections,
+    bestSellersMosaic,
   ] = await Promise.all([
     listProducts(
       {
@@ -84,6 +86,10 @@ export default async function TiendaPage({
     listActiveCollections(),
     getPriceRange(),
     hasAnyFilter ? Promise.resolve([]) : listFeaturedCollections(4),
+    // El cover de "Más vendidos" se arma como mosaico con productos
+    // destacados reales del catálogo, no con foto externa. Siempre
+    // refleja el catálogo actual y mantiene armonía con la grilla.
+    hasAnyFilter ? Promise.resolve([]) : listFeaturedProductThumbnails(4),
   ]);
 
   const breadcrumbsJsonLd = {
@@ -159,14 +165,37 @@ export default async function TiendaPage({
               role="list"
               className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4"
             >
-              {featuredCollections.map((c) => (
+              {featuredCollections.map((c) => {
+                // "Más vendidos" usa mosaico de productos destacados reales
+                // en lugar de foto externa. Si no hay 4 thumbnails (catálogo
+                // pequeño) caemos al cover_image_url normal.
+                const useMosaic =
+                  c.slug === "mas-vendidos" && bestSellersMosaic.length >= 4;
+                return (
                 <li key={c.slug}>
                   <Link
                     href={`/coleccion/${c.slug}`}
                     className="group block rounded-xl md:rounded-2xl overflow-hidden bg-[var(--color-earth-50)] hover:shadow-md transition-shadow"
                   >
                     <div className="relative aspect-square md:aspect-[4/3] bg-white">
-                      {c.cover_image_url ? (
+                      {useMosaic ? (
+                        <div className="grid grid-cols-2 grid-rows-2 gap-px w-full h-full bg-[var(--color-earth-100)]">
+                          {bestSellersMosaic.slice(0, 4).map((thumb, idx) => (
+                            <div
+                              key={idx}
+                              className="relative bg-white overflow-hidden"
+                            >
+                              <Image
+                                src={thumb.url}
+                                alt={thumb.alt ?? c.name}
+                                fill
+                                sizes="(max-width: 640px) 25vw, 12vw"
+                                className="object-contain p-2 transition-transform duration-500 group-hover:scale-110"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : c.cover_image_url ? (
                         <Image
                           src={c.cover_image_url}
                           alt={c.name}
@@ -193,7 +222,8 @@ export default async function TiendaPage({
                     </div>
                   </Link>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </section>
         )}

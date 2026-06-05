@@ -579,6 +579,52 @@ export async function listFeaturedCollections(
 }
 
 /**
+ * Thumbnails de productos destacados (is_featured=true) para usar como
+ * mosaico de portada en la colección "Más vendidos" en /tienda.
+ *
+ * Mantiene la cobertura siempre fresca y on-brand: el mosaico se arma
+ * con productos reales del catálogo sin depender de fotos externas.
+ *
+ * Filtra productos sin imagen (regla de negocio). Si hay menos de
+ * `limit` productos destacados con imagen, devuelve los que haya y el
+ * componente decide cómo manejarlo (mosaico parcial o placeholder).
+ */
+export async function listFeaturedProductThumbnails(
+  limit = 4,
+): Promise<Array<{ url: string; alt: string | null }>> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("products")
+    .select(
+      `name,
+       images:product_images!product_id(url, alt_text, is_primary, sort_order)`,
+    )
+    .eq("status", "active")
+    .eq("is_featured", true)
+    .order("created_at", { ascending: false })
+    .limit(limit * 3); // margen para descartar productos sin imagen
+
+  const out: Array<{ url: string; alt: string | null }> = [];
+  for (const row of data ?? []) {
+    const imgs = (row.images ?? []) as Array<{
+      url: string;
+      alt_text: string | null;
+      is_primary: boolean;
+      sort_order: number | null;
+    }>;
+    if (imgs.length === 0) continue;
+    const primary =
+      imgs.find((i) => i.is_primary) ??
+      [...imgs].sort(
+        (a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999),
+      )[0];
+    out.push({ url: primary.url, alt: primary.alt_text ?? row.name });
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/**
  * Productos destacados del catálogo (is_featured=true). Para el carrusel
  * de la landing /tienda. Usa la misma forma de PublicProductSummary para
  * que la grilla los renderice sin código duplicado.
