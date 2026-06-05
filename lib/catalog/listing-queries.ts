@@ -21,6 +21,10 @@ export type CatalogFilters = {
   inStockOnly?: boolean;
   /** Búsqueda full-text sobre name + short_description. */
   q?: string | null;
+  /** Lista cerrada de product_ids a la que el catálogo debe restringirse.
+   *  Usado para colecciones "smart" (ej. mas-vendidos) que no viven en
+   *  `product_collections` sino que se computan dinámicamente. */
+  productIds?: string[] | null;
 };
 
 export type CatalogSort =
@@ -156,17 +160,25 @@ export async function listProducts(
     if (attributeProductIds.length === 0) return emptyPage(page, pageSize);
   }
 
-  // Intersectar product_ids restrictivos
+  // Intersectar product_ids restrictivos (colecciones + atributos + lista explícita).
+  // `filters.productIds` permite a una colección "smart" (ej. mas-vendidos)
+  // imponer una lista cerrada calculada en otro lado.
+  const idSets: string[][] = [];
+  if (collectionProductIds !== null) idSets.push(collectionProductIds);
+  if (attributeProductIds !== null) idSets.push(attributeProductIds);
+  if (filters.productIds !== undefined && filters.productIds !== null) {
+    if (filters.productIds.length === 0) return emptyPage(page, pageSize);
+    idSets.push(filters.productIds);
+  }
+
   let restrictiveProductIds: string[] | null = null;
-  if (collectionProductIds !== null && attributeProductIds !== null) {
-    const set = new Set(attributeProductIds);
-    restrictiveProductIds = collectionProductIds.filter((id) => set.has(id));
-    if (restrictiveProductIds.length === 0)
-      return emptyPage(page, pageSize);
-  } else if (collectionProductIds !== null) {
-    restrictiveProductIds = collectionProductIds;
-  } else if (attributeProductIds !== null) {
-    restrictiveProductIds = attributeProductIds;
+  if (idSets.length > 0) {
+    restrictiveProductIds = idSets.reduce<string[]>((acc, ids, i) => {
+      if (i === 0) return ids;
+      const set = new Set(ids);
+      return acc.filter((id) => set.has(id));
+    }, []);
+    if (restrictiveProductIds.length === 0) return emptyPage(page, pageSize);
   }
 
   // --- 2. Query principal con count exacto + filas paginadas ---
@@ -579,33 +591,36 @@ export async function listFeaturedCollections(
 }
 
 /**
- * Thumbnails de productos destacados (is_featured=true) para usar como
- * mosaico de portada en la colección "Más vendidos" en /tienda.
- *
- * Mantiene la cobertura siempre fresca y on-brand: el mosaico se arma
- * con productos reales del catálogo sin depender de fotos externas.
- *
- * Filtra productos sin imagen (regla de negocio). Si hay menos de
- * `limit` productos destacados con imagen, devuelve los que haya y el
- * componente decide cómo manejarlo (mosaico parcial o placeholder).
+ * Thumbnails de los productos top de "Más vendidos" para usar como
+ * mosaico de portada en /tienda. Usa la MISMA fuente de verdad que la
+ * página /coleccion/mas-vendidos (listBestSellerProductIds), por lo que
+ * lo que ves en el mosaico coincide con lo que encuentras al entrar.
  */
-export async function listFeaturedProductThumbnails(
+export async function listBestSellersThumbnails(
   limit = 4,
 ): Promise<Array<{ url: string; alt: string | null }>> {
+  const ids = await listBestSellerProductIds(limit * 3);
+  if (ids.length === 0) return [];
+
   const supabase = await createClient();
   const { data } = await supabase
     .from("products")
     .select(
-      `name,
+      `id, name,
        images:product_images!product_id(url, alt_text, is_primary, sort_order)`,
     )
-    .eq("status", "active")
-    .eq("is_featured", true)
-    .order("created_at", { ascending: false })
-    .limit(limit * 3); // margen para descartar productos sin imagen
+    .in("id", ids);
+
+  // Reordenar resultados para respetar el ranking de `ids` (Supabase no
+  // garantiza orden con .in()).
+  const byId = new Map(
+    (data ?? []).map((r) => [r.id as string, r] as const),
+  );
 
   const out: Array<{ url: string; alt: string | null }> = [];
-  for (const row of data ?? []) {
+  for (const id of ids) {
+    const row = byId.get(id);
+    if (!row) continue;
     const imgs = (row.images ?? []) as Array<{
       url: string;
       alt_text: string | null;
@@ -651,6 +666,81 @@ export async function listFeaturedProducts(
     .map(rawToSummary)
     .filter((p): p is PublicProductSummary => p !== null)
     .slice(0, limit);
+}
+
+// ---------- "Más vendidos" dinámica ----------
+
+/**
+ * Resuelve los product_ids que componen la colección "Más vendidos".
+ *
+ * Estrategia en cascada (por si la tienda es nueva y aún no hay ventas
+ * suficientes para un ranking confiable):
+ *   1. Productos ordenados por unidades vendidas en pedidos pagados/enviados.
+ *   2. Completar con productos marcados como destacados (is_featured=true).
+ *   3. Si todavía falta, productos activos más recientes.
+ *
+ * Devuelve solo productos `status='active'` con al menos una imagen
+ * (regla de negocio: sin imagen no se publica). El orden refleja la
+ * cascada, por lo que si quien llama lo usa como ranking directo, ya
+ * está priorizado. Sin duplicados.
+ */
+export async function listBestSellerProductIds(limit = 60): Promise<string[]> {
+  const supabase = await createClient();
+
+  // 1) Ventas reales: order_items.quantity sumado por product_id, filtrado
+  //    por orders.status en estados que cuentan como venta firme.
+  const { data: salesRows } = await supabase
+    .from("order_items")
+    .select("product_id, quantity, orders!inner(status)")
+    .in("orders.status", ["paid", "shipped", "delivered", "completed"]);
+
+  const sold = new Map<string, number>();
+  for (const r of (salesRows ?? []) as Array<{
+    product_id: string | null;
+    quantity: number | null;
+  }>) {
+    if (!r.product_id) continue;
+    sold.set(r.product_id, (sold.get(r.product_id) ?? 0) + (r.quantity ?? 0));
+  }
+  const rankedBySales = [...sold.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => id);
+
+  // 2) Fallback / completado: featured + recientes.
+  const { data: featured } = await supabase
+    .from("products")
+    .select("id, created_at, is_featured")
+    .eq("status", "active")
+    .eq("is_featured", true)
+    .order("created_at", { ascending: false });
+
+  const { data: recent } = await supabase
+    .from("products")
+    .select("id")
+    .eq("status", "active")
+    .order("created_at", { ascending: false })
+    .limit(limit * 2);
+
+  // Filtrar a productos activos con imagen, sin duplicar el orden.
+  const { data: imageRows } = await supabase
+    .from("product_images")
+    .select("product_id");
+  const withImage = new Set(
+    (imageRows ?? []).map((r) => r.product_id as string),
+  );
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const push = (id: string) => {
+    if (seen.has(id) || !withImage.has(id)) return;
+    seen.add(id);
+    out.push(id);
+  };
+  for (const id of rankedBySales) push(id);
+  for (const r of featured ?? []) push(r.id as string);
+  for (const r of recent ?? []) push(r.id as string);
+
+  return out.slice(0, limit);
 }
 
 // ---------- Sitemap helpers ----------

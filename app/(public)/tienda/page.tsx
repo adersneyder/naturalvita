@@ -13,7 +13,7 @@ import {
   listActiveCategoriesTree,
   listActiveCollections,
   listFeaturedCollections,
-  listFeaturedProductThumbnails,
+  listBestSellersThumbnails,
   getPriceRange,
   type CatalogSort,
 } from "@/lib/catalog/listing-queries";
@@ -86,10 +86,10 @@ export default async function TiendaPage({
     listActiveCollections(),
     getPriceRange(),
     hasAnyFilter ? Promise.resolve([]) : listFeaturedCollections(4),
-    // El cover de "Más vendidos" se arma como mosaico con productos
-    // destacados reales del catálogo, no con foto externa. Siempre
-    // refleja el catálogo actual y mantiene armonía con la grilla.
-    hasAnyFilter ? Promise.resolve([]) : listFeaturedProductThumbnails(4),
+    // El cover de "Más vendidos" se arma como mosaico con los mismos
+    // productos que verás al entrar en /coleccion/mas-vendidos: nunca
+    // hay disonancia entre lo que muestra el cover y lo que abre dentro.
+    hasAnyFilter ? Promise.resolve([]) : listBestSellersThumbnails(4),
   ]);
 
   const breadcrumbsJsonLd = {

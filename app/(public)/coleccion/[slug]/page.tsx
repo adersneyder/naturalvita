@@ -11,6 +11,7 @@ import {
   listFilterableAttributes,
   listActiveLaboratories,
   listActiveCategoriesTree,
+  listBestSellerProductIds,
   getPriceRange,
   getCollectionBySlug,
   type CatalogSort,
@@ -65,6 +66,16 @@ export default async function CollectionPage({
 
   const filters = await loadCatalogSearchParams(sp);
 
+  // "Más vendidos" es una colección SMART: sus productos no se mantienen
+  // manualmente en `product_collections`, se computan dinámicamente con
+  // cascada ventas reales → destacados → recientes. Resolvemos los IDs
+  // y los pasamos a listProducts como restricción cerrada en lugar del
+  // filtro de colección.
+  const isBestSellers = collection.slug === "mas-vendidos";
+  const bestSellerIds = isBestSellers
+    ? await listBestSellerProductIds(60)
+    : null;
+
   const [
     pageData,
     attributes,
@@ -74,7 +85,8 @@ export default async function CollectionPage({
   ] = await Promise.all([
     listProducts(
       {
-        collectionSlugs: [collection.slug], // contexto fijo
+        collectionSlugs: isBestSellers ? [] : [collection.slug],
+        productIds: bestSellerIds,
         categorySlug: filters.cat,
         laboratorySlugs: filters.lab,
         attributeOptionSlugs: filters.attrs,
