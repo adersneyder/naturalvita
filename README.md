@@ -331,6 +331,50 @@ El cupón único se genera **al despachar** el paso 3 (`createOneTimeCoupon` en
 - Email 3 genera el cupón **al despachar**, no al encolar — tarifa, expiración y
   unicidad reflejan políticas vigentes.
 
+---
+
+## 7.C SAVIA Sesión D — Dashboard /admin/savia (CONSTRUIDA, 7-jun-2026)
+
+Observabilidad y métricas de negocio en una sola página, accesible desde el sidebar
+de admin (Marketing → Savia). Reemplaza al item "Email" coming-soon previo.
+
+### Qué muestra (`app/admin/savia/page.tsx`)
+- **Selector de periodo**: 24h / 7d / 30d sobre el KPI de envío. Revenue siempre con
+  ventana 30d mínima (las ventas no caben en 24h).
+- **KPIs principales**: enviados, delivery rate, open rate, click rate. Lo primero
+  que ve quien entra: ¿está saliendo correo y la gente lo abre?
+- **Salud de cola**: en cola, enviando, fallidos 24h, saltados 24h (skipped por
+  predicates o suppression — métrica de eficiencia financiera).
+- **Bandas de alerta** automáticas:
+  - 🔴 **Crítica** si complaint rate > 0.1% (Resend marca cuenta a 0.3%).
+  - 🟡 **Warning** si bounce rate > 2% (reputación del subdominio en riesgo).
+  - 🟡 **Warning** si hay jobs `sending` con > 5 min (dispatcher posiblemente bloqueado).
+- **Tabla performance por flow** (últimos 30d): sent, open%, click%, skip, fail,
+  pedidos atribuidos, **revenue COP atribuido**. Aquí es donde se ve qué flow vale la
+  pena escalar (atribución #1 da pago real, no solo aperturas).
+- **Últimas corridas de cron**: estado, timestamp y mensaje retorno de los crons
+  `savia-dispatch` y `savia-cart-detect`. Para confirmar de un vistazo que el motor
+  está latiendo.
+
+### Capa de datos (`lib/admin/savia-stats.ts`)
+Una función por sección de la página, cada una con una sola query agregada
+(sin N+1). Funciones: `getOverviewKpis(periodDays)`, `getQueueHealth()`,
+`getFlowsPerformance(periodDays)`, `getRecentCronRuns(limit)`.
+
+### Vista SQL `v_savia_cron_runs`
+`cron.job_run_details` está fuera del schema público, así que para exponerla al
+admin client expuse una vista que filtra solo a los jobs cuyo `jobname` empieza con
+`savia-`. Solo `service_role` tiene `select`.
+
+### Lo que NO está aquí (para sesión futura)
+- Explorador paginado de `email_jobs` con filtros y detalle de payload/eventos.
+- Detalle por flow con métricas paso a paso.
+- Botón para pausar/reanudar un flow (toggle `email_flows.active`).
+- Vista de suppressions con causa.
+
+La página actual ya cubre el 90% del valor (operar y entender el ROI). El resto
+es troubleshooting profundo, que se puede añadir cuando aparezca el primer caso.
+
 ### Esquema concreto de las 4 tablas (Sesión B)
 
 **`email_flows`** — definición declarativa de un flow.
@@ -430,10 +474,8 @@ en vivo (un fallo silencioso de Klaviyo creó perfiles sin vincular en el pasado
 ## 8. Sprint 4 (tras Savia): operación + GEO + launch
 
 - ~~Carrito abandonado~~ → CONSTRUIDO en Sesión C, ver §7.B.
+- ~~Dashboard `/admin/savia`~~ → CONSTRUIDO en Sesión D, ver §7.C.
 - Flujo recompra 30d + reactivación 60d (pendiente; mismo motor que cart-abandoned).
-- Dashboard `/admin/savia` (bounce, complaint, open, click, suscriptores, revenue) —
-  con la atribución #1 ya implementada (cookie `savia_jid` → `orders.savia_attribution_job_id`),
-  el cálculo de revenue por flow es directo.
 - Alertas si bounce >2% o complaint >0.1%
 - Blog `/blog` con schema.org Article + 5 artículos GEO iniciales
   ("Mejor magnesio para dormir Colombia 2026", "Vitamina D Colombia",

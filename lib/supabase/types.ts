@@ -2542,6 +2542,16 @@ export type Database = {
         }
         Relationships: []
       }
+      v_savia_cron_runs: {
+        Row: {
+          end_time: string | null
+          jobname: string | null
+          return_message: string | null
+          start_time: string | null
+          status: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       cleanup_expired_quiz_cache: { Args: never; Returns: undefined }
@@ -2624,6 +2634,8 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      savia_trigger_cart_detect: { Args: never; Returns: number }
+      savia_trigger_dispatch: { Args: never; Returns: number }
       search_products: {
         Args: { page_offset?: number; page_size?: number; q: string }
         Returns: {
