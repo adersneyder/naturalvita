@@ -28,6 +28,18 @@ export type EnrollResult =
   | { ok: true; enrolled: number }
   | { ok: false; reason: string };
 
+export type EnrollOptions = {
+  /**
+   * Identificador único del "contexto" del enrolamiento (ej. 'cart:UUID',
+   * 'order:UUID'). Si se pasa, la idempotency_key será
+   * `{flow}:{step}:{enrollmentRef}`, permitiendo varios enrolamientos del
+   * mismo email en flows distintos sin colisionar (un email puede tener
+   * varios carritos abandonados a lo largo del tiempo). Si se omite, se
+   * usa el email como ref (default original).
+   */
+  enrollmentRef?: string;
+};
+
 /**
  * Enrola a un suscriptor en un flow activo. Devuelve cuántos jobs encoló
  * (0 si todos los pasos ya estaban encolados por una corrida previa).
@@ -36,6 +48,7 @@ export async function enrollInFlow(
   flowSlug: string,
   subscriber: EnrollSubscriber,
   payload: Record<string, unknown> = {},
+  options: EnrollOptions = {},
 ): Promise<EnrollResult> {
   const email = subscriber.email.trim().toLowerCase();
   if (!email) return { ok: false, reason: "email_vacio" };
@@ -70,12 +83,18 @@ export async function enrollInFlow(
     return { ok: false, reason: "flow_sin_pasos" };
   }
 
+  const ref = options.enrollmentRef ?? email;
+  const enrolledAt = new Date().toISOString();
+
   // Payload base compartido por todos los jobs del flow. Incluye el token de
-  // baja y el nombre para que el dispatcher pueda renderizar sin re-consultar.
+  // baja, el nombre, el email y la fecha de enrolamiento (esta última para
+  // que los predicates de tiempo de envío puedan saber "desde cuándo").
   const basePayload = {
     ...payload,
     customerName: subscriber.customerName ?? null,
     unsubscribeToken: subscriber.unsubscribeToken,
+    email,
+    enrolledAt,
   };
 
   const now = Date.now();
@@ -93,7 +112,7 @@ export async function enrollInFlow(
       status: "queued",
       flow_id: flowSlug,
       flow_step_id: step.id,
-      idempotency_key: `${flowSlug}:${step.id}:${email}`,
+      idempotency_key: `${flowSlug}:${step.id}:${ref}`,
     };
   });
 

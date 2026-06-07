@@ -23,7 +23,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { saviaSendEmail } from "@/lib/savia/transport/resend";
-import { renderSaviaTemplate } from "@/lib/savia/templates";
+import { renderSaviaTemplate, shouldSkipSend } from "@/lib/savia/templates";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -64,12 +64,24 @@ async function dispatch(): Promise<{
     const unsubscribeToken = String(payload.unsubscribeToken ?? "");
 
     try {
-      const react = await renderSaviaTemplate(job.template, {
+      // Predicate de tiempo de envío: si el contexto cambió (ej. el carrito
+      // se compró tras el enrolamiento), saltamos sin enviar ni cobrar margen.
+      const ctx = {
         toEmail: job.to_email,
         unsubscribeToken,
         jobId: job.id,
         payload,
-      });
+      };
+      if (await shouldSkipSend(job.template, ctx)) {
+        await supabase
+          .from("email_jobs")
+          .update({ status: "skipped", last_error: "predicate_skip" })
+          .eq("id", job.id);
+        skipped++;
+        continue;
+      }
+
+      const react = await renderSaviaTemplate(job.template, ctx);
 
       const result = await saviaSendEmail({
         to: job.to_email,

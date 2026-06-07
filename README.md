@@ -266,13 +266,70 @@ welcome automatizado. Candidato a unificar bajo el transporte de Savia en el fut
 `arn:aws:sns:us-east-1:264911721808:naturalvita-ses-events` queda en stand-by por si se
 reapela el sandbox de AWS en mes 2-3. Hoy NO se usa.
 
-### Pendiente de Ader para activar Savia (provisión de secretos, §3.10)
-El código está listo; el cron es no-op hasta que existan estos secretos:
-1. **`SAVIA_DISPATCH_TOKEN`** (256-bit aleatorio) en Vercel **Y** en Supabase Vault con
-   nombre `savia_dispatch_token` (mismo valor). Sin esto el dispatcher no se invoca.
-2. **`RESEND_SAVIA_API_KEY`** en Vercel: API key dedicada de Resend para
-   `news.naturalvita.co` (reputación aislada). Sin esto, marketing cae a `RESEND_API_KEY`.
-3. Verificar el dominio `news.naturalvita.co` en Resend (SPF/DKIM/DMARC) si aún no.
+### Secretos provisionados (5-jun-2026)
+- `SAVIA_DISPATCH_TOKEN` en Vercel (Production+Preview) y en Vault con nombre
+  `savia_dispatch_token`. Vault confirmado, 64 chars hex.
+- `RESEND_SAVIA_API_KEY` en Vercel.
+- Dominio `news.naturalvita.co` verificado en Resend (SPF/DKIM/DMARC).
+- **Test E2E exitoso**: welcome encolado → cron → dispatcher 200 → Resend → status `sent`
+  + evento `delivered` del webhook + tags `flow/step/job` correlacionados.
+
+### Estado de buzones en Gmail (esperable)
+Por diseño, los correos de marketing caen en la pestaña **Promotions** de Gmail
+(subdominio + API key dedicada + `List-Unsubscribe` header). Eso es lo correcto y
+protege la reputación transaccional. Para mejorar reputación con el tiempo: registrar
+`news.naturalvita.co` en Google Postmaster Tools.
+
+---
+
+## 7.B SAVIA Sesión C — Carrito abandonado (CONSTRUIDA, 5-jun-2026)
+
+### Estrategia financiera
+Recuperación a costo cero primero; cupón solo cuando es indispensable:
+
+| # | Cuándo | Cupón | A quién |
+|---|---|---|---|
+| 1 | ~1h tras abandono | ❌ | Todos los abandonos elegibles |
+| 2 | +24h | ❌ (prueba social dinámica) | Solo a quien no compró |
+| 3 | +72h | ✅ Único por persona, 5% off, expira 48h, min $30k | Solo a quien sigue sin comprar |
+
+El cupón único se genera **al despachar** el paso 3 (`createOneTimeCoupon` en
+`lib/coupons/dynamic.ts`): code aleatorio `RECUPERA-XXXXXX`, `max_total_uses=1`,
+`expires_at=now()+48h`. Si el paso 3 se salta por predicate (carrito comprado en el
+ínterin), nunca se crea cupón huérfano.
+
+### Cobertura
+- **Logueados** (`carts` joined con `customers`): solo si `accepts_marketing=true`.
+- **Anónimos del checkout** (`orders` con `payment_status='pending'`): el email entró
+  al sistema en `customer_email` durante el checkout.
+- **Cap de spam**: idempotency por `cart-abandoned:{step}:{cart_id|order_id}` impide
+  doble-encolado para el mismo carrito. Un cliente nuevo (carrito distinto) sí puede
+  recibir una nueva serie — es comportamiento deseable.
+
+### Predicates anti-ruido
+- **Tiempo de enrolamiento**: candidato no en `email_suppressions`; carrito con items;
+  no existe `orders.payment_status='paid'` del email posterior al abandono.
+- **Tiempo de envío** (en cada paso): `shouldSkipCartAbandoned` verifica si el email
+  hizo una compra `paid` desde `enrolledAt`; si sí, el job pasa a `skipped` y no se
+  cobra margen ni se molesta al cliente.
+
+### Componentes
+- Tablas (reutiliza Sesión B; no requiere migración de schema).
+- Flow `cart-abandoned` sembrado (3 steps).
+- Plantillas `lib/email/templates/cart-abandoned-{1,2,3}.tsx`.
+- Detector `lib/savia/cart-detection.ts`: una llamada devuelve candidatos logueados +
+  anónimos con sus items renderizados.
+- Predicate hook por template en `lib/savia/templates.tsx`
+  (`SKIP_PREDICATES` + `shouldSkipSend`). Dispatcher lo invoca antes de cada envío.
+- Endpoint `/api/savia/cart-detect` (Bearer = `SAVIA_DISPATCH_TOKEN`) +
+  `savia_trigger_cart_detect()` SQL + cron `savia-cart-detect` cada 30 min.
+
+### Render dinámico (#4)
+- Email 1 muestra los productos del carrito tal como estaban al detectar.
+- Email 2 inyecta **top vendedores actuales** (`listBestSellersForEmail`) en el momento
+  del envío — la prueba social siempre refleja qué se vende hoy.
+- Email 3 genera el cupón **al despachar**, no al encolar — tarifa, expiración y
+  unicidad reflejan políticas vigentes.
 
 ### Esquema concreto de las 4 tablas (Sesión B)
 
@@ -372,8 +429,11 @@ en vivo (un fallo silencioso de Klaviyo creó perfiles sin vincular en el pasado
 
 ## 8. Sprint 4 (tras Savia): operación + GEO + launch
 
-- Carrito abandonado (1h + 24h, cupón opcional) + flujo recompra 30d + reactivación 60d
-- Dashboard `/admin/savia` (bounce, complaint, open, click, suscriptores, revenue)
+- ~~Carrito abandonado~~ → CONSTRUIDO en Sesión C, ver §7.B.
+- Flujo recompra 30d + reactivación 60d (pendiente; mismo motor que cart-abandoned).
+- Dashboard `/admin/savia` (bounce, complaint, open, click, suscriptores, revenue) —
+  con la atribución #1 ya implementada (cookie `savia_jid` → `orders.savia_attribution_job_id`),
+  el cálculo de revenue por flow es directo.
 - Alertas si bounce >2% o complaint >0.1%
 - Blog `/blog` con schema.org Article + 5 artículos GEO iniciales
   ("Mejor magnesio para dormir Colombia 2026", "Vitamina D Colombia",
