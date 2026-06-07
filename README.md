@@ -375,6 +375,58 @@ admin client expuse una vista que filtra solo a los jobs cuyo `jobname` empieza 
 La página actual ya cubre el 90% del valor (operar y entender el ROI). El resto
 es troubleshooting profundo, que se puede añadir cuando aparezca el primer caso.
 
+---
+
+## 7.D SAVIA Sesión E — Recompra 30d + Reactivación 60d (CONSTRUIDA, 7-jun-2026)
+
+Dos flows post-compra que reutilizan todo el motor (cola, enrolador, dispatcher,
+predicates, cupones únicos, render dinámico). Especialmente valiosos para una tienda
+de suplementos: los consumibles se acaban cada mes.
+
+### Estrategia financiera (consistente con cart-abandoned)
+| Flow | Cuándo | Cupón | Lógica |
+|---|---|---|---|
+| `repurchase-30d` | último pedido pagado hace 30-37d | ❌ Ninguno | Cliente satisfecho cuyo producto se acaba; basta recordar y facilitar reorden. No se erosiona margen. |
+| `reactivation-60d` | último pedido pagado hace 60-74d | ✅ `VUELVE-XXXXXX` 8%, expira 7d, único | Cliente frío; necesita un empujón real. Cupón mayor que cart (5%) porque está más lejos. |
+
+Las ventanas son **disjuntas** (37 < 60): un cliente nunca entra a ambos el mismo día.
+Escalan naturalmente: si a 30d no recompró, a 60d recibe la reactivación con cupón.
+
+### Detección (`lib/savia/lifecycle-detection.ts` + RPC `savia_lifecycle_candidates`)
+El RPC toma con `distinct on (customer_id)` el último pedido pagado de cada cliente; si
+ese pedido cae en la ventana `[now-max, now-min]`, califica (y por construcción no hay
+pedido más reciente). Respeta `accepts_marketing` y `email_suppressions` en SQL.
+El detector adjunta los productos del último pedido para el render de recompra.
+
+### Anti-ruido
+- **Idempotencia**: `enrollmentRef = order:{lastOrderId}` → un pedido disparador enrola
+  una sola vez por flow, aunque caiga varios días en su ventana (cron diario).
+- **Predicate de envío** `shouldSkipIfPurchasedSince`: si el cliente volvió a comprar
+  entre el enrolamiento y el envío, el job pasa a `skipped`. Compartido por ambos flows.
+- **Consentimiento**: solo clientes con `accepts_marketing=true` y no suprimidos.
+
+### Render dinámico (#4)
+- Recompra: re-resuelve los productos del último pedido al despachar (precio/stock/imagen
+  actuales, link al producto).
+- Reactivación: genera el cupón único `VUELVE-XXXXXX` al despachar (nunca huérfano: si el
+  predicate salta, no se crea cupón).
+
+### Infra
+- Cron `savia-lifecycle-detect` diario `0 14 * * *` (09:00 Colombia) →
+  `savia_trigger_lifecycle_detect()` → `/api/savia/lifecycle-detect` (Bearer).
+- El endpoint corre ambos kinds en paralelo y enrola candidatos.
+
+### Refactor incluido
+- `resolveUnsubscribeToken` + `processSaviaUnsubscribe` extraídos a
+  `lib/savia/unsubscribe-token.ts` (compartido por cart-detect y lifecycle).
+- Soporte de **token efímero** `anon-<base64url email>` para dar de baja a compradores
+  que reciben marketing post-compra sin ser suscriptores del newsletter: el one-click y
+  la página los procesan añadiéndolos a `email_suppressions`.
+
+### Estado de flows en producción (4 activos)
+`welcome-series`, `cart-abandoned`, `repurchase-30d`, `reactivation-60d`. Todos visibles
+en `/admin/savia` con su revenue atribuido.
+
 ### Esquema concreto de las 4 tablas (Sesión B)
 
 **`email_flows`** — definición declarativa de un flow.
@@ -475,7 +527,7 @@ en vivo (un fallo silencioso de Klaviyo creó perfiles sin vincular en el pasado
 
 - ~~Carrito abandonado~~ → CONSTRUIDO en Sesión C, ver §7.B.
 - ~~Dashboard `/admin/savia`~~ → CONSTRUIDO en Sesión D, ver §7.C.
-- Flujo recompra 30d + reactivación 60d (pendiente; mismo motor que cart-abandoned).
+- ~~Flujo recompra 30d + reactivación 60d~~ → CONSTRUIDO en Sesión E, ver §7.D.
 - Alertas si bounce >2% o complaint >0.1%
 - Blog `/blog` con schema.org Article + 5 artículos GEO iniciales
   ("Mejor magnesio para dormir Colombia 2026", "Vitamina D Colombia",

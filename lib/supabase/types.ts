@@ -2634,8 +2634,20 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      savia_lifecycle_candidates: {
+        Args: { p_max_days: number; p_min_days: number }
+        Returns: {
+          customer_id: string
+          email: string
+          full_name: string
+          last_order_at: string
+          last_order_id: string
+          last_total_cop: number
+        }[]
+      }
       savia_trigger_cart_detect: { Args: never; Returns: number }
       savia_trigger_dispatch: { Args: never; Returns: number }
+      savia_trigger_lifecycle_detect: { Args: never; Returns: number }
       search_products: {
         Args: { page_offset?: number; page_size?: number; q: string }
         Returns: {

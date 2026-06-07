@@ -16,7 +16,7 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
-import { unsubscribeFromNewsletter } from "@/lib/newsletter/queries";
+import { processSaviaUnsubscribe } from "@/lib/savia/unsubscribe-token";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "missing_token" }, { status: 400 });
   }
 
-  const result = await unsubscribeFromNewsletter(token);
+  const result = await processSaviaUnsubscribe(token);
 
   // RFC 8058: el cliente de correo solo mira el código 2xx. Devolvemos 200
   // incluso si el token no resolvió, para no exponer si un email existe o no

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { unsubscribeFromNewsletter } from "@/lib/newsletter/queries";
+import { processSaviaUnsubscribe } from "@/lib/savia/unsubscribe-token";
 
 export const metadata: Metadata = {
   title: "Cancelar suscripción · NaturalVita",
@@ -26,7 +26,7 @@ type PageProps = {
  */
 export default async function DesuscribirPage({ params }: PageProps) {
   const { token } = await params;
-  const result = await unsubscribeFromNewsletter(token);
+  const result = await processSaviaUnsubscribe(token);
 
   return (
     <main className="min-h-[60vh] flex items-center justify-center px-4 py-16">

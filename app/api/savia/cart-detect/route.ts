@@ -18,32 +18,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { enrollInFlow } from "@/lib/savia/enroll";
 import { detectAbandonedCarts } from "@/lib/savia/cart-detection";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveUnsubscribeToken } from "@/lib/savia/unsubscribe-token";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const FLOW = "cart-abandoned";
-
-/**
- * Genera un token de "unsubscribe" seguro para correos a un email cuando
- * todavía no hay newsletter_subscriber (caso anónimo del checkout). Si el
- * suscriptor ya existe, reusamos su token real. Esto asegura que el link
- * de baja siempre funcione, sin crear un suscriptor sin consentimiento.
- */
-async function resolveUnsubscribeToken(email: string): Promise<string> {
-  const supabase = createAdminClient();
-  const { data } = await supabase
-    .from("newsletter_subscribers")
-    .select("unsubscribe_token")
-    .eq("email", email)
-    .maybeSingle();
-  if (data?.unsubscribe_token) return data.unsubscribe_token as string;
-  // Token efímero que igual se valida server-side en /api/savia/unsubscribe:
-  // si no existe en BD, igual añadimos el email a email_suppressions por
-  // best-effort. La página GET muestra el mensaje genérico.
-  return "anon-" + Buffer.from(email).toString("base64url");
-}
 
 export async function POST(request: NextRequest) {
   const token = process.env.SAVIA_DISPATCH_TOKEN;

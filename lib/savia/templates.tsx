@@ -19,9 +19,12 @@ import { WelcomeFollowup } from "@/lib/email/templates/welcome-followup";
 import { CartAbandoned1 } from "@/lib/email/templates/cart-abandoned-1";
 import { CartAbandoned2 } from "@/lib/email/templates/cart-abandoned-2";
 import { CartAbandoned3 } from "@/lib/email/templates/cart-abandoned-3";
+import { RepurchaseReminder } from "@/lib/email/templates/repurchase-reminder";
+import { ReactivationOffer } from "@/lib/email/templates/reactivation-offer";
 import { listBestSellersForEmail } from "@/lib/catalog/listing-queries";
 import { COMPANY } from "@/lib/legal/company-info";
 import { shouldSkipCartAbandoned } from "@/lib/savia/cart-detection";
+import { shouldSkipIfPurchasedSince } from "@/lib/savia/lifecycle-detection";
 import { createOneTimeCoupon } from "@/lib/coupons/dynamic";
 
 export type SaviaRenderContext = {
@@ -65,6 +68,9 @@ const SKIP_PREDICATES: Record<string, SkipPredicate> = {
   "cart-abandoned-1": (ctx) => shouldSkipCartAbandoned(ctx.payload),
   "cart-abandoned-2": (ctx) => shouldSkipCartAbandoned(ctx.payload),
   "cart-abandoned-3": (ctx) => shouldSkipCartAbandoned(ctx.payload),
+  // Post-compra: si volvio a comprar tras enrolarse, no insistir.
+  "repurchase-reminder": (ctx) => shouldSkipIfPurchasedSince(ctx.payload),
+  "reactivation-offer": (ctx) => shouldSkipIfPurchasedSince(ctx.payload),
 };
 
 export async function shouldSkipSend(
@@ -161,6 +167,49 @@ const REGISTRY: Record<string, Renderer> = {
     return CartAbandoned3({
       customerName: p.customerName ?? null,
       cartUrl: withAttribution("/carrito", ctx.jobId),
+      unsubscribeUrl: unsubscribePageUrl(ctx.unsubscribeToken),
+      couponCode: coupon.code,
+      couponPercent,
+      expiresInHours,
+    });
+  },
+
+  "repurchase-reminder": (ctx) => {
+    const p = ctx.payload as {
+      customerName?: string | null;
+      products?: Array<{ name: string; slug: string; imageUrl: string | null }>;
+    };
+    return RepurchaseReminder({
+      customerName: p.customerName ?? null,
+      shopUrl: withAttribution("/tienda", ctx.jobId),
+      unsubscribeUrl: unsubscribePageUrl(ctx.unsubscribeToken),
+      products: (p.products ?? []).map((it) => ({
+        name: it.name,
+        url: withAttribution(`/producto/${it.slug}`, ctx.jobId),
+        imageUrl: it.imageUrl,
+      })),
+    });
+  },
+
+  "reactivation-offer": async (ctx) => {
+    const p = ctx.payload as { customerName?: string | null };
+    // Cupon unico de reactivacion (mayor que cart, cliente mas frio).
+    const expiresInHours = 7 * 24;
+    const couponPercent = 8;
+    const coupon = await createOneTimeCoupon({
+      prefix: "VUELVE",
+      discountPercent: couponPercent,
+      minOrderCop: 30000,
+      maxDiscountCop: 60000,
+      expiresInHours,
+      description: `Reactivacion 60d - job ${ctx.jobId}`,
+    });
+    if (!coupon.ok) {
+      throw new Error(`No se pudo generar cupon: ${coupon.error}`);
+    }
+    return ReactivationOffer({
+      customerName: p.customerName ?? null,
+      shopUrl: withAttribution("/tienda", ctx.jobId),
       unsubscribeUrl: unsubscribePageUrl(ctx.unsubscribeToken),
       couponCode: coupon.code,
       couponPercent,
