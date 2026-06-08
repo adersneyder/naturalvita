@@ -82,10 +82,19 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
     return { title: "Producto no encontrado", robots: { index: false, follow: false } };
   }
 
-  const title = product.name;
+  // SEO: el <title> incluye la presentación para preservar el keyword de
+  // tamaño ("3 lbs", "240 ml"). El H1 visible mantiene el nombre limpio.
+  // Mejor de ambos: presentación indexable sin ensuciar la marca.
+  const titlePresentation = formatPresentation(
+    product.presentation,
+    product.presentation_type,
+  );
+  const title = titlePresentation
+    ? `${product.name} · ${titlePresentation}`
+    : product.name;
   const description =
     product.short_description ??
-    `${product.name}${product.presentation ? ` · ${product.presentation}` : ""}`;
+    `${product.name}${titlePresentation ? ` · ${titlePresentation}` : ""}`;
   const ogImage = product.images[0]?.url;
 
   return {

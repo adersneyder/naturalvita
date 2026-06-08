@@ -27,6 +27,7 @@ type ProductForGeneration = {
   name: string;
   invima_number: string | null;
   presentation: string | null;
+  presentation_type: string | null;
   description: string | null; // descripción cruda que vino del scraper
   category_slug: string | null;
   category_name: string | null;
@@ -45,7 +46,7 @@ export async function loadProductForGeneration(
   const { data, error } = await supabase
     .from("products")
     .select(
-      `id, name, invima_number, presentation, description,
+      `id, name, invima_number, presentation, presentation_type, description,
        category:categories!category_id(slug, name),
        laboratory:laboratories!laboratory_id(name)`,
     )
@@ -64,6 +65,7 @@ export async function loadProductForGeneration(
     name: data.name,
     invima_number: data.invima_number,
     presentation: data.presentation,
+    presentation_type: data.presentation_type,
     description: data.description,
     category_slug: cat.slug,
     category_name: cat.name,
@@ -160,13 +162,28 @@ export async function generateContentForProduct(
     // 3. Cargar hermanos para diversificación
     const siblings = await loadSiblings(supabase, product);
 
-    // 4. Construir variables y prompt
+    // 4. Construir variables y prompt. La IA debe recibir nombre y presentación
+    // EN FORMATO CANÓNICO (no el crudo del scraping) para que las descripciones
+    // y short_description generadas referencien el mismo texto que verá el
+    // cliente final. Coherencia editorial #5.
+    const { normalizeProductRecord } = await import("@/lib/catalog/name-normalizer");
+    const { formatPresentation } = await import("@/lib/catalog/presentation");
+    const norm = normalizeProductRecord({
+      name: product.name,
+      presentation: product.presentation,
+      presentation_type: product.presentation_type,
+    });
+    const presentationDisplay = formatPresentation(
+      norm.presentation,
+      norm.presentation_type,
+    );
+
     const variables: PromptVariables = {
-      nombre: product.name,
+      nombre: norm.name,
       categoria: product.category_name ?? "",
       invima: product.invima_number ?? "",
       laboratorio: product.laboratory_name ?? "",
-      presentacion: product.presentation ?? "",
+      presentacion: presentationDisplay ?? "",
       descripcion_origen: product.description ?? "",
       hermanos: siblings,
     };
@@ -323,6 +340,25 @@ export async function applyContentToProduct(
 ): Promise<{ success: boolean; error?: string }> {
   const now = new Date().toISOString();
 
+  // Normalizar nombre + presentación de forma determinista cada vez que se
+  // aplica una ficha generada por IA (#5 backlog de correcciones). Mantiene
+  // el catálogo en formato canónico sin importar cómo lo trajo el scraping.
+  // Idempotente: si ya estaba canónico, los valores no cambian.
+  const { normalizeProductRecord } = await import("@/lib/catalog/name-normalizer");
+  const { data: current } = await supabase
+    .from("products")
+    .select("name, presentation, presentation_type")
+    .eq("id", productId)
+    .single();
+
+  const normalized = current
+    ? normalizeProductRecord({
+        name: current.name as string,
+        presentation: current.presentation as string | null,
+        presentation_type: current.presentation_type as string | null,
+      })
+    : null;
+
   const { error: updateError } = await supabase
     .from("products")
     .update({
@@ -331,6 +367,13 @@ export async function applyContentToProduct(
       composition_use: fields.composition_use,
       dosage: fields.dosage,
       warnings: fields.warnings,
+      ...(normalized
+        ? {
+            name: normalized.name,
+            presentation: normalized.presentation,
+            presentation_type: normalized.presentation_type,
+          }
+        : {}),
       ai_metadata: {
         generated_at: now,
         model: metadata.model,

@@ -59,6 +59,10 @@ const ACRONYMS = new Set([
 ]);
 
 // Palabras "menores" en español que van en minúscula si no son la primera/última.
+// NO incluye conjunciones de una letra (y/e/o/u): en productos esas casi
+// siempre son vitaminas (Vitamin E, Omega... A/E) y la regla "letra sola
+// → mayúscula" debe ganar. La penalización en español es menor: "Colágeno
+// Y Biotina" se lee bien (estilo Amazon/ML); "Vitamin e" se vería roto.
 const SPANISH_LOWERCASE = new Set([
   "de",
   "del",
@@ -69,10 +73,6 @@ const SPANISH_LOWERCASE = new Set([
   "en",
   "con",
   "sin",
-  "y",
-  "e",
-  "o",
-  "u",
   "a",
   "al",
   "para",
@@ -189,8 +189,15 @@ function titleCaseToken(token: string, index: number, total: number): string {
     if (a.toLowerCase() === lower) return a;
   }
 
-  // Letra sola (C, D, E, K, B): suele ser nombre de vitamina o letra-marca.
-  // SIEMPRE en mayúscula. Maneja también "gm" -> normalizado abajo.
+  // Preposiciones/conjunciones menores en minúscula, salvo si son la primera
+  // o última palabra. Va ANTES de la regla de letra-sola para que "y", "e",
+  // "o", "u" (conjunciones de una letra) no se conviertan en mayúscula.
+  if (SPANISH_LOWERCASE.has(lower) && index !== 0 && index !== total - 1) {
+    return lower;
+  }
+
+  // Letra sola (C, D, E, K, B): nombre de vitamina o letra-marca → mayúscula.
+  // Las conjunciones de una letra ya se filtraron arriba.
   if (token.length === 1 && /^[a-záéíóúñü]$/i.test(token)) {
     return token.toUpperCase();
   }
@@ -204,16 +211,6 @@ function titleCaseToken(token: string, index: number, total: number): string {
 
   // Token numérico crudo → sin tocar (los números no se capitalizan).
   if (/^\d+([.,]\d+)?$/.test(token)) return token;
-
-  // Preposiciones/artículos menores en minúscula, salvo si son la primera o
-  // última palabra del nombre.
-  if (
-    SPANISH_LOWERCASE.has(lower) &&
-    index !== 0 &&
-    index !== total - 1
-  ) {
-    return lower;
-  }
 
   return capitalizeWord(token);
 }
@@ -303,10 +300,24 @@ function extractTrailingPresentation(
     }
   }
 
+  // C2. Conteo genérico al final sin forma específica: "... 100 Und" /
+  // "... x 60 u" / "... 60 unidades". El type queda null (forma desconocida).
+  const c2 = text.match(
+    /^(.*?)[\s,]*(?:x\s*)?(\d+(?:[.,]\d+)?)\s*(und|unds|unidad(?:es)?|u)\s*$/i,
+  );
+  if (c2) {
+    const count = parseFloat(c2[2].replace(",", "."));
+    return {
+      presentation: `${count} ${count === 1 ? "unidad" : "unidades"}`,
+      type: null,
+      remaining: c2[1].trim().replace(/[\s,]+$/, ""),
+    };
+  }
+
   // D. Volumen al final: "... x 30 ml" / "... 240 ml" / "... 907 g" / "... 32 oz"
-  // Solo se considera presentación si NO es la dosis del producto (mg/mcg).
+  // Importante: unidades multi-letra antes que letras solas.
   const d = text.match(
-    /^(.*?)[\s,]*(?:x\s*)?(\d+(?:[.,]\d+)?)\s*(ml|l|g|gr|gm|kg|oz|lbs?)\s*$/i,
+    /^(.*?)[\s,]*(?:x\s*)?(\d+(?:[.,]\d+)?)\s*(lbs?|kg|gm|gr|oz|ml|g|l)\s*$/i,
   );
   if (d) {
     const value = parseFloat(d[2].replace(",", "."));
@@ -375,6 +386,108 @@ function applyTitleCase(name: string): string {
 }
 
 // --- API pública ------------------------------------------------------------
+
+/**
+ * Normaliza un string de presentación cruda a tamaño canónico.
+ *   "Gotas · 60ml"   -> "60 ml"
+ *   "Softgels · 10u" -> "10 unidades"
+ *   "2 units"        -> "2 unidades"
+ *   "907 g"          -> "907 g"
+ *   "60 cápsulas"    -> "60 unidades"   (la forma vive en presentation_type)
+ * Devuelve null si no se puede extraer un tamaño con número.
+ */
+export function canonicalSize(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  // Quita un prefijo "Forma ·" (ej. "Gotas · 60ml").
+  const stripped = raw.replace(/^[^·]*·\s*/, "").trim();
+  const prepared = splitNumberUnit(stripped);
+  // Importante: unidades de varias letras ANTES que las de una sola letra
+  // para que "Lbs" no haga match parcial con "l".
+  const m = prepared.match(
+    /(\d+(?:[.,]\d+)?)\s*(softgels?|cápsulas?|capsulas?|tabletas?|gomitas?|sobres?|unidades?|unidad|units?|lbs?|kg|mg|mcg|gm|gr|oz|und|unds|ml|caps?|g|l|u)\b/i,
+  );
+  if (!m) return null;
+
+  const value = parseFloat(m[1].replace(",", "."));
+  if (!Number.isFinite(value)) return null;
+  let unit = m[2].toLowerCase();
+
+  // Unidades de conteo → "unidades" (la forma específica la da el type).
+  if (
+    /^u$|^und$|^unds$|^units?$|^unidad(es)?$|^cápsulas?$|^capsulas?$|^softgels?$|^tabletas?$|^gomitas?$|^sobres?$|^caps?$/.test(
+      unit,
+    )
+  ) {
+    return `${value} ${value === 1 ? "unidad" : "unidades"}`;
+  }
+
+  // Volumen / peso.
+  if (unit === "gr" || unit === "gm") unit = "g";
+  if (unit === "l") unit = "L";
+  if (unit === "lb") unit = "lbs";
+  return `${value} ${unit}`;
+}
+
+/** Infiere un type de presentación desde el texto de presentación crudo. */
+function inferTypeFromPresentation(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  for (const key of Object.keys(PRESENTATION_FORMS)) {
+    if (lower.includes(key)) return PRESENTATION_FORMS[key].type;
+  }
+  if (/\bml\b|·\s*\d+\s*ml/.test(lower)) return "drops";
+  if (/\bg\b|gramos/.test(lower)) return "powder";
+  return null;
+}
+
+export type NormalizedProductRecord = {
+  name: string;
+  presentation: string | null;
+  presentation_type: string | null;
+};
+
+/**
+ * Normaliza el registro completo de un producto (name + presentation +
+ * presentation_type) al formato canónico de NaturalVita. Fuente única de
+ * verdad usada tanto por el apply masivo como por el flujo de IA.
+ *
+ * Prioridad para el TAMAÑO:
+ *   1. El extraído del nombre (más confiable: es la etiqueta del laboratorio).
+ *      Esto además CORRIGE presentaciones mal scrapeadas (ej. nombre dice
+ *      "x 30" pero la presentación decía "2 units").
+ *   2. El normalizado del campo presentation existente.
+ * Prioridad para el TYPE:
+ *   1. presentation_type existente (se fijó con contexto del scraping/IA).
+ *   2. El extraído del nombre.
+ *   3. Inferido del texto de presentación.
+ */
+export function normalizeProductRecord(input: {
+  name: string;
+  presentation?: string | null;
+  presentation_type?: string | null;
+}): NormalizedProductRecord {
+  const norm = normalizeProductName(input.name);
+
+  const type =
+    (input.presentation_type && input.presentation_type.trim()) ||
+    norm.extractedPresentationType ||
+    inferTypeFromPresentation(input.presentation) ||
+    null;
+
+  let size: string | null = null;
+  if (norm.extractedPresentation && /\d/.test(norm.extractedPresentation)) {
+    size = canonicalSize(norm.extractedPresentation);
+  }
+  if (!size && input.presentation) {
+    size = canonicalSize(input.presentation);
+  }
+
+  return {
+    name: norm.cleanName,
+    presentation: size,
+    presentation_type: type,
+  };
+}
 
 export function normalizeProductName(rawName: string): NormalizedName {
   const trimmed = (rawName ?? "").replace(/\s+/g, " ").trim();
