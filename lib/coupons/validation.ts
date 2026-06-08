@@ -235,6 +235,41 @@ export function calculateDiscount(
  * Increment de used_count: SQL atómico con UPDATE+RETURNING para evitar
  * race conditions en alto tráfico.
  */
+/**
+ * Libera la(s) redención(es) de cupón asociadas a un pedido. Se llama cuando
+ * un pedido pendiente se cancela: el used_count debe reflejar solo cupones
+ * realmente "consumidos" por compras vivas. Decrementa used_count y borra la
+ * fila de redención. Tolerante: si no hay redención, no hace nada.
+ */
+export async function releaseCouponRedemptionByOrder(
+  orderId: string,
+): Promise<void> {
+  const supabase = getServiceClient();
+
+  const { data: redemptions } = await supabase
+    .from("coupon_redemptions")
+    .select("id, coupon_id")
+    .eq("order_id", orderId);
+
+  if (!redemptions || redemptions.length === 0) return;
+
+  for (const r of redemptions) {
+    const couponId = r.coupon_id as string;
+    const { data: cur } = await supabase
+      .from("coupons")
+      .select("used_count")
+      .eq("id", couponId)
+      .maybeSingle();
+    if (cur) {
+      await supabase
+        .from("coupons")
+        .update({ used_count: Math.max(0, (cur.used_count ?? 0) - 1) })
+        .eq("id", couponId);
+    }
+    await supabase.from("coupon_redemptions").delete().eq("id", r.id as string);
+  }
+}
+
 export async function recordCouponRedemption(params: {
   couponId: string;
   orderId: string;

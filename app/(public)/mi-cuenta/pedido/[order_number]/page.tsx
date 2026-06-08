@@ -12,6 +12,7 @@ import { formatCop } from "@/lib/format/currency";
 import { StatusBadge } from "@/components/orders/StatusBadge";
 import { OrderTimeline } from "@/components/orders/OrderTimeline";
 import { TrackingChip } from "@/components/orders/TrackingChip";
+import CancelOrderButton from "./_CancelOrderButton";
 
 export const metadata: Metadata = {
   title: "Detalle del pedido",
@@ -38,6 +39,11 @@ export default async function CustomerOrderDetailPage({
   const timeline = buildOrderTimeline(order);
   const isCancelled = order.status === "cancelled";
   const isRefunded = order.status === "refunded";
+  // Un pedido pendiente de pago lo puede cancelar el propio cliente (sin pago
+  // de por medio no hay reembolso que gestionar). Quita la fricción de quedar
+  // con pedidos NV- "fantasma" tras abandonar la pasarela.
+  const isCancellable =
+    order.status === "pending" && order.payment_status === "pending";
   const isShippedOrLater =
     order.status === "shipped" || order.status === "delivered";
 
@@ -204,6 +210,12 @@ export default async function CustomerOrderDetailPage({
           >
             Seguir comprando
           </Link>
+
+          {isCancellable && (
+            <div className="pt-1">
+              <CancelOrderButton orderNumber={order.order_number} />
+            </div>
+          )}
         </aside>
       </div>
     </div>
