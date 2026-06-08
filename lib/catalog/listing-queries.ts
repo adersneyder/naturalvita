@@ -186,7 +186,7 @@ export async function listProducts(
   let query = supabase
     .from("products")
     .select(
-      `id, slug, name, short_description, presentation, price_cop, compare_at_price_cop,
+      `id, slug, name, short_description, presentation, presentation_type, price_cop, compare_at_price_cop,
        stock, track_stock, created_at,
        category:categories!category_id(slug, name),
        laboratory:laboratories!laboratory_id(slug, name),
@@ -276,6 +276,7 @@ type RawListRow = {
   name: string;
   short_description: string | null;
   presentation: string | null;
+  presentation_type: string | null;
   price_cop: number;
   compare_at_price_cop: number | null;
   stock: number;
@@ -322,6 +323,7 @@ function rawToSummary(row: RawListRow): PublicProductSummary | null {
     name: row.name,
     short_description: row.short_description,
     presentation: row.presentation,
+    presentation_type: row.presentation_type,
     price_cop: row.price_cop,
     compare_at_price_cop: row.compare_at_price_cop,
     stock_badge: computeStockBadge(row.stock, row.track_stock),
@@ -704,7 +706,7 @@ export async function listFeaturedProducts(
   const { data } = await supabase
     .from("products")
     .select(
-      `id, slug, name, short_description, presentation, price_cop, compare_at_price_cop,
+      `id, slug, name, short_description, presentation, presentation_type, price_cop, compare_at_price_cop,
        stock, track_stock, created_at,
        category:categories!category_id(slug, name),
        laboratory:laboratories!laboratory_id(slug, name),

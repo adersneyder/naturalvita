@@ -3,6 +3,7 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/server";
 import PriceTag from "../../_components/PriceTag";
 import StockBadge from "../../_components/StockBadge";
+import { formatPresentation } from "@/lib/catalog/presentation";
 
 type Props = {
   currentProductId: string;
@@ -25,7 +26,7 @@ export default async function RelatedProducts({
   const { data: products } = await supabase
     .from("products")
     .select(
-      `id, slug, name, presentation, price_cop, compare_at_price_cop, stock, track_stock,
+      `id, slug, name, presentation, presentation_type, price_cop, compare_at_price_cop, stock, track_stock,
        short_description,
        images:product_images!inner(url, is_primary)`,
     )
@@ -69,9 +70,12 @@ export default async function RelatedProducts({
               <h3 className="font-medium text-sm text-[var(--color-leaf-900)] m-0 mb-1 line-clamp-2 group-hover:text-[var(--color-iris-700)] transition-colors">
                 {p.name}
               </h3>
-              {p.presentation && (
-                <p className="text-xs text-[var(--color-earth-700)] m-0 mb-2">{p.presentation}</p>
-              )}
+              {(() => {
+                const label = formatPresentation(p.presentation, p.presentation_type);
+                return label ? (
+                  <p className="text-xs text-[var(--color-earth-700)] m-0 mb-2">{label}</p>
+                ) : null;
+              })()}
               <div className="flex items-center justify-between gap-2">
                 <PriceTag price={p.price_cop} compareAtPrice={p.compare_at_price_cop} size="sm" />
                 <StockBadge stock={p.stock} trackStock={p.track_stock} />

@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { PublicProductSummary } from "@/lib/catalog/types";
 import { calculateDiscount, formatCop } from "@/lib/format/currency";
+import { formatPresentation } from "@/lib/catalog/presentation";
 import QuickAddButton from "./QuickAddButton";
 
 type Props = {
@@ -74,11 +75,15 @@ export default function ProductCard({ product, priority = false }: Props) {
         <h3 className="font-serif text-base text-[var(--color-leaf-900)] leading-snug line-clamp-2 group-hover:text-[var(--color-iris-700)] transition-colors">
           {product.name}
         </h3>
-        {product.presentation && (
-          <p className="text-xs text-[var(--color-earth-700)]">
-            {product.presentation}
-          </p>
-        )}
+        {(() => {
+          const label = formatPresentation(
+            product.presentation,
+            product.presentation_type,
+          );
+          return label ? (
+            <p className="text-xs text-[var(--color-earth-700)]">{label}</p>
+          ) : null;
+        })()}
 
         {/* Pie con precio a la izquierda y quick-add a la derecha.
             En mobile (poco ancho) el quick-add cae a otra línea por flex-wrap. */}

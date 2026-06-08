@@ -34,6 +34,7 @@ export type PublicProductSummary = {
   name: string;
   short_description: string | null;
   presentation: string | null;
+  presentation_type: string | null;
   price_cop: number;
   /** Precio antes de descuento. Si está poblado y > price_cop, se muestra tachado. */
   compare_at_price_cop: number | null;

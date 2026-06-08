@@ -13,7 +13,7 @@ import {
  * en `is_active`. La RLS pública también filtra por `is_active = true`.
  */
 const PUBLIC_PRODUCT_SELECT = `
-  id, slug, name, short_description, presentation,
+  id, slug, name, short_description, presentation, presentation_type,
   price_cop, compare_at_price_cop, stock, track_stock,
   category:categories!category_id(slug, name),
   laboratory:laboratories!laboratory_id(slug, name),
@@ -26,6 +26,7 @@ type RawProductRow = {
   name: string;
   short_description: string | null;
   presentation: string | null;
+  presentation_type: string | null;
   price_cop: number;
   compare_at_price_cop: number | null;
   stock: number;
@@ -56,6 +57,7 @@ function toSummary(row: RawProductRow): PublicProductSummary | null {
     name: row.name,
     short_description: row.short_description,
     presentation: row.presentation,
+    presentation_type: row.presentation_type,
     price_cop: row.price_cop,
     compare_at_price_cop: row.compare_at_price_cop,
     stock_badge: computeStockBadge(row.stock, row.track_stock),
@@ -84,7 +86,7 @@ export async function getProductBySlug(slug: string): Promise<PublicProductDetai
     .select(
       `
       id, slug, name, short_description, full_description, composition_use,
-      dosage, warnings, presentation, invima_number,
+      dosage, warnings, presentation, presentation_type, invima_number,
       price_cop, compare_at_price_cop, stock, track_stock,
       category:categories!category_id(slug, name),
       laboratory:laboratories!laboratory_id(slug, name),
@@ -186,6 +188,7 @@ export async function getProductBySlug(slug: string): Promise<PublicProductDetai
     dosage: data.dosage,
     warnings: data.warnings,
     presentation: data.presentation,
+    presentation_type: data.presentation_type,
     invima_number: data.invima_number,
     price_cop: data.price_cop,
     compare_at_price_cop: data.compare_at_price_cop,

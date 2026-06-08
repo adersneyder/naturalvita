@@ -14,6 +14,7 @@ import ProductGallery from "./_ProductGallery";
 import ProductInfoTabs from "./_ProductInfoTabs";
 import { getProductReviews, getProductReviewStats, checkReviewEligibility } from "@/lib/reviews/queries";
 import { getWishlistProductIds } from "@/lib/wishlist/queries";
+import { formatPresentation } from "@/lib/catalog/presentation";
 
 type Params = Promise<{ slug: string }>;
 
@@ -110,6 +111,10 @@ export default async function ProductPage({ params }: { params: Params }) {
 
   const isAvailable = !product.track_stock || product.stock > 0;
   const primaryImage = product.images[0];
+  const presentationLabel = formatPresentation(
+    product.presentation,
+    product.presentation_type,
+  );
 
   // Recolectar atributos para badges visibles (los que tienen show_in_card=true)
   const visibleAttributes = (product.attributes ?? [])
@@ -238,9 +243,9 @@ export default async function ProductPage({ params }: { params: Params }) {
                 className="mt-3 shrink-0"
               />
             </div>
-            {product.presentation && (
+            {presentationLabel && (
               <p className="text-sm text-[var(--color-earth-700)] m-0 mb-2">
-                {product.presentation}
+                {presentationLabel}
               </p>
             )}
 
