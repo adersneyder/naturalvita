@@ -233,19 +233,60 @@ export async function signInWithMagicLinkAction(
     console.warn("[auth] ratelimit no disponible:", err);
   }
 
-  const supabase = await createClient();
-  const origin = await getOriginFromHeaders();
+  // Generamos el link nosotros con service role (NO usa PKCE → funciona si el
+  // usuario abre el correo en otro navegador o dispositivo) y lo enviamos
+  // por Resend (mismo subdominio transaccional del resto del sitio).
+  // Esto reemplaza signInWithOtp, que dejaba un code_verifier en cookies
+  // que se perdía cuando el correo se abría en otro browser/dispositivo.
+  const { createAdminClient } = await import("@/lib/supabase/admin");
+  const { sendEmail } = await import("@/lib/email/client");
+  const { MagicLinkEmail } = await import("@/lib/email/templates/magic-link");
 
-  const { error } = await supabase.auth.signInWithOtp({
+  const admin = createAdminClient();
+  const origin = await getOriginFromHeaders();
+  const redirectTo = `${origin}/auth/callback?next=${encodeURIComponent(next)}`;
+
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: "magiclink",
     email,
-    options: {
-      shouldCreateUser: true, // si no existe, crea cuenta automáticamente
-      emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
-    },
+    options: { redirectTo },
   });
 
-  if (error) {
-    console.error("[auth] magicLink error:", error.message);
+  if (error || !data?.properties?.action_link) {
+    console.error("[auth] generateLink error:", error?.message);
+    return {
+      ok: false,
+      message: "No pudimos generar tu enlace. Intenta de nuevo.",
+    };
+  }
+
+  const actionLink = data.properties.action_link;
+  const isAdmin = next.startsWith("/admin");
+
+  try {
+    const sent = await sendEmail({
+      to: email,
+      subject: isAdmin
+        ? "Acceso a NaturalVita Admin"
+        : "Tu enlace para iniciar sesión",
+      react: MagicLinkEmail({ actionLink, isAdmin }),
+      category: "transactional",
+      skipSuppressionCheck: true, // login es crítico, salta suppression
+      tags: [
+        { name: "type", value: "magic_link" },
+        { name: "audience", value: isAdmin ? "admin" : "customer" },
+      ],
+    });
+
+    if (!sent.success) {
+      console.error("[auth] magic link send falló:", sent.errorMessage);
+      return {
+        ok: false,
+        message: "No pudimos enviar el enlace. Intenta de nuevo.",
+      };
+    }
+  } catch (err) {
+    console.error("[auth] magic link send excepción:", err);
     return {
       ok: false,
       message: "No pudimos enviar el enlace. Intenta de nuevo.",

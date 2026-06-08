@@ -19,12 +19,23 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
  */
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
+  // Dos flujos soportados:
+  //   PKCE  → ?code=...                            (OAuth Google, signup confirmación)
+  //   OTP   → ?token_hash=...&type=magiclink|...   (magic link generado por admin)
   const code = searchParams.get("code");
+  const tokenHash = searchParams.get("token_hash");
+  const type = searchParams.get("type") as
+    | "magiclink"
+    | "recovery"
+    | "invite"
+    | "signup"
+    | "email_change"
+    | "email"
+    | null;
   const error = searchParams.get("error");
   const errorDescription = searchParams.get("error_description");
   const next = searchParams.get("next") ?? "/mi-cuenta";
 
-  // Detectar a qué tipo de login redirigir si hay error
   const isAdminFlow = next.startsWith("/admin");
   const loginUrl = isAdminFlow ? "/admin/login" : "/iniciar-sesion";
 
@@ -34,7 +45,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (!code) {
+  if (!code && !tokenHash) {
     return NextResponse.redirect(`${origin}${loginUrl}?error=no_code`);
   }
 
@@ -59,8 +70,23 @@ export async function GET(request: NextRequest) {
     },
   );
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+  // Flujo OTP (magic link no-PKCE): no requiere code_verifier en cookie, así
+  // que funciona aunque el correo se abra en otro navegador/dispositivo.
+  if (tokenHash) {
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      type: type ?? "magiclink",
+      token_hash: tokenHash,
+    });
+    if (verifyError) {
+      return NextResponse.redirect(
+        `${origin}${loginUrl}?error=${encodeURIComponent(verifyError.message)}`,
+      );
+    }
+    return response;
+  }
 
+  // Flujo PKCE (OAuth, confirmación de signup).
+  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code!);
   if (exchangeError) {
     return NextResponse.redirect(
       `${origin}${loginUrl}?error=${encodeURIComponent(exchangeError.message)}`,
