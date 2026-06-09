@@ -145,7 +145,14 @@ export default async function ProductPage({ params }: { params: Params }) {
 
   const isInWishlist = wishlistIds.has(product.id);
 
-  // JSON-LD schema.org Product para SEO enriquecido en Google
+  // priceValidUntil: requerido por Google para Offers; ponemos +1 año (valor
+  // razonable que se renueva con cada deploy/revalidate sin esfuerzo manual).
+  const priceValidUntil = new Date();
+  priceValidUntil.setFullYear(priceValidUntil.getFullYear() + 1);
+
+  // JSON-LD schema.org Product completo (Google Merchant / AI Overviews).
+  // Campos clave: itemCondition, brand con @id, offers con seller, shipping
+  // details y returnPolicy. Sin esto Google trata el producto como básico.
   const productJsonLd = {
     "@context": "https://schema.org/",
     "@type": "Product",
@@ -153,18 +160,93 @@ export default async function ProductPage({ params }: { params: Params }) {
     description: product.short_description ?? "",
     image: product.images.map((img) => img.url),
     sku: product.sku ?? undefined,
+    mpn: product.sku ?? undefined,
     brand: product.laboratory
-      ? { "@type": "Brand", name: product.laboratory.name }
+      ? {
+          "@type": "Brand",
+          "@id": `https://naturalvita.co/laboratorio/${product.laboratory.slug}#brand`,
+          name: product.laboratory.name,
+        }
       : undefined,
     category: product.category?.name,
+    ...(product.invima_number
+      ? {
+          // Identificador regulatorio colombiano. AI Overviews y respuestas
+          // de ChatGPT lo citan como prueba de legitimidad del producto.
+          additionalProperty: [
+            {
+              "@type": "PropertyValue",
+              name: "Registro INVIMA",
+              value: product.invima_number,
+            },
+            ...(presentationLabel
+              ? [
+                  {
+                    "@type": "PropertyValue",
+                    name: "Presentación",
+                    value: presentationLabel,
+                  },
+                ]
+              : []),
+          ],
+        }
+      : presentationLabel
+        ? {
+            additionalProperty: [
+              {
+                "@type": "PropertyValue",
+                name: "Presentación",
+                value: presentationLabel,
+              },
+            ],
+          }
+        : {}),
     offers: {
       "@type": "Offer",
       url: `https://naturalvita.co/producto/${product.slug}`,
       priceCurrency: "COP",
       price: product.price_cop,
+      priceValidUntil: priceValidUntil.toISOString().slice(0, 10),
+      itemCondition: "https://schema.org/NewCondition",
       availability: isAvailable
         ? "https://schema.org/InStock"
         : "https://schema.org/OutOfStock",
+      seller: {
+        "@type": "Organization",
+        "@id": "https://naturalvita.co#organization",
+        name: "NaturalVita",
+      },
+      shippingDetails: {
+        "@type": "OfferShippingDetails",
+        shippingDestination: {
+          "@type": "DefinedRegion",
+          addressCountry: "CO",
+        },
+        deliveryTime: {
+          "@type": "ShippingDeliveryTime",
+          handlingTime: {
+            "@type": "QuantitativeValue",
+            minValue: 0,
+            maxValue: 1,
+            unitCode: "DAY",
+          },
+          transitTime: {
+            "@type": "QuantitativeValue",
+            minValue: 1,
+            maxValue: 5,
+            unitCode: "DAY",
+          },
+        },
+      },
+      hasMerchantReturnPolicy: {
+        "@type": "MerchantReturnPolicy",
+        applicableCountry: "CO",
+        returnPolicyCategory:
+          "https://schema.org/MerchantReturnFiniteReturnWindow",
+        merchantReturnDays: 5,
+        returnMethod: "https://schema.org/ReturnByMail",
+        returnFees: "https://schema.org/FreeReturn",
+      },
     },
     // AggregateRating: solo se incluye si hay reseñas (requerido por Google)
     ...(reviewStats && reviewStats.review_count > 0

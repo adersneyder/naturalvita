@@ -31,13 +31,13 @@ export function OrganizationSchema({
     logo: {
       "@type": "ImageObject",
       url: `${COMPANY.url}/logo.png`,
-      width: 512,
-      height: 512,
+      width: 816,
+      height: 502,
     },
-    image: `${COMPANY.url}/og-image.png`,
+    image: `${COMPANY.url}/opengraph-image`,
     description:
       "Tienda online colombiana de suplementos y productos naturales con registro INVIMA. Curamos catálogo con criterio clínico desde laboratorios verificados.",
-    foundingDate: "2026",
+    foundingDate: "2019",
     address: {
       "@type": "PostalAddress",
       streetAddress: COMPANY.address.street,

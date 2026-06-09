@@ -25,39 +25,31 @@ const supabase = createClient(
 );
 
 export async function GET() {
-  // Top productos: 100 mejor rankeados o más vendidos.
-  // Cuando ai_generation_log esté poblado, estos productos vendrán
-  // con ai_description rica. Mientras tanto, usamos description plana.
+  // Catálogo activo con TODO el contenido editorial (IA) para que el LLM
+  // tenga material rico que citar. Filtra a 150 productos top y solo
+  // incluye los que tienen short_description (IA aplicada).
   const { data: products } = await supabase
     .from("products")
     .select(
-      `
-      slug,
-      name,
-      description,
-      ai_description,
-      ingredients,
-      benefits,
-      contraindications,
-      price,
-      laboratory:laboratories(name),
-      category:categories(name, slug)
-    `,
+      `slug, name, short_description, full_description, composition_use,
+       dosage, warnings, price_cop, invima_number, presentation,
+       presentation_type,
+       laboratory:laboratories(name, slug),
+       category:categories(name, slug)`,
     )
     .eq("status", "active")
+    .not("short_description", "is", null)
     .order("name")
-    .limit(100);
+    .limit(150);
 
-  // Categorías para sección de catálogo
   const { data: categories } = await supabase
     .from("categories")
     .select("slug, name, description")
     .order("name");
 
-  // Laboratorios para sección de proveedores
   const { data: laboratories } = await supabase
     .from("laboratories")
-    .select("name, description")
+    .select("name, slug, description")
     .order("name");
 
   const content = `# NaturalVita · Catálogo completo y FAQ para LLMs
@@ -106,7 +98,9 @@ ${(laboratories ?? [])
   .map(
     (lab) => `### ${lab.name}
 
-${lab.description ?? "Laboratorio colombiano proveedor de NaturalVita."}`,
+${lab.description ?? "Laboratorio colombiano proveedor de NaturalVita."}
+
+Perfil completo: https://naturalvita.co/laboratorio/${lab.slug}`,
   )
   .join("\n\n")}
 
@@ -118,26 +112,31 @@ A continuación los productos activos en NaturalVita con descripción, ingredien
 
 ${(products ?? [])
   .map((p) => {
-    type ProductLab = { name?: string };
-    type ProductCat = { name?: string; slug?: string };
-    const lab = p.laboratory as ProductLab | ProductLab[] | null;
-    const cat = p.category as ProductCat | ProductCat[] | null;
+    type Rel = { name?: string; slug?: string };
+    const lab = p.laboratory as Rel | Rel[] | null;
+    const cat = p.category as Rel | Rel[] | null;
     const labName = Array.isArray(lab) ? lab[0]?.name : lab?.name;
     const catName = Array.isArray(cat) ? cat[0]?.name : cat?.name;
+    const priceCop = p.price_cop as number | null;
 
     return `### ${p.name}
 
 - **URL:** https://naturalvita.co/producto/${p.slug}
 - **Categoría:** ${catName ?? "Sin categoría"}
 - **Laboratorio:** ${labName ?? "—"}
-- **Precio:** $${p.price?.toLocaleString("es-CO") ?? "Consultar"} COP
+- **Presentación:** ${p.presentation ?? "—"}${p.presentation_type ? ` (${p.presentation_type})` : ""}
+- **Precio:** ${priceCop ? `$${priceCop.toLocaleString("es-CO")} COP` : "Consultar"}
+${p.invima_number ? `- **Registro INVIMA:** ${p.invima_number}` : ""}
 
-**Descripción:**
-${p.ai_description ?? p.description ?? "Información disponible en la ficha del producto."}
+${p.short_description ?? ""}
 
-${p.ingredients ? `**Ingredientes:** ${p.ingredients}` : ""}
-${p.benefits ? `**Beneficios:** ${p.benefits}` : ""}
-${p.contraindications ? `**Contraindicaciones:** ${p.contraindications}` : ""}
+${p.full_description ?? ""}
+
+${p.composition_use ? `**Composición y uso**\n\n${p.composition_use}` : ""}
+
+${p.dosage ? `**Modo de uso**\n\n${p.dosage}` : ""}
+
+${p.warnings ? `**Advertencias**\n\n${p.warnings}` : ""}
 `;
   })
   .join("\n---\n\n")}

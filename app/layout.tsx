@@ -10,32 +10,50 @@ export const metadata: Metadata = {
     process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co",
   ),
   title: {
-    default: "NaturalVita | Productos naturales para tu bienestar",
+    default: "NaturalVita | Suplementos naturales con INVIMA en Colombia",
     template: "%s | NaturalVita",
   },
   description:
-    "Tienda online de productos naturales en Colombia. Suplementos, fitoterapia y bienestar de los mejores laboratorios.",
+    "Tienda online colombiana de suplementos y productos naturales con registro INVIMA. Catálogo curado de laboratorios verificados, envío a toda Colombia, pago seguro con Bold.",
   keywords: [
-    "productos naturales",
-    "suplementos",
-    "salud natural",
-    "Colombia",
+    "suplementos naturales Colombia",
+    "productos naturales INVIMA",
+    "tienda naturista online",
     "fitoterapia",
+    "vitaminas Colombia",
     "bienestar",
   ],
   authors: [{ name: "NaturalVita" }],
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
     type: "website",
     locale: "es_CO",
     url: "https://naturalvita.co",
     siteName: "NaturalVita",
-    title: "NaturalVita | Productos naturales para tu bienestar",
+    title: "NaturalVita | Suplementos naturales con INVIMA en Colombia",
     description:
-      "Tienda online de productos naturales en Colombia. Suplementos, fitoterapia y bienestar.",
+      "Suplementos y productos naturales de laboratorios verificados. Envío a toda Colombia.",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "NaturalVita",
+    description:
+      "Suplementos y productos naturales con INVIMA en Colombia.",
+  },
+  // Permisos extendidos para Googlebot: imágenes grandes y snippets sin recortar,
+  // lo que mejora la visibilidad en Search y AI Overviews.
   robots: {
     index: true,
     follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
   },
 };
 

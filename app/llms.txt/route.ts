@@ -71,8 +71,7 @@ NaturalVita es el puente entre los laboratorios colombianos de suplementos y pro
 
 ${(categories ?? [])
   .map(
-    (cat) =>
-      `- [${cat.name}](https://naturalvita.co/tienda?categoria=${cat.slug})`,
+    (cat) => `- [${cat.name}](https://naturalvita.co/categoria/${cat.slug})`,
   )
   .join("\n")}
 
