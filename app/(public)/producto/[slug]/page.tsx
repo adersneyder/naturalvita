@@ -150,6 +150,19 @@ export default async function ProductPage({ params }: { params: Params }) {
   const priceValidUntil = new Date();
   priceValidUntil.setFullYear(priceValidUntil.getFullYear() + 1);
 
+  // productGroupID: identificador estable que agrupa variantes (misma name +
+  // laboratorio, distinta presentación). Permite a Google y AI Overviews
+  // entender que "Calcium 600 + Vit D x60" y "x100" son el MISMO producto en
+  // distinto tamaño, en vez de competir entre sí por la misma query (canibalización).
+  const productGroupId = product.laboratory
+    ? `nv-pg-${product.laboratory.slug}-${product.name
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "") // quita diacríticos
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")}`
+    : null;
+
   // JSON-LD schema.org Product completo (Google Merchant / AI Overviews).
   // Campos clave: itemCondition, brand con @id, offers con seller, shipping
   // details y returnPolicy. Sin esto Google trata el producto como básico.
@@ -161,6 +174,14 @@ export default async function ProductPage({ params }: { params: Params }) {
     image: product.images.map((img) => img.url),
     sku: product.sku ?? undefined,
     mpn: product.sku ?? undefined,
+    ...(productGroupId
+      ? {
+          inProductGroupWithID: productGroupId,
+          // El size es la dimensión que varía entre presentaciones (60 cápsulas
+          // vs 100 cápsulas, 240 ml vs 360 ml).
+          ...(presentationLabel ? { size: presentationLabel } : {}),
+        }
+      : {}),
     brand: product.laboratory
       ? {
           "@type": "Brand",
