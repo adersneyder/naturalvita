@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import Breadcrumbs from "../_components/Breadcrumbs";
-import { requireCustomer } from "@/lib/auth/customer-auth";
+import { getCurrentCustomer } from "@/lib/auth/customer-auth";
 import { createClient } from "@/lib/supabase/server";
 import CheckoutClient from "./_CheckoutClient";
 
@@ -28,27 +27,26 @@ export type SavedAddress = {
 };
 
 export default async function CheckoutPage() {
-  // Auth gate: si no hay sesión, redirige preservando que vuelva al checkout
-  const customer = await requireCustomer({ redirectTo: "/checkout" });
+  // SIN auth gate: el checkout permite comprar como invitado. Si hay sesión
+  // se prefilla con sus datos y direcciones guardadas; si no, el form los pide.
+  const customer = await getCurrentCustomer();
 
-  // Cargar direcciones guardadas para mostrar selector
-  const supabase = await createClient();
-  const { data: addressesRaw } = await supabase
-    .from("addresses")
-    .select(
-      "id, label, recipient_name, phone, department, city, street, details, postal_code, is_default",
-    )
-    .eq("customer_id", customer.id)
-    .order("is_default", { ascending: false })
-    .order("updated_at", { ascending: false });
-
-  const addresses = (addressesRaw ?? []) as SavedAddress[];
+  let addresses: SavedAddress[] = [];
+  if (customer) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("addresses")
+      .select(
+        "id, label, recipient_name, phone, department, city, street, details, postal_code, is_default",
+      )
+      .eq("customer_id", customer.id)
+      .order("is_default", { ascending: false })
+      .order("updated_at", { ascending: false });
+    addresses = (data ?? []) as SavedAddress[];
+  }
 
   // Nota: NO redirigimos a /carrito si está vacío porque el carrito vive en
-  // localStorage del cliente y no es visible desde el server. El componente
-  // cliente CheckoutClient detecta el carrito vacío y redirige.
-  // Esto evita un redirect-loop: server piensa "carrito vacío", redirige,
-  // pero el cliente sí tiene items.
+  // localStorage del cliente y no es visible desde el server.
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 md:py-12">
@@ -62,16 +60,16 @@ export default async function CheckoutPage() {
         Finalizar compra
       </h1>
       <CheckoutClient
-        customerId={customer.id}
-        customerEmail={customer.email}
+        customerId={customer?.id ?? null}
+        customerEmail={customer?.email ?? null}
         initialContact={{
-          full_name: customer.full_name ?? "",
-          phone: customer.phone ?? "",
+          full_name: customer?.full_name ?? "",
+          phone: customer?.phone ?? "",
           document_type:
-            (customer.document_type as "CC" | "CE" | "NIT" | "PA" | "TI") ??
+            (customer?.document_type as "CC" | "CE" | "NIT" | "PA" | "TI") ??
             "CC",
-          document_number: customer.document_number ?? "",
-          accepts_marketing: customer.accepts_marketing,
+          document_number: customer?.document_number ?? "",
+          accepts_marketing: customer?.accepts_marketing ?? false,
         }}
         savedAddresses={addresses}
       />

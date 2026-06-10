@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import Breadcrumbs from "../../../_components/Breadcrumbs";
-import { requireCustomer } from "@/lib/auth/customer-auth";
+import { getCurrentCustomer } from "@/lib/auth/customer-auth";
 import { createClient } from "@/lib/supabase/server";
 import OrderStatusPoller from "./_OrderStatusPoller";
 import { formatCop } from "@/lib/format/currency";
@@ -15,33 +15,77 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 type Params = Promise<{ order_number: string }>;
+type SearchParams = Promise<{ token?: string }>;
 
-export default async function OrderSuccessPage({ params }: { params: Params }) {
+export default async function OrderSuccessPage({
+  params,
+  searchParams,
+}: {
+  params: Params;
+  searchParams: SearchParams;
+}) {
   const { order_number } = await params;
-  const customer = await requireCustomer({
-    redirectTo: `/pedido/${order_number}/exito`,
-  });
+  const { token } = await searchParams;
+  const customer = await getCurrentCustomer();
 
-  const supabase = await createClient();
-  const { data: order } = await supabase
-    .from("orders")
-    .select(
-      "order_number, customer_email, customer_name, total_cop, subtotal_cop, shipping_cop, tax_cop, status, payment_status, paid_at, shipping_recipient, shipping_street, shipping_details, shipping_city, shipping_department",
-    )
-    .eq("order_number", order_number)
-    .eq("customer_id", customer.id)
-    .maybeSingle();
+  // Resolución del pedido en 3 escenarios:
+  //   1) Cliente logueado → orders por customer_id (vía RLS).
+  //   2) Guest con token   → RPC pública get_guest_order(order_number, token).
+  //   3) Cualquier otra cosa → redirige al login.
+  type OrderView = {
+    order_number: string;
+    customer_email: string;
+    customer_name: string;
+    total_cop: number;
+    subtotal_cop: number;
+    shipping_cop: number;
+    tax_cop: number;
+    status: string;
+    payment_status: string;
+    shipping_recipient: string;
+    shipping_street: string;
+    shipping_details: string | null;
+    shipping_city: string;
+    shipping_department: string;
+  };
+  let order: OrderView | null = null;
+  const isGuestView = !customer && Boolean(token);
+
+  if (customer) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("orders")
+      .select(
+        "order_number, customer_email, customer_name, total_cop, subtotal_cop, shipping_cop, tax_cop, status, payment_status, shipping_recipient, shipping_street, shipping_details, shipping_city, shipping_department",
+      )
+      .eq("order_number", order_number)
+      .eq("customer_id", customer.id)
+      .maybeSingle();
+    order = (data as OrderView | null) ?? null;
+  } else if (token) {
+    const supabase = await createClient();
+    const { data } = await supabase.rpc("get_guest_order", {
+      p_order_number: order_number,
+      p_token: token,
+    });
+    const row = Array.isArray(data) ? data[0] : data;
+    order = (row as OrderView | null) ?? null;
+  }
 
   if (!order) {
-    // No es del cliente o no existe → mandamos a /mi-cuenta
-    redirect("/mi-cuenta");
+    if (!customer && !token) {
+      redirect(`/iniciar-sesion?next=${encodeURIComponent(`/pedido/${order_number}/exito`)}`);
+    }
+    redirect(customer ? "/mi-cuenta" : "/");
   }
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 md:py-12">
       <Breadcrumbs
         items={[
-          { label: "Mi cuenta", href: "/mi-cuenta" },
+          isGuestView
+            ? { label: "Inicio", href: "/" }
+            : { label: "Mi cuenta", href: "/mi-cuenta" },
           { label: `Pedido ${order.order_number}` },
         ]}
       />
@@ -123,13 +167,28 @@ export default async function OrderSuccessPage({ params }: { params: Params }) {
         </section>
       </article>
 
+      {isGuestView && (
+        <aside className="mt-6 rounded-xl bg-[var(--color-leaf-100)]/60 border border-[var(--color-leaf-700)]/15 px-4 py-3 text-sm text-[var(--color-leaf-900)]">
+          ¿Quieres ver este pedido más adelante? Guarda este enlace o{" "}
+          <Link
+            href={`/crear-cuenta?email=${encodeURIComponent(order.customer_email)}`}
+            className="text-[var(--color-iris-700)] underline font-medium"
+          >
+            crea una cuenta con {order.customer_email}
+          </Link>{" "}
+          y lo asociamos automáticamente.
+        </aside>
+      )}
+
       <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
-        <Link
-          href="/mi-cuenta"
-          className="px-5 py-2.5 rounded-lg border border-[var(--color-earth-100)] text-sm font-medium text-[var(--color-leaf-900)] text-center hover:bg-[var(--color-earth-50)]"
-        >
-          Ver mis pedidos
-        </Link>
+        {!isGuestView && (
+          <Link
+            href="/mi-cuenta"
+            className="px-5 py-2.5 rounded-lg border border-[var(--color-earth-100)] text-sm font-medium text-[var(--color-leaf-900)] text-center hover:bg-[var(--color-earth-50)]"
+          >
+            Ver mis pedidos
+          </Link>
+        )}
         <Link
           href="/tienda"
           className="px-5 py-2.5 rounded-lg bg-[var(--color-iris-700)] text-white text-sm font-medium text-center hover:bg-[var(--color-iris-600)]"

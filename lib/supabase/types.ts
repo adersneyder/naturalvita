@@ -1369,6 +1369,7 @@ export type Database = {
           delivered_at: string | null
           discount_cop: number
           fulfillment_status: string
+          guest_token: string | null
           id: string
           notes: string | null
           order_number: string
@@ -1406,6 +1407,7 @@ export type Database = {
           delivered_at?: string | null
           discount_cop?: number
           fulfillment_status?: string
+          guest_token?: string | null
           id?: string
           notes?: string | null
           order_number: string
@@ -1443,6 +1445,7 @@ export type Database = {
           delivered_at?: string | null
           discount_cop?: number
           fulfillment_status?: string
+          guest_token?: string | null
           id?: string
           notes?: string | null
           order_number?: string
@@ -2638,6 +2641,44 @@ export type Database = {
         Returns: string
       }
       current_admin_role: { Args: never; Returns: string }
+      get_guest_order: {
+        Args: { p_order_number: string; p_token: string }
+        Returns: {
+          created_at: string
+          customer_email: string
+          customer_name: string
+          discount_cop: number
+          fulfillment_status: string
+          id: string
+          order_number: string
+          payment_status: string
+          shipping_carrier: string
+          shipping_city: string
+          shipping_cop: number
+          shipping_department: string
+          shipping_details: string
+          shipping_phone: string
+          shipping_postal_code: string
+          shipping_recipient: string
+          shipping_street: string
+          status: string
+          subtotal_cop: number
+          tax_cop: number
+          total_cop: number
+          tracking_number: string
+        }[]
+      }
+      get_guest_order_items: {
+        Args: { p_order_number: string; p_token: string }
+        Returns: {
+          product_image_url: string
+          product_name: string
+          product_sku: string
+          quantity: number
+          subtotal_cop: number
+          unit_price_cop: number
+        }[]
+      }
       get_home_featured: {
         Args: { p_limit?: number }
         Returns: {

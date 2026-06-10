@@ -61,6 +61,23 @@ export async function requireCustomer(opts?: {
     .select("id, email, full_name, phone, document_type, document_number, accepts_marketing")
     .single();
 
+  // Reclamación de pedidos guest: si el correo del nuevo customer tiene
+  // pedidos creados como invitado (customer_id IS NULL), los vinculamos
+  // a su cuenta para que aparezcan en /mi-cuenta. Best-effort.
+  if (created && user.email) {
+    try {
+      const { createAdminClient } = await import("@/lib/supabase/admin");
+      const admin = createAdminClient();
+      await admin
+        .from("orders")
+        .update({ customer_id: user.id, guest_token: null })
+        .is("customer_id", null)
+        .eq("customer_email", user.email.toLowerCase());
+    } catch (err) {
+      console.warn("[requireCustomer] no se vincularon pedidos guest:", err);
+    }
+  }
+
   if (error || !created) {
     console.error("[requireCustomer] error creando customer:", error?.message);
     // Si falla la creación (típicamente RLS), forzamos logout y redirect

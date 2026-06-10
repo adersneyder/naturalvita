@@ -23,16 +23,24 @@ export async function startCheckout(
 
   if (!result.ok) return result;
 
-  // Side effects no bloqueantes (el cliente ya ve la pasarela Bold)
-  void sendOrderReceivedEmail(result.order.order_number);
+  // Side effects no bloqueantes (el cliente ya ve la pasarela Bold).
+  // Pasamos el guest_token cuando exista para que el email lleve URL clickeable.
+  const guestToken = result.order.guest_token;
+  void sendOrderReceivedEmail(result.order.order_number, guestToken);
   void trackOrderPlacedFromOrder(result.order.order_number);
 
   return result;
 }
 
-async function sendOrderReceivedEmail(orderNumber: string) {
+async function sendOrderReceivedEmail(
+  orderNumber: string,
+  guestToken?: string,
+) {
   try {
-    const supabase = await createClient();
+    // Admin client: tanto guest como logged. RLS no nos deja leer guest
+    // orders desde el server client (auth.uid() no matchea).
+    const { createAdminClient } = await import("@/lib/supabase/admin");
+    const supabase = createAdminClient();
     const { data } = await supabase
       .from("orders")
       .select("customer_email, customer_name, total_cop")
@@ -41,6 +49,12 @@ async function sendOrderReceivedEmail(orderNumber: string) {
 
     if (!data) return;
 
+    const baseUrl =
+      process.env.NEXT_PUBLIC_SITE_URL ?? "https://naturalvita.co";
+    const orderUrl = guestToken
+      ? `${baseUrl}/pedido/${orderNumber}/exito?token=${guestToken}`
+      : `${baseUrl}/mi-cuenta/pedido/${orderNumber}`;
+
     await sendEmail({
       to: data.customer_email,
       subject: `Recibimos tu pedido ${orderNumber}`,
@@ -48,10 +62,12 @@ async function sendOrderReceivedEmail(orderNumber: string) {
         customerName: data.customer_name,
         orderNumber,
         totalCop: data.total_cop,
+        orderUrl,
       }),
       tags: [
         { name: "type", value: "order_received" },
         { name: "order", value: orderNumber },
+        ...(guestToken ? [{ name: "guest", value: "true" }] : []),
       ],
     });
   } catch (err) {
@@ -61,7 +77,9 @@ async function sendOrderReceivedEmail(orderNumber: string) {
 
 async function trackOrderPlacedFromOrder(orderNumber: string) {
   try {
-    const supabase = await createClient();
+    // Admin client por la misma razón que arriba: cubrir guest + logged.
+    const { createAdminClient } = await import("@/lib/supabase/admin");
+    const supabase = createAdminClient();
     const { data } = await supabase
       .from("orders")
       .select(

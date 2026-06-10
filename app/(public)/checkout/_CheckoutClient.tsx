@@ -23,8 +23,8 @@ import BoldCheckoutButton from "./_BoldCheckoutButton";
 import type { SavedAddress } from "./page";
 
 type Props = {
-  customerId: string;
-  customerEmail: string;
+  customerId: string | null;
+  customerEmail: string | null;
   initialContact: ContactInput;
   savedAddresses: SavedAddress[];
 };
@@ -34,6 +34,7 @@ type FieldErrors = Record<string, string[] | undefined>;
 const OTHER_CITY = "__other__";
 
 export default function CheckoutClient({
+  customerId,
   customerEmail,
   initialContact,
   savedAddresses,
@@ -42,9 +43,15 @@ export default function CheckoutClient({
   const cart = useCart();
   const [isPending, startTransition] = useTransition();
 
-  // Estado: usar dirección guardada o nueva
+  // Guest checkout: cuando NO hay sesión, el email se pide en el form y NO
+  // se puede usar una dirección guardada.
+  const isGuest = !customerId;
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestEmailError, setGuestEmailError] = useState<string | null>(null);
+
+  // Estado: usar dirección guardada o nueva. Guest siempre "new".
   const [addressMode, setAddressMode] = useState<"saved" | "new">(
-    savedAddresses.length > 0 ? "saved" : "new",
+    !isGuest && savedAddresses.length > 0 ? "saved" : "new",
   );
   const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
     savedAddresses.find((a) => a.is_default)?.id ?? savedAddresses[0]?.id ?? null,
@@ -140,6 +147,16 @@ export default function CheckoutClient({
     }
   }
 
+  // Email guest: validación básica + saved como derivado.
+  function validateGuestEmail(): boolean {
+    if (!isGuest) return true;
+    const e = guestEmail.trim().toLowerCase();
+    const ok =
+      e.length >= 5 && e.length <= 254 && e.includes("@") && e.includes(".");
+    setGuestEmailError(ok ? null : "Ingresa un correo válido");
+    return ok;
+  }
+
   // Submit handlers
   async function handleSaveContact() {
     setGlobalError(null);
@@ -148,6 +165,14 @@ export default function CheckoutClient({
     const parsed = ContactSchema.safeParse(contact);
     if (!parsed.success) {
       setContactErrors(parsed.error.flatten().fieldErrors);
+      return;
+    }
+
+    if (isGuest) {
+      // Guest: nada que persistir todavía. Los datos viajan en el payload
+      // de startCheckout. Solo validamos email aquí.
+      if (!validateGuestEmail()) return;
+      setContactSaved(true);
       return;
     }
 
@@ -179,6 +204,13 @@ export default function CheckoutClient({
       return;
     }
 
+    if (isGuest) {
+      // Guest: no la persistimos en addresses (no tiene customer). El form
+      // ya quedó validado; el botón Pagar enviará los campos directamente.
+      setAddress(parsed.data);
+      return;
+    }
+
     startTransition(async () => {
       const res = await saveAddress(parsed.data, null);
       if (!res.ok) {
@@ -193,15 +225,43 @@ export default function CheckoutClient({
     });
   }
 
+  // ¿La dirección actual del form ya es válida según el schema?
+  // Lo usamos en guest para habilitar el botón sin necesidad de guardar.
+  const guestAddressReady = (() => {
+    if (!isGuest) return false;
+    return AddressSchema.safeParse({
+      ...address,
+      phone: address.phone || contact.phone,
+      recipient_name: address.recipient_name || contact.full_name,
+    }).success;
+  })();
+
   // Estado derivado: ¿está listo para confirmar?
-  const hasContactReady = contactSaved && !!contact.full_name && !!contact.document_number;
-  const hasAddressReady =
-    (addressMode === "saved" && !!selectedAddressId) || false;
+  const hasContactReady =
+    contactSaved && !!contact.full_name && !!contact.document_number;
+  const hasAddressReady = isGuest
+    ? guestAddressReady
+    : (addressMode === "saved" && !!selectedAddressId) || false;
   const canConfirm = hasContactReady && hasAddressReady;
 
-  // Dirección seleccionada completa (para pasar al sidebar y a Bold)
-  const selectedAddressFull =
-    addressMode === "saved" && selectedAddressId
+  // Dirección seleccionada completa (para pasar al sidebar y a Bold).
+  // Guest: construimos un SavedAddress falso desde el form.
+  const selectedAddressFull: SavedAddress | null = isGuest
+    ? guestAddressReady
+      ? {
+          id: "guest",
+          label: null,
+          recipient_name: address.recipient_name || contact.full_name,
+          phone: address.phone || contact.phone,
+          department: address.department,
+          city: address.city,
+          street: address.street,
+          details: address.details ?? null,
+          postal_code: address.postal_code ?? null,
+          is_default: false,
+        }
+      : null
+    : addressMode === "saved" && selectedAddressId
       ? savedAddresses.find((a) => a.id === selectedAddressId) ?? null
       : null;
 
@@ -209,6 +269,7 @@ export default function CheckoutClient({
   const [boldData, setBoldData] = useState<{
     order_number: string;
     total_cop: number;
+    guest_token?: string;
     bold: {
       api_key: string;
       integrity_signature: string;
@@ -228,13 +289,38 @@ export default function CheckoutClient({
       setGlobalError("Selecciona una dirección de envío");
       return;
     }
+    if (isGuest && !validateGuestEmail()) {
+      setGlobalError("Revisa los datos de contacto antes de pagar");
+      return;
+    }
     startTransition(async () => {
       const res = await startCheckout({
         items: cart.items.map((it) => ({
           product_id: it.product_id,
           quantity: it.quantity,
         })),
-        address_id: selectedAddressFull.id,
+        ...(isGuest
+          ? {
+              guest: {
+                email: guestEmail.trim().toLowerCase(),
+                full_name: contact.full_name,
+                phone: contact.phone,
+                document_type: contact.document_type,
+                document_number: contact.document_number,
+                accepts_marketing: contact.accepts_marketing,
+                address: {
+                  recipient_name:
+                    address.recipient_name || contact.full_name,
+                  phone: address.phone || contact.phone,
+                  department: address.department,
+                  city: address.city,
+                  street: address.street,
+                  details: address.details || undefined,
+                  postal_code: address.postal_code || undefined,
+                },
+              },
+            }
+          : { address_id: selectedAddressFull.id }),
         coupon_code: appliedCoupon?.code ?? null,
       });
       if (!res.ok) {
@@ -268,13 +354,48 @@ export default function CheckoutClient({
             done={contactSaved}
           />
 
-          <p className="text-xs text-[var(--color-earth-700)] mb-4">
-            Te escribimos a{" "}
-            <span className="font-medium text-[var(--color-leaf-900)]">
-              {customerEmail}
-            </span>
-            . Para cambiar el correo, cierra sesión e inicia con otro.
-          </p>
+          {isGuest ? (
+            <>
+              <p className="text-xs text-[var(--color-earth-700)] mb-3">
+                Estás comprando como invitado.{" "}
+                <a
+                  href={`/iniciar-sesion?next=${encodeURIComponent("/checkout")}`}
+                  className="text-[var(--color-iris-700)] underline"
+                >
+                  Iniciar sesión
+                </a>{" "}
+                si ya tienes cuenta y quieres guardar este pedido en ella.
+              </p>
+              <Field
+                label="Correo electrónico"
+                hint="Te enviamos la confirmación del pedido y un acceso para verlo"
+                error={guestEmailError ?? undefined}
+                required
+              >
+                <input
+                  type="email"
+                  value={guestEmail}
+                  onChange={(e) => {
+                    setGuestEmail(e.target.value);
+                    setGuestEmailError(null);
+                    setContactSaved(false);
+                  }}
+                  autoComplete="email"
+                  placeholder="tu@correo.com"
+                  className={inputClass(!!guestEmailError)}
+                />
+              </Field>
+              <div className="h-3" />
+            </>
+          ) : (
+            <p className="text-xs text-[var(--color-earth-700)] mb-4">
+              Te escribimos a{" "}
+              <span className="font-medium text-[var(--color-leaf-900)]">
+                {customerEmail}
+              </span>
+              . Para cambiar el correo, cierra sesión e inicia con otro.
+            </p>
+          )}
 
           <div className="space-y-3">
             <Field
@@ -681,7 +802,9 @@ export default function CheckoutClient({
                 amountCop={boldData.total_cop}
                 apiKey={boldData.bold.api_key}
                 integritySignature={boldData.bold.integrity_signature}
-                customerEmail={customerEmail}
+                customerEmail={
+                  customerEmail ?? guestEmail.trim().toLowerCase()
+                }
                 customerName={contact.full_name}
                 customerPhone={contact.phone}
                 customerDocumentType={contact.document_type}
@@ -691,7 +814,7 @@ export default function CheckoutClient({
                 shippingDepartment={selectedAddressFull?.department ?? ""}
                 shippingPostalCode={selectedAddressFull?.postal_code ?? null}
                 description={`Pedido ${boldData.order_number} en NaturalVita`}
-                redirectionUrl={`${typeof window !== "undefined" ? window.location.origin : ""}/pedido/${boldData.order_number}/exito`}
+                redirectionUrl={`${typeof window !== "undefined" ? window.location.origin : ""}/pedido/${boldData.order_number}/exito${boldData.guest_token ? `?token=${boldData.guest_token}` : ""}`}
                 onError={(msg) => setGlobalError(msg)}
               />
               {boldData.bold.environment === "test" && (

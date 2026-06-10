@@ -9,6 +9,8 @@ export type OrderReceivedProps = {
   customerName: string;
   orderNumber: string;
   totalCop: number;
+  /** URL absoluta a la página del pedido. Para guest incluye ?token=. */
+  orderUrl?: string;
 };
 
 /**
@@ -23,6 +25,7 @@ export function OrderReceived({
   customerName,
   orderNumber,
   totalCop,
+  orderUrl,
 }: OrderReceivedProps) {
   const firstName = customerName.split(" ")[0] || "Hola";
   return (
@@ -94,6 +97,26 @@ export function OrderReceived({
           Total: <strong>{formatCopForEmail(totalCop)}</strong>
         </Text>
       </Section>
+
+      {orderUrl && (
+        <Section style={{ margin: "0 0 20px" }}>
+          <a
+            href={orderUrl}
+            style={{
+              display: "inline-block",
+              backgroundColor: C.iris700,
+              color: C.white,
+              padding: "12px 24px",
+              borderRadius: "8px",
+              textDecoration: "none",
+              fontSize: "14px",
+              fontWeight: 500,
+            }}
+          >
+            Ver el estado de mi pedido
+          </a>
+        </Section>
+      )}
 
       <Text
         style={{

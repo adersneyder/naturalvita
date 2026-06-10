@@ -1,7 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { requireCustomer } from "@/lib/auth/customer-auth";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { getCurrentCustomer } from "@/lib/auth/customer-auth";
 import { calculateShipping } from "./shipping";
 import { generateIntegritySignature } from "@/lib/bold/integrity";
 
@@ -10,11 +11,39 @@ export type CartLineInput = {
   quantity: number;
 };
 
+/**
+ * Datos del comprador y dirección cuando NO hay sesión iniciada
+ * (guest checkout). Para clientes logueados, basta con address_id.
+ */
+export type GuestCheckoutInput = {
+  email: string;
+  full_name: string;
+  phone: string;
+  document_type: "CC" | "CE" | "NIT" | "PA" | "TI";
+  document_number: string;
+  accepts_marketing: boolean;
+  /** Dirección inline (no se persiste en la tabla addresses). */
+  address: {
+    recipient_name: string;
+    phone: string;
+    department: string;
+    city: string;
+    street: string;
+    details?: string;
+    postal_code?: string;
+  };
+};
+
 export type CreateOrderInput = {
   /** Líneas del carrito enviadas desde el cliente. NO confiamos en sus precios. */
   items: CartLineInput[];
-  /** ID de la dirección guardada que se usará para envío */
-  address_id: string;
+  /**
+   * ID de la dirección guardada (solo para clientes logueados). Mutuamente
+   * exclusivo con guest.
+   */
+  address_id?: string;
+  /** Datos del comprador y dirección cuando no hay sesión. */
+  guest?: GuestCheckoutInput;
   /** Notas opcionales del cliente */
   notes?: string;
   /** Código de cupón opcional. Re-validamos server-side antes de aplicarlo. */
@@ -27,6 +56,8 @@ export type CreateOrderResult =
       order: {
         order_number: string;
         total_cop: number;
+        /** Token presente solo para guest checkout. Permite ver el pedido sin sesión. */
+        guest_token?: string;
         bold: {
           api_key: string;
           integrity_signature: string;
@@ -58,7 +89,24 @@ export async function createPendingOrder(
   input: CreateOrderInput,
 ): Promise<CreateOrderResult> {
   const supabase = await createClient();
-  const customer = await requireCustomer({ redirectTo: "/checkout" });
+
+  // Identificar el modo: cliente logueado vs invitado.
+  const customer = await getCurrentCustomer();
+  const isGuest = !customer;
+  if (isGuest && !input.guest) {
+    return {
+      ok: false,
+      error: "Faltan los datos de contacto y envío",
+      code: "GUEST_DATA_MISSING",
+    };
+  }
+  if (!isGuest && !input.address_id) {
+    return {
+      ok: false,
+      error: "Selecciona una dirección de envío",
+      code: "ADDRESS_MISSING",
+    };
+  }
 
   if (!input.items || input.items.length === 0) {
     return { ok: false, error: "El carrito está vacío", code: "EMPTY_CART" };
@@ -185,21 +233,45 @@ export async function createPendingOrder(
   }
 
   // 5. Cargar dirección
-  const { data: address, error: addrError } = await supabase
-    .from("addresses")
-    .select(
-      "recipient_name, phone, department, city, street, details, postal_code",
-    )
-    .eq("id", input.address_id)
-    .eq("customer_id", customer.id)
-    .maybeSingle();
-
-  if (addrError || !address) {
-    return {
-      ok: false,
-      error: "Dirección no encontrada o no pertenece a tu cuenta",
-      code: "ADDRESS_NOT_FOUND",
+  // Guest: usa los datos inline del input. Logged: lee desde tabla addresses
+  // validando que pertenezca al customer (anti-tampering).
+  type ShippingAddress = {
+    recipient_name: string;
+    phone: string;
+    department: string;
+    city: string;
+    street: string;
+    details: string | null;
+    postal_code: string | null;
+  };
+  let address: ShippingAddress;
+  if (isGuest && input.guest) {
+    address = {
+      recipient_name: input.guest.address.recipient_name,
+      phone: input.guest.address.phone,
+      department: input.guest.address.department,
+      city: input.guest.address.city,
+      street: input.guest.address.street,
+      details: input.guest.address.details ?? null,
+      postal_code: input.guest.address.postal_code ?? null,
     };
+  } else {
+    const { data: addrRow, error: addrError } = await supabase
+      .from("addresses")
+      .select(
+        "recipient_name, phone, department, city, street, details, postal_code",
+      )
+      .eq("id", input.address_id!)
+      .eq("customer_id", customer!.id)
+      .maybeSingle();
+    if (addrError || !addrRow) {
+      return {
+        ok: false,
+        error: "Dirección no encontrada o no pertenece a tu cuenta",
+        code: "ADDRESS_NOT_FOUND",
+      };
+    }
+    address = addrRow as ShippingAddress;
   }
 
   // 6. Calcular envío
@@ -217,7 +289,7 @@ export async function createPendingOrder(
     const validation = await validateCoupon(
       input.coupon_code,
       subtotalConIva,
-      customer.email,
+      (customer?.email ?? input.guest?.email ?? "").toLowerCase(),
     );
     if (validation.ok) {
       discountCop = validation.discount_cop;
@@ -238,39 +310,53 @@ export async function createPendingOrder(
   const totalCop = Math.max(0, subtotalConIva + shipping.cost_cop - discountCop);
 
   // 7. Generar order_number único: NV-YYYYMMDD-XXXX
-  const orderNumber = await generateOrderNumber(supabase);
+  // Usamos un cliente con permisos de lectura sobre orders (anon no puede
+  // por RLS). Para guest, ese cliente será el admin que crearemos abajo.
+  const numberClient = isGuest ? createAdminClient() : supabase;
+  const orderNumber = await generateOrderNumber(numberClient);
 
   // 8. Insertar orden + líneas en transacción lógica.
   // Supabase no expone transacciones SQL desde el cliente, pero podemos
   // hacerlo en dos pasos: si el insert de líneas falla, rollback manual
   // borrando la orden recién creada.
-  const { data: order, error: orderError } = await supabase
+  // Guest: usamos admin client porque RLS de anon no permite insert con
+  // datos sensibles (precios calculados server-side). Esto es seguro
+  // porque todos los precios e IVA ya se calcularon arriba con BD viva,
+  // sin confiar en el cliente.
+  const writeClient = isGuest ? createAdminClient() : supabase;
+  // Token único para que el guest pueda ver su pedido sin sesión.
+  // crypto.randomUUID está disponible en Node.js 19+; Next 15 lo expone.
+  const guestToken = isGuest ? crypto.randomUUID() : null;
+
+  const orderPayload = {
+    order_number: orderNumber,
+    customer_id: customer?.id ?? null,
+    customer_email: (customer?.email ?? input.guest!.email).toLowerCase(),
+    customer_name: customer?.full_name ?? input.guest!.full_name,
+    customer_phone: customer?.phone ?? input.guest!.phone,
+    guest_token: guestToken,
+    shipping_recipient: address.recipient_name,
+    shipping_phone: address.phone,
+    shipping_street: address.street,
+    shipping_details: address.details,
+    shipping_city: address.city,
+    shipping_department: address.department,
+    shipping_postal_code: address.postal_code,
+    shipping_country: "CO",
+    subtotal_cop: subtotalSinIva,
+    shipping_cop: shipping.cost_cop,
+    tax_cop: totalIva,
+    discount_cop: discountCop,
+    coupon_code: appliedCouponCode,
+    total_cop: totalCop,
+    status: "pending",
+    payment_status: "pending",
+    fulfillment_status: "unfulfilled",
+    notes: input.notes ?? null,
+  };
+  const { data: order, error: orderError } = await writeClient
     .from("orders")
-    .insert({
-      order_number: orderNumber,
-      customer_id: customer.id,
-      customer_email: customer.email,
-      customer_name: customer.full_name ?? "",
-      customer_phone: customer.phone,
-      shipping_recipient: address.recipient_name,
-      shipping_phone: address.phone,
-      shipping_street: address.street,
-      shipping_details: address.details,
-      shipping_city: address.city,
-      shipping_department: address.department,
-      shipping_postal_code: address.postal_code,
-      shipping_country: "CO",
-      subtotal_cop: subtotalSinIva,
-      shipping_cop: shipping.cost_cop,
-      tax_cop: totalIva,
-      discount_cop: discountCop,
-      coupon_code: appliedCouponCode,
-      total_cop: totalCop,
-      status: "pending",
-      payment_status: "pending",
-      fulfillment_status: "unfulfilled",
-      notes: input.notes ?? null,
-    })
+    .insert(orderPayload)
     .select("id, order_number")
     .single();
 
@@ -290,19 +376,36 @@ export async function createPendingOrder(
     subtotal_cop: l.line_total, // con IVA, lo que el cliente vio
   }));
 
-  const { error: itemsError } = await supabase
+  const { error: itemsError } = await writeClient
     .from("order_items")
     .insert(orderItems);
 
   if (itemsError) {
     console.error("[createPendingOrder] insert items error:", itemsError);
     // Rollback manual
-    await supabase.from("orders").delete().eq("id", order.id);
+    await writeClient.from("orders").delete().eq("id", order.id);
     return {
       ok: false,
       error: "No pudimos guardar los productos del pedido",
       code: "DB_ERROR",
     };
+  }
+
+  // Si fue checkout guest y aceptó marketing, lo añadimos a
+  // newsletter_subscribers para que entre al flow de bienvenida de Savia.
+  if (isGuest && input.guest?.accepts_marketing) {
+    try {
+      const { subscribeToNewsletter } = await import(
+        "@/lib/newsletter/queries"
+      );
+      await subscribeToNewsletter({
+        email: input.guest.email,
+        source: "checkout_guest",
+        fullName: input.guest.full_name,
+      });
+    } catch (err) {
+      console.warn("[createPendingOrder] guest newsletter signup:", err);
+    }
   }
 
   // 8.5 Registrar redemption del cupón (no bloqueamos si falla — el descuento
@@ -316,7 +419,7 @@ export async function createPendingOrder(
       await recordCouponRedemption({
         couponId: appliedCouponId,
         orderId: order.id,
-        customerEmail: customer.email,
+        customerEmail: (customer?.email ?? input.guest!.email).toLowerCase(),
         discountAppliedCop: discountCop,
       });
     } catch (err) {
@@ -367,6 +470,7 @@ export async function createPendingOrder(
     order: {
       order_number: order.order_number,
       total_cop: totalCop,
+      ...(guestToken ? { guest_token: guestToken } : {}),
       bold: {
         api_key: getBoldIdentityKey(),
         integrity_signature: signature,
@@ -381,8 +485,13 @@ export async function createPendingOrder(
  * contador secuencial del día. Si por race condition dos órdenes generan
  * el mismo número, hace retry hasta 3 veces con sufijo aleatorio.
  */
+// Cualquier cliente Supabase con permisos de lectura/escritura sobre orders.
+// El union type rompe la inferencia de .from() así que usamos el admin
+// client como tipo base (es estructuralmente igual al server client).
+type OrdersClient = ReturnType<typeof createAdminClient>;
+
 async function generateOrderNumber(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: OrdersClient,
 ): Promise<string> {
   const today = new Date();
   const yyyy = today.getFullYear();
