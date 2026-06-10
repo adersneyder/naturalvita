@@ -34,6 +34,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Marketing",
     items: [
       { label: "Savia", href: "/admin/savia" },
+      { label: "Guías", href: "/admin/guias" },
       { label: "Cupones", href: "/admin/cupones", comingSoon: true },
       { label: "Analytics", href: "/admin/analytics", comingSoon: true },
     ],

@@ -1129,6 +1129,60 @@ export type Database = {
           },
         ]
       }
+      guides: {
+        Row: {
+          created_at: string
+          dek: string
+          faqs: Json
+          hero_image_alt: string
+          hero_image_url: string
+          id: string
+          product_mentions: Json
+          published_at: string | null
+          reading_time: string
+          sections: Json
+          slug: string
+          status: string
+          title: string
+          tldr: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dek: string
+          faqs?: Json
+          hero_image_alt: string
+          hero_image_url: string
+          id?: string
+          product_mentions?: Json
+          published_at?: string | null
+          reading_time?: string
+          sections?: Json
+          slug: string
+          status?: string
+          title: string
+          tldr: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dek?: string
+          faqs?: Json
+          hero_image_alt?: string
+          hero_image_url?: string
+          id?: string
+          product_mentions?: Json
+          published_at?: string | null
+          reading_time?: string
+          sections?: Json
+          slug?: string
+          status?: string
+          title?: string
+          tldr?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       inventory_locations: {
         Row: {
           address: string | null
@@ -2010,6 +2064,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      products_name_backup_20260608: {
+        Row: {
+          id: string | null
+          name: string | null
+          presentation: string | null
+          presentation_type: string | null
+          snapshot_at: string | null
+        }
+        Insert: {
+          id?: string | null
+          name?: string | null
+          presentation?: string | null
+          presentation_type?: string | null
+          snapshot_at?: string | null
+        }
+        Update: {
+          id?: string | null
+          name?: string | null
+          presentation?: string | null
+          presentation_type?: string | null
+          snapshot_at?: string | null
+        }
+        Relationships: []
       }
       quiz_match_cache: {
         Row: {

@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import Breadcrumbs from "../_components/Breadcrumbs";
 import { GUIAS_INDEX } from "@/lib/guias/registry";
+import { listPublishedGuides } from "@/lib/guias/db";
 import { COMPANY } from "@/lib/legal/company-info";
 
 export const metadata: Metadata = {
@@ -19,12 +20,23 @@ export const metadata: Metadata = {
   },
 };
 
-export const revalidate = 86400; // 1 día
+export const revalidate = 3600; // 1h: las guías de BD publican sin deploy
 
-export default function GuiasIndexPage() {
-  const guias = [...GUIAS_INDEX].sort((a, b) =>
-    b.publishedDate.localeCompare(a.publishedDate),
-  );
+export default async function GuiasIndexPage() {
+  // Fusiona las 5 guías fundacionales (TSX estáticas, registry) con las
+  // creadas desde el generador admin (BD). Mismo shape para el listado.
+  const dbGuides = await listPublishedGuides();
+  const guias = [
+    ...GUIAS_INDEX,
+    ...dbGuides.map((g) => ({
+      slug: g.slug,
+      title: g.title,
+      dek: g.dek,
+      publishedDate: (g.published_at ?? g.created_at).slice(0, 10),
+      readingTime: g.reading_time,
+      heroImage: { url: g.hero_image_url, alt: g.hero_image_alt },
+    })),
+  ].sort((a, b) => b.publishedDate.localeCompare(a.publishedDate));
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 md:py-12">

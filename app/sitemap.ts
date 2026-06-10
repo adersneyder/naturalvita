@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { listSitemapEntries } from "@/lib/catalog/listing-queries";
 import { GUIAS_INDEX } from "@/lib/guias/registry";
+import { listPublishedGuides } from "@/lib/guias/db";
 
 /**
  * Sitemap dinámico generado en build time + ISR (revalidate 1h).
@@ -133,6 +134,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.85,
   }));
 
+  // Guías de BD (creadas desde el generador admin, sin deploy).
+  const dbGuides = await listPublishedGuides();
+  const dbGuiasEntries: MetadataRoute.Sitemap = dbGuides.map((g) => ({
+    url: `${BASE_URL}/guias/${g.slug}`,
+    lastModified: new Date(g.updated_at),
+    changeFrequency: "monthly",
+    priority: 0.85,
+  }));
+
   return [
     ...staticEntries,
     ...productEntries,
@@ -141,5 +151,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...laboratoryEntries,
     ...guiasIndex,
     ...guiasEntries,
+    ...dbGuiasEntries,
   ];
 }
