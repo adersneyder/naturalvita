@@ -66,23 +66,8 @@ export const metadata: Metadata = {
   },
 };
 
-const websiteSchema = {
-  "@context": "https://schema.org",
-  "@type": "WebSite",
-  name: "NaturalVita",
-  url: SITE_URL,
-  description:
-    "Suplementos y productos naturales para cada etapa de la vida en Colombia.",
-  inLanguage: "es-CO",
-  potentialAction: {
-    "@type": "SearchAction",
-    target: {
-      "@type": "EntryPoint",
-      urlTemplate: `${SITE_URL}/buscar?q={search_term_string}`,
-    },
-    "query-input": "required name=search_term_string",
-  },
-};
+// Los schemas WebSite (con SearchAction) y Organization viven en el layout
+// público — globales en todas las páginas, requisito del knowledge panel.
 
 export default async function HomePage() {
   // Necesidades activas del quiz (objetivo-primero) y slots pre-resueltos
@@ -95,10 +80,6 @@ export default async function HomePage() {
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
-      />
       <HeroQuiz needs={needs} heroSlots={heroSlots} isLoggedIn={false} />
       <LifeStages />
       <FeaturedProducts />

@@ -4,9 +4,15 @@ import PublicFooter from "./_components/PublicFooter";
 import CartDrawer from "./_components/CartDrawer";
 import Toaster from "./_components/Toaster";
 import HabeasDataBanner from "./_components/HabeasDataBanner";
+import {
+  OrganizationSchema,
+  WebSiteSchema,
+} from "@/components/schema/OrganizationSchema";
 
 /**
  * Layout del catálogo público. Monta:
+ * - Schemas Organization + WebSite GLOBALES (knowledge panel de marca:
+ *   Google necesita verlos en TODAS las páginas, no solo en home)
  * - Header con logo, nav, búsqueda, cuenta e icono de carrito
  * - Drawer lateral del carrito (controlado por estado global)
  * - Toaster para notificaciones (agregado al carrito, etc)
@@ -18,6 +24,8 @@ import HabeasDataBanner from "./_components/HabeasDataBanner";
 export default function PublicLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-white">
+      <OrganizationSchema />
+      <WebSiteSchema />
       <PublicHeader />
       <main className="flex-1">{children}</main>
       <PublicFooter />

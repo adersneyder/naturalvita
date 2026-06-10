@@ -23,11 +23,13 @@ export function OrganizationSchema({
 }: OrganizationSchemaProps) {
   const schema = {
     "@context": "https://schema.org",
-    "@type": "Organization",
+    "@type": ["Organization", "OnlineStore"],
     "@id": `${COMPANY.url}#organization`,
     name: COMPANY.brand,
+    alternateName: ["Natural Vita", "NaturalVita Colombia", "naturalvita.co"],
     legalName: COMPANY.legalName,
     url: COMPANY.url,
+    slogan: COMPANY.tagline,
     logo: {
       "@type": "ImageObject",
       url: `${COMPANY.url}/logo.png`,
@@ -38,6 +40,7 @@ export function OrganizationSchema({
     description:
       "Tienda online colombiana de suplementos y productos naturales con registro INVIMA. Curamos catálogo con criterio clínico desde laboratorios verificados.",
     foundingDate: "2019",
+    email: COMPANY.email.public,
     address: {
       "@type": "PostalAddress",
       streetAddress: COMPANY.address.street,
@@ -52,6 +55,11 @@ export function OrganizationSchema({
       email: COMPANY.email.public,
       availableLanguage: ["Spanish", "es-CO"],
       areaServed: "CO",
+    },
+    parentOrganization: {
+      "@type": "Organization",
+      name: COMPANY.legalName,
+      foundingDate: "2019",
     },
    sameAs: [
   COMPANY.social.instagram,
