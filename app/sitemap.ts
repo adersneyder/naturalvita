@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { listSitemapEntries } from "@/lib/catalog/listing-queries";
+import { GUIAS_INDEX } from "@/lib/guias/registry";
 
 /**
  * Sitemap dinámico generado en build time + ISR (revalidate 1h).
@@ -115,11 +116,30 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     }),
   );
 
+  // Guías editoriales (GEO): index + cada artículo. Prioridad alta porque
+  // son targets de captura de tráfico de IA (Overviews, Perplexity).
+  const guiasIndex: MetadataRoute.Sitemap = [
+    {
+      url: `${BASE_URL}/guias`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.7,
+    },
+  ];
+  const guiasEntries: MetadataRoute.Sitemap = GUIAS_INDEX.map((g) => ({
+    url: `${BASE_URL}/guias/${g.slug}`,
+    lastModified: new Date(g.updatedDate ?? g.publishedDate),
+    changeFrequency: "monthly",
+    priority: 0.85,
+  }));
+
   return [
     ...staticEntries,
     ...productEntries,
     ...categoryEntries,
     ...collectionEntries,
     ...laboratoryEntries,
+    ...guiasIndex,
+    ...guiasEntries,
   ];
 }
