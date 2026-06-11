@@ -19,6 +19,7 @@
     "@upstash/redis": "^1.34.3",
     "@vercel/analytics": "^1.4.1",
     "@vercel/speed-insights": "^1.1.0",
+    "exceljs": "^4.4.0",
     "lucide-react": "^0.468.0",
     "next": "^15.1.0",
     "nuqs": "^2.2.3",

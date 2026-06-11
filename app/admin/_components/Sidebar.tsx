@@ -27,6 +27,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Productos", href: "/admin/productos" },
       { label: "Fuentes de datos", href: "/admin/fuentes" },
       { label: "Categorías", href: "/admin/categorias" },
+      { label: "Sincronizar precios", href: "/admin/precios/sincronizar" },
       { label: "Inventario", href: "/admin/inventario", comingSoon: true },
     ],
   },

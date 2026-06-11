@@ -1916,6 +1916,59 @@ export type Database = {
           },
         ]
       }
+      price_sync_runs: {
+        Row: {
+          applied_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          laboratory_id: string
+          lines_applied: number
+          lines_matched: number
+          lines_parsed: number
+          payload: Json
+          source_filename: string | null
+          source_format: string
+          status: string
+        }
+        Insert: {
+          applied_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          laboratory_id: string
+          lines_applied?: number
+          lines_matched?: number
+          lines_parsed?: number
+          payload?: Json
+          source_filename?: string | null
+          source_format: string
+          status?: string
+        }
+        Update: {
+          applied_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          laboratory_id?: string
+          lines_applied?: number
+          lines_matched?: number
+          lines_parsed?: number
+          payload?: Json
+          source_filename?: string | null
+          source_format?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_sync_runs_laboratory_id_fkey"
+            columns: ["laboratory_id"]
+            isOneToOne: false
+            referencedRelation: "laboratories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           ai_metadata: Json | null
