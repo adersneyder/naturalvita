@@ -207,6 +207,24 @@ export default function LoginForm() {
           Crear cuenta
         </Link>
       </div>
+
+      {/* Continuar como invitado: solo se ofrece cuando viene del checkout.
+          Reduce fricción de compra sin "competir" con el login (queda al
+          pie como tercera opción discreta). */}
+      {next === "/checkout" && (
+        <div className="pt-3 border-t border-dashed border-[var(--color-earth-100)] text-center">
+          <Link
+            href="/checkout?guest=1"
+            className="inline-flex items-center gap-1.5 text-sm text-[var(--color-earth-700)] hover:text-[var(--color-iris-700)]"
+          >
+            ¿No quieres crear cuenta?
+            <span className="text-[var(--color-iris-700)] font-medium underline underline-offset-2">
+              Continuar como invitado
+            </span>
+            <span aria-hidden>→</span>
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

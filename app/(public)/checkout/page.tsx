@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import Breadcrumbs from "../_components/Breadcrumbs";
 import { getCurrentCustomer } from "@/lib/auth/customer-auth";
 import { createClient } from "@/lib/supabase/server";
@@ -26,10 +27,22 @@ export type SavedAddress = {
   is_default: boolean;
 };
 
-export default async function CheckoutPage() {
-  // SIN auth gate: el checkout permite comprar como invitado. Si hay sesión
-  // se prefilla con sus datos y direcciones guardadas; si no, el form los pide.
+type SearchParams = Promise<{ guest?: string }>;
+
+export default async function CheckoutPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  // Gate de auth: si NO hay sesión Y el cliente NO eligió 'continuar como
+  // invitado', lo mandamos a /iniciar-sesion donde verá Google/email-pass/
+  // magic-link + la opción explícita de seguir como invitado. Esto evita
+  // que llegue al form de checkout sin haber tomado esa decisión.
   const customer = await getCurrentCustomer();
+  const { guest } = await searchParams;
+  if (!customer && guest !== "1") {
+    redirect("/iniciar-sesion?next=/checkout");
+  }
 
   let addresses: SavedAddress[] = [];
   if (customer) {

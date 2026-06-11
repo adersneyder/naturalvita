@@ -16,6 +16,9 @@ const INITIAL_STATE: AuthState = { ok: false };
 export default function SignupForm() {
   const params = useSearchParams();
   const next = params.get("next") ?? "/mi-cuenta";
+  // Email pre-llenado: usado cuando el guest llega a "crea tu cuenta con
+  // X@correo.com" desde la página de éxito de un pedido huérfano.
+  const prefilledEmail = params.get("email") ?? "";
 
   const [showMagicLink, setShowMagicLink] = useState(false);
 
@@ -78,6 +81,7 @@ export default function SignupForm() {
               id="email"
               name="email"
               required
+              defaultValue={prefilledEmail}
               autoComplete="email"
               disabled={signupPending}
               className="w-full px-3 py-2.5 text-sm rounded-lg border border-[var(--color-earth-200)] focus:outline-none focus:border-[var(--color-iris-700)] disabled:opacity-50"
@@ -223,6 +227,23 @@ export default function SignupForm() {
           Iniciar sesión
         </Link>
       </div>
+
+      {/* Continuar como invitado: simétrico al login. Solo cuando viene
+          del checkout, como tercera opción sin "competir" con el registro. */}
+      {next === "/checkout" && (
+        <div className="pt-3 border-t border-dashed border-[var(--color-earth-100)] text-center">
+          <Link
+            href="/checkout?guest=1"
+            className="inline-flex items-center gap-1.5 text-sm text-[var(--color-earth-700)] hover:text-[var(--color-iris-700)]"
+          >
+            ¿No quieres crear cuenta?
+            <span className="text-[var(--color-iris-700)] font-medium underline underline-offset-2">
+              Continuar como invitado
+            </span>
+            <span aria-hidden>→</span>
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
