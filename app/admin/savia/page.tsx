@@ -48,6 +48,28 @@ export default async function AdminSaviaPage({
         <PeriodSwitcher current={periodDays} />
       </header>
 
+      {/* Accesos a las vistas operativas */}
+      <nav className="flex flex-wrap gap-2 mb-4">
+        <a
+          href="/admin/savia/flows"
+          className="px-3 py-1.5 rounded-lg bg-white border border-[rgba(47,98,56,0.12)] text-xs font-medium text-[var(--color-leaf-900)] hover:bg-[var(--color-earth-50)]"
+        >
+          Flows (activar/desactivar)
+        </a>
+        <a
+          href="/admin/savia/jobs"
+          className="px-3 py-1.5 rounded-lg bg-white border border-[rgba(47,98,56,0.12)] text-xs font-medium text-[var(--color-leaf-900)] hover:bg-[var(--color-earth-50)]"
+        >
+          Cola de correos
+        </a>
+        <a
+          href="/admin/savia/suppressions"
+          className="px-3 py-1.5 rounded-lg bg-white border border-[rgba(47,98,56,0.12)] text-xs font-medium text-[var(--color-leaf-900)] hover:bg-[var(--color-earth-50)]"
+        >
+          Suppressions
+        </a>
+      </nav>
+
       {hasAlerts ? (
         <div className="mb-4 space-y-2">
           {complaintAlert && (
