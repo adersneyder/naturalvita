@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getAdminUser } from "@/lib/admin-auth";
+import { logAdminAction } from "@/lib/audit-log";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type PublishGuideInput = {
@@ -71,6 +72,17 @@ export async function publishGuide(
   revalidatePath("/guias");
   revalidatePath(`/guias/${input.slug}`);
   revalidatePath("/sitemap.xml");
+
+  await logAdminAction({
+    action: asDraft ? "guide.unpublish" : "guide.publish",
+    entityType: "guide",
+    entityId: input.slug,
+    summary: asDraft
+      ? `Guardó borrador de guía "${input.title}"`
+      : `Publicó guía "${input.title}"`,
+    metadata: { title: input.title, sections: input.sections.length },
+  });
+
   return { ok: true, slug: input.slug };
 }
 
@@ -88,5 +100,13 @@ export async function archiveGuide(slug: string): Promise<PublishGuideResult> {
   if (error) return { ok: false, error: error.message };
   revalidatePath("/guias");
   revalidatePath(`/guias/${slug}`);
+
+  await logAdminAction({
+    action: "guide.unpublish",
+    entityType: "guide",
+    entityId: slug,
+    summary: `Archivó guía ${slug}`,
+  });
+
   return { ok: true, slug };
 }

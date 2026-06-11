@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/admin-auth";
+import { logAdminAction } from "@/lib/audit-log";
 import { sendEmail } from "@/lib/email/client";
 import { OrderShipped } from "@/lib/email/templates/order-shipped";
 import { trackOrderShipped, trackOrderRefunded } from "@/lib/events/track";
@@ -255,7 +256,7 @@ export async function cancelOrder(
   // Concatenar nota de cancelación al campo notes
   const { data: existing } = await supabase
     .from("orders")
-    .select("notes, payment_status")
+    .select("notes, payment_status, order_number")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -284,6 +285,18 @@ export async function cancelOrder(
 
   revalidatePath("/admin/pedidos");
   revalidatePath(`/admin/pedidos/${orderId}`);
+
+  await logAdminAction({
+    action: "order.cancel",
+    entityType: "order",
+    entityId: orderId,
+    summary: `Canceló pedido ${existing?.order_number ?? orderId}`,
+    metadata: {
+      order_number: existing?.order_number,
+      was_paid: existing?.payment_status === "paid",
+      reason: reason ?? null,
+    },
+  });
 
   const wasPaid = existing?.payment_status === "paid";
   return {
@@ -381,6 +394,19 @@ export async function markOrderRefunded(
 
   revalidatePath("/admin/pedidos");
   revalidatePath(`/admin/pedidos/${orderId}`);
+
+  await logAdminAction({
+    action: "order.refund",
+    entityType: "order",
+    entityId: orderId,
+    summary: `Marcó reembolsado pedido ${order.order_number}`,
+    metadata: {
+      order_number: order.order_number,
+      total_cop: order.total_cop,
+      reason: reason ?? null,
+    },
+  });
+
   return {
     ok: true,
     message:

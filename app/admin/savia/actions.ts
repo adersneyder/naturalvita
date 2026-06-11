@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getAdminUser } from "@/lib/admin-auth";
+import { logAdminAction } from "@/lib/audit-log";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type SaviaActionResult = { ok: true } | { ok: false; error: string };
@@ -22,6 +23,13 @@ export async function toggleFlow(
   }
 
   const admin = createAdminClient();
+  // Cargamos el nombre del flow antes para escribir un summary legible.
+  const { data: flow } = await admin
+    .from("email_flows")
+    .select("name")
+    .eq("id", flowId)
+    .maybeSingle();
+
   const { error } = await admin
     .from("email_flows")
     .update({ active })
@@ -34,6 +42,15 @@ export async function toggleFlow(
 
   revalidatePath("/admin/savia");
   revalidatePath("/admin/savia/flows");
+
+  await logAdminAction({
+    action: "flow.toggle",
+    entityType: "flow",
+    entityId: flowId,
+    summary: `${active ? "Activó" : "Desactivó"} flow ${flow?.name ?? flowId}`,
+    metadata: { active },
+  });
+
   return { ok: true };
 }
 
@@ -52,10 +69,11 @@ export async function removeSuppression(
   }
 
   const admin = createAdminClient();
+  const clean = email.trim().toLowerCase();
   const { error } = await admin
     .from("email_suppressions")
     .delete()
-    .eq("email", email.trim().toLowerCase());
+    .eq("email", clean);
 
   if (error) {
     console.error("[removeSuppression]", error.message);
@@ -63,6 +81,14 @@ export async function removeSuppression(
   }
 
   revalidatePath("/admin/savia/suppressions");
+
+  await logAdminAction({
+    action: "suppression.remove",
+    entityType: "suppression",
+    entityId: clean,
+    summary: `Quitó de suppression a ${clean}`,
+  });
+
   return { ok: true };
 }
 
@@ -101,6 +127,15 @@ export async function addSuppression(
   }
 
   revalidatePath("/admin/savia/suppressions");
+
+  await logAdminAction({
+    action: "suppression.add",
+    entityType: "suppression",
+    entityId: clean,
+    summary: `Añadió a suppression ${clean}`,
+    metadata: { notes: notes.trim() || null },
+  });
+
   return { ok: true };
 }
 
