@@ -2942,6 +2942,22 @@ export type Database = {
       }
       savia_trigger_cart_detect: { Args: never; Returns: number }
       savia_trigger_dispatch: { Args: never; Returns: number }
+      tracking_product_funnel: {
+        Args: { p_days: number }
+        Returns: {
+          product_id: string | null
+          product_slug: string
+          product_name: string
+          image_url: string | null
+          views: number
+          adds_to_cart: number
+          unique_buyers: number
+          units_sold: number
+          revenue_cop: number
+          conv_view_to_cart: number | null
+          conv_view_to_purchase: number | null
+        }[]
+      }
       savia_trigger_lifecycle_detect: { Args: never; Returns: number }
       search_products: {
         Args: { page_offset?: number; page_size?: number; q: string }
