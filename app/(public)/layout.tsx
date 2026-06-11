@@ -10,6 +10,7 @@ import {
   OrganizationSchema,
   WebSiteSchema,
 } from "@/components/schema/OrganizationSchema";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * Layout del catálogo público. Monta:
@@ -23,7 +24,23 @@ import {
  *
  * Las páginas hijas controlan su propio container y padding.
  */
-export default function PublicLayout({ children }: { children: ReactNode }) {
+export default async function PublicLayout({ children }: { children: ReactNode }) {
+  // Leemos la sesión SSR para pasarle al tracker el customer_id si existe.
+  // Si el cliente está logueado, el SDK dispara identify() y el backend
+  // reasigna sus eventos anónimos previos a su customer_id. Solo se usa
+  // como hint — si Supabase falla seguimos sin identify y el tracking
+  // funciona en modo anónimo.
+  let customerId: string | null = null;
+  try {
+    const sb = await createClient();
+    const {
+      data: { user },
+    } = await sb.auth.getUser();
+    customerId = user?.id ?? null;
+  } catch {
+    /* sesión no disponible — modo anónimo */
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-white">
       <OrganizationSchema />
@@ -36,7 +53,7 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
       <HabeasDataBanner />
       {/* Tracker "Sembrado" — usa useSearchParams, requiere Suspense en App Router. */}
       <Suspense fallback={null}>
-        <SemilloTracker />
+        <SemilloTracker customerId={customerId} />
       </Suspense>
     </div>
   );

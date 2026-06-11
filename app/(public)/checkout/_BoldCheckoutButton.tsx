@@ -161,6 +161,14 @@ export default function BoldCheckoutButton({
 
       checkoutRef.current = checkout;
       checkout.open();
+      // Una vez que Bold renderizó su modal, el cliente está literalmente
+      // a un click de ingresar tarjeta o seleccionar PSE. Emitimos el
+      // add_payment_info aquí — un paso después que checkout_start (click
+      // del botón) y un paso antes que purchase (success page).
+      track("add_payment_info", {
+        order_number: orderNumber,
+        amount_cop: amountCop,
+      });
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Error iniciando el pago";

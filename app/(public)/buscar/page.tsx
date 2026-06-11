@@ -4,6 +4,7 @@ import Breadcrumbs from "../_components/Breadcrumbs";
 import ProductGrid from "../_components/ProductGrid";
 import Pagination from "../_components/Pagination";
 import SearchBar from "../_components/SearchBar";
+import SearchTracker from "./_SearchTracker";
 import {
   listProducts,
   listActiveCollections,
@@ -137,6 +138,7 @@ export default async function BuscarPage({
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 md:py-10">
+      <SearchTracker query={q} resultsCount={pageData.total} />
       <Breadcrumbs items={[{ label: "Buscar", href: "/buscar" }, { label: q }]} />
 
       <header className="mt-6 mb-6">

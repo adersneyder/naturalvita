@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useCart } from "@/lib/cart/use-cart";
 import { useCartDrawer } from "@/lib/cart/use-cart-drawer";
 import { formatCop } from "@/lib/format/currency";
+import { track } from "@/lib/savia/tracker";
 
 export default function CartDrawer() {
   const { isOpen, close } = useCartDrawer();
@@ -29,6 +30,19 @@ export default function CartDrawer() {
     return () => {
       document.body.style.overflow = original;
     };
+  }, [isOpen]);
+
+  // Evento view_cart al abrir el drawer. Solo cuando isOpen pasa a true
+  // (la prop como dependencia hace el effect re-correr).
+  useEffect(() => {
+    if (!isOpen) return;
+    track("view_cart", {
+      items_count: items.length,
+      subtotal_cop: subtotal,
+    });
+    // items y subtotal NO van como deps a propósito: queremos disparar
+    // por apertura, no cada vez que cambian las cantidades del drawer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -164,7 +178,16 @@ export default function CartDrawer() {
 
                   <button
                     type="button"
-                    onClick={() => removeItem(item.product_id)}
+                    onClick={() => {
+                      track("remove_from_cart", {
+                        product_id: item.product_id,
+                        product_slug: item.slug,
+                        product_name: item.name,
+                        price_cop: item.price_cop,
+                        quantity: item.quantity,
+                      });
+                      removeItem(item.product_id);
+                    }}
                     className="shrink-0 -mr-1 -mt-1 p-1 text-[var(--color-earth-500)] hover:text-red-600 self-start"
                     aria-label="Eliminar del carrito"
                   >

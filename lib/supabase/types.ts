@@ -2577,6 +2577,9 @@ export type Database = {
           session_id: string
           utm_campaign: string | null
           utm_content: string | null
+          utm_first_campaign: string | null
+          utm_first_medium: string | null
+          utm_first_source: string | null
           utm_medium: string | null
           utm_source: string | null
           utm_term: string | null
@@ -2602,6 +2605,9 @@ export type Database = {
           session_id: string
           utm_campaign?: string | null
           utm_content?: string | null
+          utm_first_campaign?: string | null
+          utm_first_medium?: string | null
+          utm_first_source?: string | null
           utm_medium?: string | null
           utm_source?: string | null
           utm_term?: string | null
@@ -2627,6 +2633,9 @@ export type Database = {
           session_id?: string
           utm_campaign?: string | null
           utm_content?: string | null
+          utm_first_campaign?: string | null
+          utm_first_medium?: string | null
+          utm_first_source?: string | null
           utm_medium?: string | null
           utm_source?: string | null
           utm_term?: string | null
@@ -2939,6 +2948,10 @@ export type Database = {
           last_order_id: string
           last_total_cop: number
         }[]
+      }
+      rewire_visitor_to_customer: {
+        Args: { p_visitor_id: string; p_customer_id: string }
+        Returns: number
       }
       savia_trigger_cart_detect: { Args: never; Returns: number }
       savia_trigger_dispatch: { Args: never; Returns: number }
