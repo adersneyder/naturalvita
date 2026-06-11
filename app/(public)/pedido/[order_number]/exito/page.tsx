@@ -5,6 +5,7 @@ import Breadcrumbs from "../../../_components/Breadcrumbs";
 import { getCurrentCustomer } from "@/lib/auth/customer-auth";
 import { createClient } from "@/lib/supabase/server";
 import OrderStatusPoller from "./_OrderStatusPoller";
+import PurchaseTracker from "./_PurchaseTracker";
 import { formatCop } from "@/lib/format/currency";
 
 export const metadata: Metadata = {
@@ -94,6 +95,13 @@ export default async function OrderSuccessPage({
       <OrderStatusPoller
         orderNumber={order.order_number}
         initialPaymentStatus={order.payment_status}
+      />
+
+      {/* Tracker Sembrado: dispara `purchase` una vez por orden pagada. */}
+      <PurchaseTracker
+        orderNumber={order.order_number}
+        totalCop={order.total_cop}
+        isPaid={order.payment_status === "paid"}
       />
 
       <article className="mt-6 rounded-2xl bg-white border border-[var(--color-earth-100)] p-6 sm:p-8">

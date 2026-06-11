@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useCart } from "@/lib/cart/use-cart";
 import { openCartDrawer } from "@/lib/cart/use-cart-drawer";
 import { showToast } from "@/lib/cart/use-toasts";
+import { track } from "@/lib/savia/tracker";
 
 type Props = {
   product: {
@@ -83,6 +84,14 @@ export default function AddToCartButtons({ product, showQuantitySelector = true 
       price_cop: product.price_cop,
       image_url: product.image_url,
       stock_at_add: product.track_stock ? product.stock : 99,
+      quantity: qty,
+    });
+
+    track("add_to_cart", {
+      product_id: product.id,
+      product_slug: product.slug,
+      product_name: product.name,
+      price_cop: product.price_cop,
       quantity: qty,
     });
 

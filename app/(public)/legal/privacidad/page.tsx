@@ -21,7 +21,7 @@ export default function PrivacidadPage() {
           Política de tratamiento de datos personales
         </h1>
         <p className="mt-3 text-sm text-[var(--color-earth-700)]">
-          Vigente desde el 1 de mayo de 2026. Última actualización: 1 de mayo de 2026.
+          Vigente desde el 1 de mayo de 2026. Última actualización: 11 de junio de 2026.
         </p>
       </header>
 
@@ -69,17 +69,37 @@ export default function PrivacidadPage() {
           <h2 className="font-serif text-xl text-[var(--color-leaf-900)] mt-8 mb-3">
             3. Datos que recolectamos
           </h2>
-          <p>Recolectamos los siguientes datos personales:</p>
+          <p>
+            Distinguimos dos niveles de datos según el uso del sitio y el
+            consentimiento que nos otorgues:
+          </p>
+          <p className="mt-3 font-medium text-[var(--color-leaf-900)]">
+            3.1 Datos identificados (los entregas tú o los autorizas)
+          </p>
           <ul className="list-disc pl-6 space-y-1 mt-2">
             <li>Datos de identificación: nombre, tipo y número de documento.</li>
             <li>Datos de contacto: correo electrónico, teléfono.</li>
             <li>Datos de envío: dirección, ciudad, departamento.</li>
             <li>Datos de la transacción: productos comprados, montos, fecha.</li>
             <li>
-              Datos de navegación: páginas visitadas, dispositivo, dirección IP
-              (solo si has aceptado cookies de analítica).
+              Si autorizas analítica: dirección IP, tipo de dispositivo y
+              navegador, ciudad/departamento estimados a partir de la IP, y
+              vinculación de tu navegación con tu cuenta de cliente.
             </li>
           </ul>
+          <p className="mt-4 font-medium text-[var(--color-leaf-900)]">
+            3.2 Datos de navegación agregados (sin identificarte)
+          </p>
+          <p className="mt-1">
+            Aun si <em>no</em> aceptas la analítica, generamos un identificador
+            aleatorio de visitante guardado en el almacenamiento local de tu
+            navegador (no es una cookie) para distinguir sesiones distintas
+            sin identificarte. Con él medimos en agregado: páginas visitadas,
+            productos vistos, tiempo en el sitio y conversiones. Este flujo
+            no recolecta tu IP, tu user-agent literal ni tu cuenta de cliente,
+            por lo que conforme al artículo 3 de la Ley 1581 de 2012 no
+            constituye tratamiento de datos personales.
+          </p>
         </section>
 
         <section>
@@ -180,15 +200,28 @@ export default function PrivacidadPage() {
 
         <section>
           <h2 className="font-serif text-xl text-[var(--color-leaf-900)] mt-8 mb-3">
-            8. Cookies
+            8. Cookies y almacenamiento local
           </h2>
           <p>
-            Usamos cookies estrictamente necesarias para el funcionamiento del
-            sitio (sesión y carrito). Otras cookies (analítica y marketing)
-            solo se activan si aceptas explícitamente en el banner de
-            consentimiento que aparece en tu primera visita. Puedes cambiar
-            tus preferencias en cualquier momento limpiando los datos del sitio
-            en tu navegador.
+            Usamos cookies estrictamente necesarias para que la tienda funcione
+            (sesión de cliente, carrito y prevención de fraude). Estas no
+            requieren tu consentimiento porque sin ellas el sitio no opera.
+          </p>
+          <p className="mt-3">
+            Otras herramientas con cookies de terceros (Microsoft Clarity para
+            grabaciones de sesión, plataformas de marketing y retargeting) solo
+            se activan cuando aceptas explícitamente en el banner de
+            consentimiento. Si rechazas o cierras el banner sin decidir, esas
+            herramientas no se cargan.
+          </p>
+          <p className="mt-3">
+            Adicionalmente guardamos en el almacenamiento local de tu navegador
+            un identificador aleatorio de visitante (no es una cookie y no se
+            comparte con servidores externos) que nos permite contar visitas
+            únicas y medir conversiones <strong>en agregado</strong>, sin
+            identificarte. Puedes borrarlo en cualquier momento desde la
+            página &quot;Mi cuenta &rsaquo; Privacidad&quot; o limpiando los
+            datos del sitio en tu navegador.
           </p>
         </section>
 

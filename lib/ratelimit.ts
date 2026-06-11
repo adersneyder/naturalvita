@@ -35,6 +35,22 @@ export const searchRatelimit = new Ratelimit({
 });
 
 /**
+ * Limitador del endpoint de tracking. Es relativamente alto porque una
+ * sesión activa de un usuario navegando puede generar 20-30 eventos en
+ * pocos minutos (page_views, scroll, hovers); pero ponemos un tope para
+ * que un script malicioso no llene la tabla.
+ *
+ * 120 eventos / minuto / visitor — ~2/s en pico, suficiente para uso real
+ * y mucho más bajo de lo que necesitaría un atacante para hacer daño.
+ */
+export const trackerRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(120, "1 m"),
+  prefix: "rl:track",
+  analytics: false,
+});
+
+/**
  * Extrae IP del cliente respetando el header de Vercel.
  */
 export function getClientIp(req: Request): string {

@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
+import { Suspense } from "react";
 import PublicHeader from "./_components/PublicHeader";
 import PublicFooter from "./_components/PublicFooter";
 import CartDrawer from "./_components/CartDrawer";
 import Toaster from "./_components/Toaster";
 import HabeasDataBanner from "./_components/HabeasDataBanner";
+import SemilloTracker from "@/app/_components/SemilloTracker";
 import {
   OrganizationSchema,
   WebSiteSchema,
@@ -32,6 +34,10 @@ export default function PublicLayout({ children }: { children: ReactNode }) {
       <CartDrawer />
       <Toaster />
       <HabeasDataBanner />
+      {/* Tracker "Sembrado" — usa useSearchParams, requiere Suspense en App Router. */}
+      <Suspense fallback={null}>
+        <SemilloTracker />
+      </Suspense>
     </div>
   );
 }

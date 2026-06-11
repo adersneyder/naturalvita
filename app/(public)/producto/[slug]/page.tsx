@@ -11,6 +11,7 @@ import StarRating from "../../_components/StarRating";
 import ProductReviews from "../../_components/ProductReviews";
 import RelatedProducts from "./_RelatedProducts";
 import ProductGallery from "./_ProductGallery";
+import ProductViewTracker from "./_ProductViewTracker";
 import ProductInfoTabs from "./_ProductInfoTabs";
 import { getProductReviews, getProductReviewStats, checkReviewEligibility } from "@/lib/reviews/queries";
 import { getWishlistProductIds } from "@/lib/wishlist/queries";
@@ -416,6 +417,14 @@ export default async function ProductPage({ params }: { params: Params }) {
                 stock: product.stock,
                 track_stock: product.track_stock,
               }}
+            />
+
+            <ProductViewTracker
+              productId={product.id}
+              slug={product.slug}
+              name={product.name}
+              priceCop={product.price_cop}
+              categorySlug={product.category?.slug ?? null}
             />
 
             {product.invima_number && (

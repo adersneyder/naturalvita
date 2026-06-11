@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { track } from "@/lib/savia/tracker";
 
 declare global {
   interface Window {
@@ -120,6 +121,11 @@ export default function BoldCheckoutButton({
     }
     if (opening) return;
     setOpening(true);
+
+    track("checkout_start", {
+      order_number: orderNumber,
+      amount_cop: amountCop,
+    });
 
     try {
       // Datos del cliente para precarga (Bold los muestra ya llenados)

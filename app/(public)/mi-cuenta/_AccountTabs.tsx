@@ -17,6 +17,7 @@ const TABS: Tab[] = [
   { key: "reseñas", label: "Reseñas" },
   { key: "direcciones", label: "Direcciones" },
   { key: "datos", label: "Mis datos" },
+  { key: "privacidad", label: "Privacidad" },
 ];
 
 export default function AccountTabs({

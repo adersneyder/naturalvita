@@ -2556,6 +2556,84 @@ export type Database = {
         }
         Relationships: []
       }
+      tracking_events: {
+        Row: {
+          browser: string | null
+          city: string | null
+          country: string | null
+          created_at: string
+          customer_id: string | null
+          device_type: string | null
+          event_props: Json
+          event_type: string
+          id: string
+          identified: boolean
+          ip_address: unknown | null
+          os: string | null
+          page_path: string
+          page_title: string | null
+          referrer: string | null
+          region: string | null
+          session_id: string
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          visitor_id: string
+        }
+        Insert: {
+          browser?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          customer_id?: string | null
+          device_type?: string | null
+          event_props?: Json
+          event_type: string
+          id?: string
+          identified?: boolean
+          ip_address?: unknown | null
+          os?: string | null
+          page_path: string
+          page_title?: string | null
+          referrer?: string | null
+          region?: string | null
+          session_id: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          visitor_id: string
+        }
+        Update: {
+          browser?: string | null
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          customer_id?: string | null
+          device_type?: string | null
+          event_props?: Json
+          event_type?: string
+          id?: string
+          identified?: boolean
+          ip_address?: unknown | null
+          os?: string | null
+          page_path?: string
+          page_title?: string | null
+          referrer?: string | null
+          region?: string | null
+          session_id?: string
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          visitor_id?: string
+        }
+        Relationships: []
+      }
       visitors: {
         Row: {
           city: string | null

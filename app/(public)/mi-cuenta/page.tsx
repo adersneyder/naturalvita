@@ -9,6 +9,7 @@ import SummaryPanel from "./_SummaryPanel";
 import OrdersListPanel from "./_OrdersListPanel";
 import AddressesPanel, { type SavedAddressDTO } from "./_AddressesPanel";
 import DataPanel from "./_DataPanel";
+import PrivacyPanel from "./_PrivacyPanel";
 import WishlistPanel from "./_WishlistPanel";
 import CustomerReviewsPanel from "./_CustomerReviewsPanel";
 import type { ContactInput } from "@/lib/checkout/schemas";
@@ -117,6 +118,7 @@ export default async function MiCuentaPage({
         {activeTab === "datos" && (
           <DataPanel initial={initialContact} email={customer.email} />
         )}
+        {activeTab === "privacidad" && <PrivacyPanel />}
       </AccountPanel>
     </div>
   );
