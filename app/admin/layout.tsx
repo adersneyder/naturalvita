@@ -1,9 +1,19 @@
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
 import { getAdminUser } from "@/lib/admin-auth";
 import Sidebar from "./_components/Sidebar";
 import Topbar from "./_components/Topbar";
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
+  // /admin/login es la única página bajo /admin que NO requiere sesión —
+  // la usamos para conseguir la sesión. Saltamos el check y renderizamos
+  // el form sin chrome (sin sidebar/topbar).
+  const h = await headers();
+  const pathname = h.get("x-pathname") ?? "";
+  if (pathname === "/admin/login") {
+    return <>{children}</>;
+  }
+
   const adminUser = await getAdminUser();
 
   return (
