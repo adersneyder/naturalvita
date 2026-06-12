@@ -112,6 +112,23 @@ export async function createPendingOrder(
     return { ok: false, error: "El carrito está vacío", code: "EMPTY_CART" };
   }
 
+  // Para cliente logueado, customer_name y customer_email son NOT NULL en
+  // BD. Si el cliente se registró con OAuth (Google) o nunca completó su
+  // perfil, full_name puede venir null y el insert truena con un mensaje
+  // genérico. Mejor fallar acá con instrucción clara.
+  if (!isGuest && customer) {
+    const missing: string[] = [];
+    if (!customer.full_name || !customer.full_name.trim()) missing.push("nombre completo");
+    if (!customer.email || !customer.email.trim()) missing.push("correo");
+    if (missing.length > 0) {
+      return {
+        ok: false,
+        error: `Te falta ${missing.join(" y ")} en tu cuenta. Complétalo en Mi cuenta > Mis datos y vuelve al checkout.`,
+        code: "CUSTOMER_PROFILE_INCOMPLETE",
+      };
+    }
+  }
+
   // 1. Re-leer productos desde BD con join a tax_rates
   const productIds = input.items.map((i) => i.product_id);
   const { data: products, error: productsError } = await supabase
@@ -361,7 +378,16 @@ export async function createPendingOrder(
     .single();
 
   if (orderError || !order) {
-    console.error("[createPendingOrder] insert order error:", orderError);
+    // Log detallado para Vercel: necesario para diagnosticar constraint
+    // violations, RLS, schema-cache stale, etc. sin tener que reproducir.
+    console.error("[createPendingOrder] insert order failed", {
+      message: orderError?.message,
+      code: orderError?.code,
+      details: orderError?.details,
+      hint: orderError?.hint,
+      customer_id: orderPayload.customer_id,
+      isGuest,
+    });
     return { ok: false, error: "No pudimos crear la orden", code: "DB_ERROR" };
   }
 
