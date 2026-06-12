@@ -2826,6 +2826,47 @@ export type Database = {
         Returns: string
       }
       current_admin_role: { Args: never; Returns: string }
+      customer_clv_summary: {
+        Args: never
+        Returns: {
+          total_customers: number
+          repeat_customers: number
+          repeat_rate_pct: number
+          aov_cop: number
+          clv_estimate_cop: number
+          avg_days_between_orders: number
+          total_revenue_cop: number
+          as_of: string
+        }[]
+      }
+      customer_cohorts: {
+        Args: { p_months?: number }
+        Returns: {
+          cohort_month: string
+          cohort_size: number
+          months_since: number
+          active_customers: number
+          as_of: string
+        }[]
+      }
+      customer_rfm: {
+        Args: never
+        Returns: {
+          customer_email: string
+          customer_id: string | null
+          customer_name: string | null
+          last_order_at: string
+          days_since_last_order: number
+          orders_count: number
+          lifetime_revenue_cop: number
+          avg_order_value_cop: number
+          r_score: number
+          f_score: number
+          m_score: number
+          segment_code: string
+          as_of: string
+        }[]
+      }
       get_guest_order: {
         Args: { p_order_number: string; p_token: string }
         Returns: {
