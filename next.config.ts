@@ -28,11 +28,11 @@ const withBundleAnalyzer = bundleAnalyzer({
  */
 const cspDirectives = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.bold.co https://www.clarity.ms https://va.vercel-scripts.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.bold.co https://www.clarity.ms https://scripts.clarity.ms https://*.clarity.ms https://va.vercel-scripts.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data: https://fonts.gstatic.com",
-  "connect-src 'self' https://*.supabase.co https://va.vercel-scripts.com https://vitals.vercel-insights.com https://www.clarity.ms https://api.bold.co https://checkout.bold.co",
+  "connect-src 'self' https://*.supabase.co https://va.vercel-scripts.com https://vitals.vercel-insights.com https://www.clarity.ms https://*.clarity.ms https://api.bold.co https://checkout.bold.co",
   "frame-src 'self' https://checkout.bold.co",
   "frame-ancestors 'self'",
   "form-action 'self' https://checkout.bold.co",
