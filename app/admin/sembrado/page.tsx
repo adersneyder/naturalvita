@@ -146,10 +146,24 @@ export default async function SembradoPage({
           <p className="text-xs text-[var(--color-earth-700)] mt-1">
             Tracker propio · últimos {days} días ·{" "}
             <Link
+              href="/admin/sembrado/adquisicion"
+              className="text-[var(--color-iris-700)] hover:underline"
+            >
+              Adquisición
+            </Link>
+            {" · "}
+            <Link
+              href="/admin/sembrado/comportamiento"
+              className="text-[var(--color-iris-700)] hover:underline"
+            >
+              Comportamiento
+            </Link>
+            {" · "}
+            <Link
               href="/admin/sembrado/productos"
               className="text-[var(--color-iris-700)] hover:underline"
             >
-              Funnel por producto →
+              Productos →
             </Link>
           </p>
         </div>

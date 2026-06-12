@@ -2955,6 +2955,43 @@ export type Database = {
       }
       savia_trigger_cart_detect: { Args: never; Returns: number }
       savia_trigger_dispatch: { Args: never; Returns: number }
+      tracking_acquisition_overview: {
+        Args: { p_days: number }
+        Returns: {
+          utm_source: string
+          sessions: number
+          visitors: number
+          last_touch_orders: number
+          last_touch_revenue_cop: number
+          first_touch_orders: number
+          first_touch_revenue_cop: number
+          conv_last_touch_pct: number | null
+          conv_first_touch_pct: number | null
+          as_of: string
+        }[]
+      }
+      tracking_funnel_overview: {
+        Args: { p_days: number }
+        Returns: {
+          step_order: number
+          step_event_type: string
+          visitors: number
+          pct_of_previous: number | null
+          pct_of_total: number | null
+          as_of: string
+        }[]
+      }
+      tracking_top_landings: {
+        Args: { p_days: number; p_limit?: number }
+        Returns: {
+          page_path: string
+          sessions: number
+          bounce_sessions: number
+          orders: number
+          conv_pct: number | null
+          as_of: string
+        }[]
+      }
       tracking_product_funnel: {
         Args: { p_days: number }
         Returns: {
