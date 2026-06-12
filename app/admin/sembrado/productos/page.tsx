@@ -71,15 +71,44 @@ export default async function SembradoProductosPage({
   const sortKey = params.sort && SORTS[params.sort] ? params.sort : "views";
 
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("tracking_product_funnel", {
-    p_days: days,
-  });
+  const [
+    { data, error },
+    { data: wishlistData },
+  ] = await Promise.all([
+    admin.rpc("tracking_product_funnel", { p_days: days }),
+    admin.rpc("tracking_wishlist_gap", { p_days: days }),
+  ]);
 
   if (error) {
     console.error("[sembrado/productos] RPC error", error.message);
   }
 
   const rows = ((data ?? []) as FunnelRow[]).sort(SORTS[sortKey].fn);
+
+  // Oportunidades de wishlist: productos con muchos adds y baja conversión.
+  // Ordenamos por wishlist_adds desc para mostrar los más "deseados" arriba,
+  // pero coloreamos por conversión: alta wishlist + baja conversión = oro.
+  type WishGap = {
+    product_id: string;
+    product_slug: string;
+    product_name: string;
+    image_url: string | null;
+    wishlist_adds: number;
+    unique_wishers: number;
+    paid_orders: number;
+    conversion_pct: number | null;
+    as_of: string;
+  };
+  const wishGaps = (wishlistData ?? []) as WishGap[];
+  const topWishOpportunities = wishGaps
+    .filter((w) => w.unique_wishers >= 3)
+    .sort((a, b) => {
+      // Score: muchos wishers × poca conversión.
+      const score = (w: WishGap) =>
+        w.unique_wishers * (1 - (w.conversion_pct ?? 0) / 100);
+      return score(b) - score(a);
+    })
+    .slice(0, 5);
 
   // Totales para la cabecera.
   const totals = rows.reduce(
@@ -150,6 +179,55 @@ export default async function SembradoProductosPage({
           ))}
         </div>
       </div>
+
+      {/* Oportunidades de wishlist: alta intención que no convierte. */}
+      {topWishOpportunities.length > 0 && (
+        <div className="bg-[#F3E8FF]/40 border border-[#6B21A8]/15 rounded-xl p-4 mb-4">
+          <div className="flex items-baseline justify-between mb-2">
+            <p className="text-sm font-medium text-[#6B21A8] m-0">
+              Oportunidades de wishlist
+            </p>
+            <p className="text-[10px] text-[var(--color-earth-700)] m-0">
+              Muchos guardan, pocos compran
+            </p>
+          </div>
+          <ul className="space-y-1.5 m-0 p-0 list-none">
+            {topWishOpportunities.map((w) => (
+              <li
+                key={w.product_slug}
+                className="flex items-center justify-between gap-3 text-xs"
+              >
+                <Link
+                  href={`/producto/${w.product_slug}`}
+                  target="_blank"
+                  className="truncate text-[var(--color-earth-900)] hover:text-[var(--color-iris-700)]"
+                >
+                  {w.product_name}
+                </Link>
+                <span className="flex items-center gap-2 flex-shrink-0 tabular-nums text-[var(--color-earth-700)]">
+                  <span>{w.unique_wishers} en wishlist</span>
+                  <span className="text-[var(--color-earth-400)]">·</span>
+                  <span>{w.paid_orders} pedidos</span>
+                  {w.conversion_pct !== null && (
+                    <>
+                      <span className="text-[var(--color-earth-400)]">·</span>
+                      <span
+                        className={
+                          w.conversion_pct < 10
+                            ? "text-[#B23A1F] font-medium"
+                            : "text-[var(--color-earth-700)]"
+                        }
+                      >
+                        {w.conversion_pct.toFixed(0)}%
+                      </span>
+                    </>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-[rgba(47,98,56,0.1)] overflow-x-auto">
         {rows.length === 0 ? (

@@ -170,7 +170,14 @@ export default async function SembradoPage({
               href="/admin/sembrado/productos"
               className="text-[var(--color-iris-700)] hover:underline"
             >
-              Productos →
+              Productos
+            </Link>
+            {" · "}
+            <Link
+              href="/admin/sembrado/marketing"
+              className="text-[var(--color-iris-700)] hover:underline"
+            >
+              Marketing →
             </Link>
           </p>
         </div>

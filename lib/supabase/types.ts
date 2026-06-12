@@ -2996,6 +2996,51 @@ export type Database = {
       }
       savia_trigger_cart_detect: { Args: never; Returns: number }
       savia_trigger_dispatch: { Args: never; Returns: number }
+      savia_flow_attribution: {
+        Args: { p_days?: number; p_attribution_window_days?: number }
+        Returns: {
+          flow_id: string
+          flow_name: string
+          emails_sent: number
+          emails_opened: number
+          emails_clicked: number
+          attributed_orders: number
+          attributed_revenue_cop: number
+          open_rate_pct: number | null
+          ctr_pct: number | null
+          revenue_per_send_cop: number | null
+          as_of: string
+        }[]
+      }
+      coupon_performance: {
+        Args: { p_days?: number }
+        Returns: {
+          coupon_id: string
+          code: string
+          description: string
+          redemptions: number
+          unique_customers: number
+          revenue_cop: number
+          discount_total_cop: number
+          aov_with_coupon_cop: number
+          discount_pct_of_revenue: number
+          as_of: string
+        }[]
+      }
+      tracking_wishlist_gap: {
+        Args: { p_days?: number }
+        Returns: {
+          product_id: string
+          product_slug: string
+          product_name: string
+          image_url: string | null
+          wishlist_adds: number
+          unique_wishers: number
+          paid_orders: number
+          conversion_pct: number | null
+          as_of: string
+        }[]
+      }
       tracking_acquisition_overview: {
         Args: { p_days: number }
         Returns: {
