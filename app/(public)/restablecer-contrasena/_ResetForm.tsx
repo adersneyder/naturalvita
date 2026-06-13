@@ -49,7 +49,7 @@ export default function ResetForm() {
     }
 
     await supabase.auth.signOut();
-    router.push("/login?message=password_reset");
+    router.push("/iniciar-sesion?message=password_reset");
   }
 
   if (status === "checking") {

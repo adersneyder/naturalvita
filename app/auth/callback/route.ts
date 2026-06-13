@@ -37,10 +37,11 @@ export async function GET(request: NextRequest) {
   const next = searchParams.get("next") ?? "/mi-cuenta";
 
   const isAdminFlow = next.startsWith("/admin");
-  // Login unificado: clientes y equipo entran por /login. isAdminFlow se
-  // mantiene solo para semántica de errores futuros.
-  void isAdminFlow;
-  const loginUrl = "/login";
+  // Si el flujo viene de un destino admin, los errores vuelven a /login
+  // (entry del equipo). Si es de cliente, vuelven a /iniciar-sesion. Esto
+  // mantiene el contexto: un admin no acaba en el form de cliente y
+  // viceversa, aunque el callback intermedio sea el mismo.
+  const loginUrl = isAdminFlow ? "/login" : "/iniciar-sesion";
 
   if (error) {
     return NextResponse.redirect(

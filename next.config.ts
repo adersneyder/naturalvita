@@ -105,10 +105,9 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     return [
-      // Login unificado: las rutas históricas viven en emails, bookmarks
-      // y código de redirects internos. Ambas van a /login preservando
-      // el querystring (?next=, ?error=) automáticamente.
-      { source: "/iniciar-sesion", destination: "/login", permanent: false },
+      // /admin/login fue el entry point histórico del equipo; ahora el
+      // entry point oficial es /login. Conservamos el redirect para que
+      // bookmarks y enlaces internos viejos no se rompan.
       { source: "/admin/login", destination: "/login", permanent: false },
     ];
   },

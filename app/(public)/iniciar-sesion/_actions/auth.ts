@@ -71,7 +71,7 @@ export async function signInWithGoogleAction(formData: FormData) {
   if (error) {
     console.error("[auth] signInWithGoogleAction:", error);
     redirect(
-      `/login?error=${encodeURIComponent("No pudimos iniciar sesión con Google")}`,
+      `/iniciar-sesion?error=${encodeURIComponent("No pudimos iniciar sesión con Google")}`,
     );
   }
 
@@ -79,7 +79,7 @@ export async function signInWithGoogleAction(formData: FormData) {
     redirect(data.url);
   }
 
-  redirect("/login?error=oauth_no_url");
+  redirect("/iniciar-sesion?error=oauth_no_url");
 }
 
 // ─── Email + password (login) ───────────────────────────────────────────────
