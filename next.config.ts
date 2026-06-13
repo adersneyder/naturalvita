@@ -103,6 +103,15 @@ const nextConfig: NextConfig = {
       { source: "/:path*", headers: baseSecurityHeaders },
     ];
   },
+  async redirects() {
+    return [
+      // Login unificado: las rutas históricas viven en emails, bookmarks
+      // y código de redirects internos. Ambas van a /login preservando
+      // el querystring (?next=, ?error=) automáticamente.
+      { source: "/iniciar-sesion", destination: "/login", permanent: false },
+      { source: "/admin/login", destination: "/login", permanent: false },
+    ];
+  },
 };
 
 export default withBundleAnalyzer(nextConfig);

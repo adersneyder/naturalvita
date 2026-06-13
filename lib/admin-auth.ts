@@ -22,7 +22,7 @@ export async function getAdminUser(): Promise<AdminUser> {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/admin/login");
+    redirect("/login?next=/admin");
   }
 
   const { data: adminUser } = await supabase
@@ -33,7 +33,7 @@ export async function getAdminUser(): Promise<AdminUser> {
 
   if (!adminUser || !adminUser.is_active) {
     await supabase.auth.signOut();
-    redirect("/admin/login?error=not_authorized");
+    redirect("/login?error=not_authorized");
   }
 
   return adminUser as AdminUser;

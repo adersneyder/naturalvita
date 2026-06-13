@@ -46,7 +46,7 @@ export default function RecoverForm() {
         <p className="text-xs text-[var(--color-earth-500)] mt-4">
           El enlace expira en 1 hora. Si no lo ves, revisa la carpeta de spam.
         </p>
-        <Link href="/iniciar-sesion" className="inline-block mt-5 text-xs text-[var(--color-iris-700)] hover:underline">
+        <Link href="/login" className="inline-block mt-5 text-xs text-[var(--color-iris-700)] hover:underline">
           Volver a iniciar sesión
         </Link>
       </div>
@@ -82,7 +82,7 @@ export default function RecoverForm() {
         {status === "loading" ? "Enviando..." : "Enviar enlace de recuperación"}
       </button>
       <p className="text-sm text-center text-[var(--color-earth-700)] mt-6">
-        <Link href="/iniciar-sesion" className="text-[var(--color-iris-700)] hover:underline">
+        <Link href="/login" className="text-[var(--color-iris-700)] hover:underline">
           Volver a iniciar sesión
         </Link>
       </p>

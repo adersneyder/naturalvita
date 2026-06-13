@@ -143,7 +143,7 @@ export default function AccountLink() {
   if (authed === false) {
     return (
       <Link
-        href="/iniciar-sesion"
+        href="/login"
         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)] hover:bg-[var(--color-earth-50)] transition-colors"
         aria-label="Iniciar sesión o crear cuenta"
       >

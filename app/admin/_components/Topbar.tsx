@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { signOut } from "../actions";
 
 type TopbarProps = {
@@ -27,6 +28,12 @@ export default function Topbar({ userName, userEmail }: TopbarProps) {
         {greeting()}, {userName.split(" ")[0]}
       </h1>
       <div className="flex items-center gap-3">
+        <Link
+          href="/admin/mi-perfil"
+          className="text-xs text-[var(--color-earth-700)] hover:text-[var(--color-leaf-900)] transition-colors"
+        >
+          Mi perfil
+        </Link>
         <form action={signOut}>
           <button
             type="submit"
@@ -35,12 +42,13 @@ export default function Topbar({ userName, userEmail }: TopbarProps) {
             Cerrar sesión
           </button>
         </form>
-        <div
+        <Link
+          href="/admin/mi-perfil"
           title={userEmail}
-          className="w-8 h-8 rounded-full bg-[var(--color-leaf-700)] text-white flex items-center justify-center text-[11px] font-medium"
+          className="w-8 h-8 rounded-full bg-[var(--color-leaf-700)] text-white flex items-center justify-center text-[11px] font-medium hover:bg-[var(--color-leaf-900)] transition-colors"
         >
           {getInitials(userName)}
-        </div>
+        </Link>
       </div>
     </div>
   );

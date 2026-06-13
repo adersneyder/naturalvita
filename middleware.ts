@@ -2,15 +2,7 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
-  // App Router no expone pathname a server components. Lo inyectamos como
-  // header para que el layout de /admin sepa cuándo está en /admin/login
-  // y excepcione el check de auth (evita loop infinito).
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-pathname", request.nextUrl.pathname);
-
-  let response = NextResponse.next({
-    request: { headers: requestHeaders },
-  });
+  let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,9 +14,7 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookies: { name: string; value: string; options: CookieOptions }[]) {
           cookies.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({
-            request: { headers: requestHeaders },
-          });
+          response = NextResponse.next({ request });
           cookies.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           );
@@ -39,17 +29,12 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isAdminRoute = pathname.startsWith("/admin");
-  const isLoginPage = pathname === "/admin/login";
 
-  if (isAdminRoute && !isLoginPage && !user) {
+  // /admin sin sesión → login unificado, conservando a dónde quería ir.
+  if (isAdminRoute && !user) {
     const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/admin/login";
-    return NextResponse.redirect(redirectUrl);
-  }
-
-  if (isLoginPage && user) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/admin";
+    redirectUrl.pathname = "/login";
+    redirectUrl.search = `?next=${encodeURIComponent(pathname)}`;
     return NextResponse.redirect(redirectUrl);
   }
 

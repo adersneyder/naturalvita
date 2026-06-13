@@ -41,7 +41,7 @@ export default async function CheckoutPage({
   const customer = await getCurrentCustomer();
   const { guest } = await searchParams;
   if (!customer && guest !== "1") {
-    redirect("/iniciar-sesion?next=/checkout");
+    redirect("/login?next=/checkout");
   }
 
   let addresses: SavedAddress[] = [];

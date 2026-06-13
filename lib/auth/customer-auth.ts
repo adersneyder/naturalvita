@@ -83,7 +83,7 @@ export async function requireCustomer(opts?: {
     // Si falla la creación (típicamente RLS), forzamos logout y redirect
     // limpio para no dejar al user en estado inconsistente.
     await supabase.auth.signOut();
-    redirect("/iniciar-sesion?error=onboarding_failed");
+    redirect("/login?error=onboarding_failed");
   }
 
   return created as Customer;

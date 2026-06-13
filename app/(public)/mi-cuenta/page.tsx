@@ -10,6 +10,7 @@ import OrdersListPanel from "./_OrdersListPanel";
 import AddressesPanel, { type SavedAddressDTO } from "./_AddressesPanel";
 import DataPanel from "./_DataPanel";
 import PrivacyPanel from "./_PrivacyPanel";
+import ChangePasswordSection from "@/components/auth/ChangePasswordSection";
 import WishlistPanel from "./_WishlistPanel";
 import CustomerReviewsPanel from "./_CustomerReviewsPanel";
 import type { ContactInput } from "@/lib/checkout/schemas";
@@ -116,7 +117,20 @@ export default async function MiCuentaPage({
           <AddressesPanel addresses={addresses} />
         )}
         {activeTab === "datos" && (
-          <DataPanel initial={initialContact} email={customer.email} />
+          <>
+            <DataPanel initial={initialContact} email={customer.email} />
+            <section className="mt-8 max-w-xl">
+              <h2 className="font-serif text-lg text-[var(--color-leaf-900)] m-0 mb-2">
+                Cambiar contraseña
+              </h2>
+              <p className="text-xs text-[var(--color-earth-700)] mt-0 mb-3">
+                Si entraste con Google o un enlace de correo, aquí puedes
+                crearla por primera vez. Después podrás usarla para entrar
+                directamente.
+              </p>
+              <ChangePasswordSection />
+            </section>
+          </>
         )}
         {activeTab === "privacidad" && <PrivacyPanel />}
       </AccountPanel>

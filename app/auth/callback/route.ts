@@ -37,7 +37,10 @@ export async function GET(request: NextRequest) {
   const next = searchParams.get("next") ?? "/mi-cuenta";
 
   const isAdminFlow = next.startsWith("/admin");
-  const loginUrl = isAdminFlow ? "/admin/login" : "/iniciar-sesion";
+  // Login unificado: clientes y equipo entran por /login. isAdminFlow se
+  // mantiene solo para semántica de errores futuros.
+  void isAdminFlow;
+  const loginUrl = "/login";
 
   if (error) {
     return NextResponse.redirect(
@@ -70,6 +73,30 @@ export async function GET(request: NextRequest) {
     },
   );
 
+  // Role-routing post-auth: si nadie pidió destino concreto (next default),
+  // el equipo va a /admin y los clientes a /mi-cuenta. Mutamos el header
+  // Location del response ya creado para conservar las cookies de sesión
+  // que Supabase fue seteando en él.
+  async function applyRoleRouting() {
+    if (next !== "/mi-cuenta") return;
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: adminUser } = await supabase
+        .from("admin_users")
+        .select("id, is_active")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (adminUser?.is_active) {
+        response.headers.set("Location", `${origin}/admin`);
+      }
+    } catch {
+      /* role-routing es best-effort; el default /mi-cuenta siempre sirve */
+    }
+  }
+
   // Flujo OTP (magic link no-PKCE): no requiere code_verifier en cookie, así
   // que funciona aunque el correo se abra en otro navegador/dispositivo.
   if (tokenHash) {
@@ -82,6 +109,7 @@ export async function GET(request: NextRequest) {
         `${origin}${loginUrl}?error=${encodeURIComponent(verifyError.message)}`,
       );
     }
+    await applyRoleRouting();
     return response;
   }
 
@@ -93,5 +121,6 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  await applyRoleRouting();
   return response;
 }

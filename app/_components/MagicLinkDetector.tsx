@@ -99,7 +99,7 @@ export default function MagicLinkDetector() {
               {state.message}
             </p>
             <a
-              href="/admin/login"
+              href="/login"
               className="inline-block text-sm text-[var(--color-leaf-700)] underline"
             >
               Volver al login

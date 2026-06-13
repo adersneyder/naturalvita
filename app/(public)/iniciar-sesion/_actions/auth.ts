@@ -71,7 +71,7 @@ export async function signInWithGoogleAction(formData: FormData) {
   if (error) {
     console.error("[auth] signInWithGoogleAction:", error);
     redirect(
-      `/iniciar-sesion?error=${encodeURIComponent("No pudimos iniciar sesión con Google")}`,
+      `/login?error=${encodeURIComponent("No pudimos iniciar sesión con Google")}`,
     );
   }
 
@@ -79,7 +79,7 @@ export async function signInWithGoogleAction(formData: FormData) {
     redirect(data.url);
   }
 
-  redirect("/iniciar-sesion?error=oauth_no_url");
+  redirect("/login?error=oauth_no_url");
 }
 
 // ─── Email + password (login) ───────────────────────────────────────────────
@@ -122,7 +122,71 @@ export async function signInWithPasswordAction(
     };
   }
 
+  // Role-routing: si el destino es el default (nadie pidió ruta concreta),
+  // los miembros del equipo van al panel admin y los clientes a su cuenta.
+  // Un next explícito (ej. /checkout) se respeta siempre.
+  if (next === "/mi-cuenta") {
+    const { resolvePostLoginDestination } = await import(
+      "@/lib/auth/post-login"
+    );
+    redirect(await resolvePostLoginDestination("/mi-cuenta"));
+  }
+
   redirect(next);
+}
+
+// ─── Cambio de contraseña (sesión activa) ───────────────────────────────────
+
+/**
+ * Cambia la contraseña del usuario LOGUEADO (cliente o admin, da igual:
+ * Supabase Auth es el mismo). No pide la contraseña actual porque muchos
+ * usuarios entraron por Google/magic link y nunca tuvieron una — este
+ * flujo también les sirve para CREAR su primera contraseña.
+ *
+ * La protección real es la sesión activa + el rate limit.
+ */
+export async function changePasswordAction(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const password = formData.get("password")?.toString() ?? "";
+  const passwordConfirm = formData.get("password_confirm")?.toString() ?? "";
+
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return {
+      ok: false,
+      message: `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres`,
+    };
+  }
+  if (password !== passwordConfirm) {
+    return { ok: false, message: "Las contraseñas no coinciden" };
+  }
+
+  try {
+    const ip = await getClientIpFromHeaders();
+    const { success } = await publicApiRatelimit.limit(`auth-chpwd:${ip}`);
+    if (!success) {
+      return { ok: false, message: "Demasiados intentos. Espera unos minutos." };
+    }
+  } catch (err) {
+    console.warn("[auth] ratelimit no disponible:", err);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { ok: false, message: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  }
+
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) {
+    console.error("[auth] changePassword error:", error.message);
+    return { ok: false, message: "No pudimos cambiar la contraseña. Intenta de nuevo." };
+  }
+
+  return { ok: true, message: "Contraseña actualizada." };
 }
 
 // ─── Email + password (signup) ──────────────────────────────────────────────
