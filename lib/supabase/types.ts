@@ -141,6 +141,56 @@ export type Database = {
           },
         ]
       }
+      admin_capabilities: {
+        Row: {
+          code: string
+          category: string
+          description: string
+          created_at: string
+        }
+        Insert: {
+          code: string
+          category: string
+          description: string
+          created_at?: string
+        }
+        Update: {
+          code?: string
+          category?: string
+          description?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
+      admin_role_capabilities: {
+        Row: {
+          role: string
+          capability_code: string
+          granted_at: string
+          granted_by: string | null
+        }
+        Insert: {
+          role: string
+          capability_code: string
+          granted_at?: string
+          granted_by?: string | null
+        }
+        Update: {
+          role?: string
+          capability_code?: string
+          granted_at?: string
+          granted_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_role_capabilities_capability_code_fkey"
+            columns: ["capability_code"]
+            isOneToOne: false
+            referencedRelation: "admin_capabilities"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
       admin_audit_log: {
         Row: {
           action: string
@@ -2826,6 +2876,10 @@ export type Database = {
         Returns: string
       }
       current_admin_role: { Args: never; Returns: string }
+      current_admin_has_capability: {
+        Args: { p_code: string }
+        Returns: boolean
+      }
       customer_clv_summary: {
         Args: never
         Returns: {

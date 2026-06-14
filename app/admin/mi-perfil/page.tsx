@@ -1,5 +1,7 @@
 import { getAdminUser } from "@/lib/admin-auth";
 import ChangePasswordSection from "@/components/auth/ChangePasswordSection";
+import { isAdminBarHidden } from "@/app/(public)/_components/admin-bar-actions";
+import AdminBarToggle from "./_AdminBarToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,7 @@ const ROLE_LABELS: Record<string, string> = {
  */
 export default async function MiPerfilPage() {
   const adminUser = await getAdminUser();
+  const adminBarHidden = await isAdminBarHidden();
 
   return (
     <>
@@ -51,6 +54,10 @@ export default async function MiPerfilPage() {
             </span>
           </dd>
         </dl>
+      </section>
+
+      <section className="bg-white rounded-xl border border-[rgba(47,98,56,0.1)] p-5 max-w-xl mb-4">
+        <AdminBarToggle hidden={adminBarHidden} />
       </section>
 
       <section className="bg-white rounded-xl border border-[rgba(47,98,56,0.1)] p-5 max-w-xl">

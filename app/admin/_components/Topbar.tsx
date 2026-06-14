@@ -28,6 +28,16 @@ export default function Topbar({ userName, userEmail }: TopbarProps) {
         {greeting()}, {userName.split(" ")[0]}
       </h1>
       <div className="flex items-center gap-3">
+        <a
+          href="/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-[var(--color-earth-700)] hover:text-[var(--color-leaf-900)] transition-colors flex items-center gap-1"
+          title="Abre el sitio público en una pestaña nueva"
+        >
+          Ver sitio
+          <span aria-hidden className="text-[10px]">↗</span>
+        </a>
         <Link
           href="/admin/mi-perfil"
           className="text-xs text-[var(--color-earth-700)] hover:text-[var(--color-leaf-900)] transition-colors"
