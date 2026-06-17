@@ -43,7 +43,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Sistema",
     items: [
-      { label: "Usuarios admin", href: "/admin/usuarios", comingSoon: true },
+      { label: "Equipo", href: "/admin/usuarios" },
       { label: "Auditoría", href: "/admin/auditoria" },
       { label: "Configuración", href: "/admin/configuracion" },
     ],
