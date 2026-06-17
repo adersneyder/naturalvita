@@ -2944,6 +2944,17 @@ export type Database = {
         Returns: boolean
       }
       expire_overdue_tasks: { Args: never; Returns: number }
+      sembrado_cart_abandonment_candidates: {
+        Args: { p_window_days?: number; p_cooldown_hours?: number }
+        Returns: {
+          customer_id: string
+          customer_email: string
+          customer_name: string | null
+          last_add_at: string
+          product_examples: string | null
+          as_of: string
+        }[]
+      }
       customer_clv_summary: {
         Args: never
         Returns: {

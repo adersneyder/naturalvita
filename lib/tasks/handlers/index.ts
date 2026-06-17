@@ -4,6 +4,7 @@ import type { TaskRow, TaskType } from "../types";
 
 import { handleSaviaEnrollFlow } from "./savia-enroll-flow";
 import { handleSaviaSuppressList } from "./savia-suppress-list";
+import { handleCouponCreate } from "./coupon-create";
 import { handleManualNoop } from "./manual-noop";
 
 /**
@@ -31,14 +32,12 @@ export type TaskHandler = (task: TaskRow) => Promise<HandlerResult>;
 const HANDLERS: Partial<Record<TaskType, TaskHandler>> = {
   "savia.enroll_flow": handleSaviaEnrollFlow,
   "savia.suppress_list": handleSaviaSuppressList,
-  // product.review, pricing.review, coupon.create por ahora son
-  // "señalización pura": aprobar no ejecuta nada automático — el equipo
-  // hace el siguiente paso a mano. Cuando los handlers existan, se
-  // registran aquí sin tocar el runner.
+  "coupon.create": handleCouponCreate,
+  // product.review y pricing.review son "señalización pura": aprobar no
+  // ejecuta nada automático — el equipo hace el siguiente paso a mano.
   manual: handleManualNoop,
   "product.review": handleManualNoop,
   "pricing.review": handleManualNoop,
-  "coupon.create": handleManualNoop,
 };
 
 export function getHandler(taskType: string): TaskHandler {
