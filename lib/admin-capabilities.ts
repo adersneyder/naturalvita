@@ -27,7 +27,8 @@ export type AdminCapabilityCode =
   | "bi.read"
   | "audit.read"
   | "users.manage"
-  | "config.write";
+  | "config.write"
+  | "tasks.decide";
 
 /**
  * Cache por request — un único fetch de la matriz por rol por request.

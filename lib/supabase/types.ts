@@ -191,6 +191,69 @@ export type Database = {
           },
         ]
       }
+      admin_tasks: {
+        Row: {
+          id: string
+          task_type: string
+          source: string
+          priority: string
+          title: string
+          description: string | null
+          proposed_action: Json
+          entity_type: string | null
+          entity_id: string | null
+          status: string
+          decided_by: string | null
+          decided_at: string | null
+          decision_note: string | null
+          executed_at: string | null
+          execution_result: Json | null
+          execution_error: string | null
+          expires_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          task_type: string
+          source?: string
+          priority?: string
+          title: string
+          description?: string | null
+          proposed_action?: Json
+          entity_type?: string | null
+          entity_id?: string | null
+          status?: string
+          decided_by?: string | null
+          decided_at?: string | null
+          decision_note?: string | null
+          executed_at?: string | null
+          execution_result?: Json | null
+          execution_error?: string | null
+          expires_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          task_type?: string
+          source?: string
+          priority?: string
+          title?: string
+          description?: string | null
+          proposed_action?: Json
+          entity_type?: string | null
+          entity_id?: string | null
+          status?: string
+          decided_by?: string | null
+          decided_at?: string | null
+          decision_note?: string | null
+          executed_at?: string | null
+          execution_result?: Json | null
+          execution_error?: string | null
+          expires_at?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       admin_audit_log: {
         Row: {
           action: string
@@ -2880,6 +2943,7 @@ export type Database = {
         Args: { p_code: string }
         Returns: boolean
       }
+      expire_overdue_tasks: { Args: never; Returns: number }
       customer_clv_summary: {
         Args: never
         Returns: {
