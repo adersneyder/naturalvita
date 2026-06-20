@@ -6,6 +6,7 @@ import CartDrawer from "./_components/CartDrawer";
 import Toaster from "./_components/Toaster";
 import HabeasDataBanner from "./_components/HabeasDataBanner";
 import AdminBar from "./_components/AdminBar";
+import ScrollToTopButton from "./_components/ScrollToTopButton";
 import SemilloTracker from "@/app/_components/SemilloTracker";
 import {
   OrganizationSchema,
@@ -55,6 +56,7 @@ export default async function PublicLayout({ children }: { children: ReactNode }
       <CartDrawer />
       <Toaster />
       <HabeasDataBanner />
+      <ScrollToTopButton />
       {/* Tracker "Sembrado" — usa useSearchParams, requiere Suspense en App Router. */}
       <Suspense fallback={null}>
         <SemilloTracker customerId={customerId} />

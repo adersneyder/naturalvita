@@ -2,21 +2,34 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import { useCartCount } from "@/lib/cart/use-cart";
 import { useCartDrawer } from "@/lib/cart/use-cart-drawer";
 import SearchBar from "./SearchBar";
 import AccountLink from "./AccountLink";
 
+const NAV_ITEMS = [
+  { href: "/tienda", label: "Tienda" },
+  { href: "/laboratorio", label: "Laboratorios" },
+  { href: "/sobre-nosotros", label: "Sobre nosotros" },
+] as const;
+
 export default function PublicHeader() {
   const cartCount = useCartCount();
   const { open: openCart } = useCartDrawer();
+  const pathname = usePathname();
+
+  // Activo cuando coincide exacto O cuando la ruta actual está dentro
+  // del segmento (ej. /tienda/categoria/x marca "Tienda" como activo,
+  // /sobre-nosotros/equipo marca "Sobre nosotros").
+  function isActive(href: string): boolean {
+    if (pathname === href) return true;
+    return pathname.startsWith(`${href}/`);
+  }
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-[var(--color-earth-100)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-        {/* Logo de marca: imagen oficial del manual (la misma flor que
-            aparece arriba en la metáfora raíz/flor de EverlifeOrigin).
-            El PNG ya contiene la marca completa "NaturalVita" + ícono. */}
         <Link
           href="/"
           className="shrink-0 inline-flex items-center"
@@ -32,42 +45,36 @@ export default function PublicHeader() {
           />
         </Link>
 
-        {/* Navegación principal · oculta en mobile.
-            Lógica de los 3 links: catálogo (Tienda) + los dos hubs de
-            confianza que respaldan el catálogo (Laboratorios aliados y
-            Sobre nosotros / Everlife). La búsqueda vive en el SearchBar
-            visible al lado, no es un link aparte. Envíos/devoluciones
-            viven en el footer, no aquí. */}
+        {/* Navegación principal · oculta en mobile. El estado activo se
+            indica con color iris (acento) + underline animado. Los
+            inactivos quedan en color leaf-900 y cambian a iris en hover. */}
         <nav className="hidden md:flex items-center gap-6 text-sm">
-          <Link
-            href="/tienda"
-            className="text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)] font-medium"
-          >
-            Tienda
-          </Link>
-          <Link
-            href="/laboratorio"
-            className="text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)] font-medium"
-          >
-            Laboratorios
-          </Link>
-          <Link
-            href="/sobre-nosotros"
-            className="text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)] font-medium"
-          >
-            Sobre nosotros
-          </Link>
+          {NAV_ITEMS.map((item) => {
+            const active = isActive(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={`relative font-medium transition-colors py-1 ${
+                  active
+                    ? "text-[var(--color-iris-700)]"
+                    : "text-[var(--color-leaf-900)] hover:text-[var(--color-iris-700)]"
+                }`}
+              >
+                {item.label}
+                {active && (
+                  <span className="absolute left-0 right-0 -bottom-1 h-0.5 bg-[var(--color-iris-700)] rounded-full" />
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Acciones lado derecho */}
         <div className="flex items-center gap-2">
-          {/* Búsqueda · expandible en header con submit a /buscar */}
           <SearchBar variant="header" />
-
-          {/* Cuenta · cambia entre /iniciar-sesion y /mi-cuenta según auth */}
           <AccountLink />
-
-          {/* Carrito */}
           <button
             type="button"
             onClick={openCart}
@@ -94,23 +101,25 @@ export default function PublicHeader() {
         </div>
       </div>
 
-      {/* Sub-navegación mobile · solo en pantallas pequeñas */}
+      {/* Sub-navegación mobile · misma lógica de activo */}
       <nav className="md:hidden border-t border-[var(--color-earth-100)] px-4 py-2 flex gap-4 text-xs overflow-x-auto">
-        <Link href="/tienda" className="text-[var(--color-leaf-900)] font-medium whitespace-nowrap">
-          Tienda
-        </Link>
-        <Link
-          href="/laboratorio"
-          className="text-[var(--color-earth-700)] whitespace-nowrap"
-        >
-          Laboratorios
-        </Link>
-        <Link
-          href="/sobre-nosotros"
-          className="text-[var(--color-earth-700)] whitespace-nowrap"
-        >
-          Sobre nosotros
-        </Link>
+        {NAV_ITEMS.map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={`whitespace-nowrap font-medium transition-colors ${
+                active
+                  ? "text-[var(--color-iris-700)] underline underline-offset-4"
+                  : "text-[var(--color-earth-700)] hover:text-[var(--color-iris-700)]"
+              }`}
+            >
+              {item.label}
+            </Link>
+          );
+        })}
       </nav>
     </header>
   );
