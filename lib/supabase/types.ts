@@ -573,76 +573,109 @@ export type Database = {
       }
       chat_conversations: {
         Row: {
+          assigned_to: string | null
+          created_at: string
           customer_id: string | null
+          escalated_at: string | null
+          first_human_response_at: string | null
+          first_response_at: string | null
           id: string
+          initial_page_path: string | null
           last_message_at: string
           led_to_purchase: boolean
           message_count: number
           resolved: boolean
+          resolved_at: string | null
+          resolved_intent: string | null
           started_at: string
+          status: string
+          total_cost_usd: number
           visitor_id: string | null
         }
         Insert: {
+          assigned_to?: string | null
+          created_at?: string
           customer_id?: string | null
+          escalated_at?: string | null
+          first_human_response_at?: string | null
+          first_response_at?: string | null
           id?: string
+          initial_page_path?: string | null
           last_message_at?: string
           led_to_purchase?: boolean
           message_count?: number
           resolved?: boolean
+          resolved_at?: string | null
+          resolved_intent?: string | null
           started_at?: string
+          status?: string
+          total_cost_usd?: number
           visitor_id?: string | null
         }
         Update: {
+          assigned_to?: string | null
+          created_at?: string
           customer_id?: string | null
+          escalated_at?: string | null
+          first_human_response_at?: string | null
+          first_response_at?: string | null
           id?: string
+          initial_page_path?: string | null
           last_message_at?: string
           led_to_purchase?: boolean
           message_count?: number
           resolved?: boolean
+          resolved_at?: string | null
+          resolved_intent?: string | null
           started_at?: string
+          status?: string
+          total_cost_usd?: number
           visitor_id?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "chat_conversations_customer_id_fkey"
-            columns: ["customer_id"]
-            isOneToOne: false
-            referencedRelation: "customers"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "chat_conversations_visitor_id_fkey"
-            columns: ["visitor_id"]
-            isOneToOne: false
-            referencedRelation: "visitors"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       chat_messages: {
         Row: {
+          authored_by_user_id: string | null
           content: string
           conversation_id: string
+          cost_usd: number | null
           created_at: string
           id: string
           metadata: Json | null
           role: string
+          tokens_input: number | null
+          tokens_output: number | null
+          tool_calls: Json | null
+          tool_results: Json | null
         }
         Insert: {
+          authored_by_user_id?: string | null
           content: string
           conversation_id: string
+          cost_usd?: number | null
           created_at?: string
           id?: string
           metadata?: Json | null
           role: string
+          tokens_input?: number | null
+          tokens_output?: number | null
+          tool_calls?: Json | null
+          tool_results?: Json | null
         }
         Update: {
+          authored_by_user_id?: string | null
           content?: string
           conversation_id?: string
+          cost_usd?: number | null
           created_at?: string
           id?: string
           metadata?: Json | null
           role?: string
+          tokens_input?: number | null
+          tokens_output?: number | null
+          tool_calls?: Json | null
+          tool_results?: Json | null
         }
         Relationships: [
           {
