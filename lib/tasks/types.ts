@@ -1,4 +1,3 @@
-import "server-only";
 import type { Json } from "@/lib/supabase/types";
 
 /**
