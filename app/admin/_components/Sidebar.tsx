@@ -17,6 +17,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Principal",
     items: [
       { label: "Dashboard", href: "/admin" },
+      { label: "Conversaciones", href: "/admin/conversaciones" },
       { label: "Bandeja de tareas", href: "/admin/tareas" },
       { label: "Pedidos", href: "/admin/pedidos" },
       { label: "Clientes", href: "/admin/clientes" },
