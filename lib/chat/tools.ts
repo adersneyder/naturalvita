@@ -216,7 +216,10 @@ async function getProduct(input: Record<string, unknown>): Promise<ToolResult> {
     presentation: data.presentation,
     price_cop: data.price_cop,
     compare_at_price_cop: data.compare_at_price_cop,
-    in_stock: data.stock > 0,
+    // Política: todo producto activo en el catálogo está disponible
+    // para venta. No exponemos stock real al agente — la trazabilidad
+    // de inventario no se maneja hoy y mencionar "agotado" confunde.
+    available: true,
     short_description: data.short_description,
     description: data.description,
     composition_use: data.composition_use,
