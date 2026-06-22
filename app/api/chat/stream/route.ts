@@ -33,10 +33,10 @@ export const maxDuration = 90;
  */
 
 const Schema = z.object({
-  conversation_id: z.string().uuid().optional(),
+  conversation_id: z.string().uuid().nullable().optional(),
   visitor_id: z.string().min(8).max(64),
   message: z.string().min(1).max(4000),
-  initial_page_path: z.string().max(2048).optional(),
+  initial_page_path: z.string().max(2048).nullable().optional(),
 });
 
 export async function POST(req: Request) {
