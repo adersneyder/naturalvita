@@ -15,6 +15,8 @@
  *   search_performed— al ejecutar una búsqueda (props: {query, results_count})
  *   guide_view      — al leer una guía
  *   newsletter_signup — al suscribirse al newsletter
+ *   chat_open       — al abrir el widget del Asistente NV
+ *   chat_message_sent — al enviar un mensaje en el chat
  *
  *   identify        — evento especial: el cliente acaba de iniciar
  *                     sesión. El backend llama a la RPC

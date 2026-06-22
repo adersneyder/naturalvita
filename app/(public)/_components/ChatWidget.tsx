@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { usePathname } from "next/navigation";
+import { track } from "@/lib/savia/tracker";
 
 /**
  * Widget del Asistente NV. Burbuja flotante inferior izquierda + panel
@@ -181,6 +182,10 @@ export default function ChatWidget() {
     if (!text || sending) return;
     setSending(true);
     setStreamingText("");
+    track("chat_message_sent", {
+      conversation_id: conversationId,
+      escalated,
+    });
 
     // Pintar mensaje del usuario optimista.
     const userMsg: Message = {
@@ -294,7 +299,10 @@ export default function ChatWidget() {
       {/* Burbuja flotante */}
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) track("chat_open", { page_path: pathname });
+          setOpen(!open);
+        }}
         aria-label={open ? "Cerrar chat con Asistente NV" : "Abrir chat con Asistente NV"}
         className="fixed bottom-6 left-6 z-40 w-14 h-14 rounded-full bg-[var(--color-leaf-700)] text-white shadow-lg flex items-center justify-center transition-all duration-200 hover:bg-[var(--color-leaf-900)] hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-leaf-700)] focus-visible:ring-offset-2"
       >

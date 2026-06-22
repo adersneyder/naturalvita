@@ -2988,6 +2988,40 @@ export type Database = {
           as_of: string
         }[]
       }
+      chat_metrics_overview: {
+        Args: { p_days?: number }
+        Returns: {
+          total_conversations: number
+          ai_resolved: number
+          escalated: number
+          abandoned: number
+          active_now: number
+          avg_ai_first_response_sec: number | null
+          avg_human_first_response_sec: number | null
+          avg_resolution_sec: number | null
+          total_cost_usd: number
+          led_to_purchase: number
+          as_of: string
+        }[]
+      }
+      chat_daily_series: {
+        Args: { p_days?: number }
+        Returns: {
+          day: string
+          conversations: number
+          escalated: number
+          cost_usd: number
+          as_of: string
+        }[]
+      }
+      chat_escalation_reasons: {
+        Args: { p_days?: number }
+        Returns: {
+          reason: string
+          count: number
+          as_of: string
+        }[]
+      }
       expire_overdue_tasks: { Args: never; Returns: number }
       sembrado_cart_abandonment_candidates: {
         Args: { p_window_days?: number; p_cooldown_hours?: number }
