@@ -227,7 +227,9 @@ export async function* runAgentTurn(
 
     const toolResults: Array<{ tool_use_id: string; content: string }> = [];
     for (const call of parsedCalls) {
-      const result = await executeTool(call.name, call.input);
+      const result = await executeTool(call.name, call.input, {
+        conversationId: input.conversationId,
+      });
       toolResults.push({ tool_use_id: call.id, content: result });
     }
 

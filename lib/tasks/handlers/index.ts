@@ -38,6 +38,9 @@ const HANDLERS: Partial<Record<TaskType, TaskHandler>> = {
   manual: handleManualNoop,
   "product.review": handleManualNoop,
   "pricing.review": handleManualNoop,
+  // chat.escalation_reminder: aprobar = "ya la atendí". Noop; el valor
+  // está en que aparezca en la bandeja como recordatorio visible.
+  "chat.escalation_reminder": handleManualNoop,
 };
 
 export function getHandler(taskType: string): TaskHandler {

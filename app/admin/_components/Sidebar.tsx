@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { createBrowserClient } from "@supabase/ssr";
 
 type NavItem = {
   label: string;
@@ -52,8 +54,63 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({
+  escalatedCount = 0,
+  canWatchChat = false,
+}: {
+  escalatedCount?: number;
+  canWatchChat?: boolean;
+}) {
   const pathname = usePathname();
+  const [escalated, setEscalated] = useState(escalatedCount);
+
+  // Realtime: mantener el badge de Conversaciones actualizado sin recargar.
+  // Cualquier cambio de status en chat_conversations recuenta. Como el
+  // payload de Realtime no trae el total, hacemos un refetch ligero (head
+  // count) al detectar cambios — barato y siempre exacto.
+  useEffect(() => {
+    if (!canWatchChat) return;
+    const sb = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    );
+
+    async function refetch() {
+      const { count } = await sb
+        .from("chat_conversations")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "escalated");
+      setEscalated(count ?? 0);
+    }
+
+    const channel = sb
+      .channel("sidebar-escalations")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "chat_conversations",
+        },
+        () => {
+          refetch();
+        },
+      )
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [canWatchChat]);
+
+  // Inyectamos el badge dinámico al item de Conversaciones.
+  const groups = NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.map((item) =>
+      item.href === "/admin/conversaciones"
+        ? { ...item, badge: escalated }
+        : item,
+    ),
+  }));
 
   return (
     <aside className="w-[200px] bg-white border-r border-[rgba(47,98,56,0.12)] py-5 px-3 flex-shrink-0 h-screen sticky top-0 overflow-y-auto">
@@ -63,7 +120,7 @@ export default function Sidebar() {
         </span>
       </Link>
 
-      {NAV_GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.title} className="mb-4">
           <p className="text-[10px] text-[var(--color-earth-500)] uppercase tracking-wider font-medium mb-1.5 px-2">
             {group.title}
@@ -110,7 +167,13 @@ export default function Sidebar() {
                 />
                 <span>{item.label}</span>
                 {item.badge !== undefined && item.badge > 0 && (
-                  <span className="ml-auto text-[10px] bg-[#FAEEDA] text-[#854F0B] px-1.5 py-0.5 rounded-lg font-medium">
+                  <span
+                    className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-lg font-medium ${
+                      item.href === "/admin/conversaciones"
+                        ? "bg-[#FCE9E5] text-[#B23A1F]"
+                        : "bg-[#FAEEDA] text-[#854F0B]"
+                    }`}
+                  >
                     {item.badge}
                   </span>
                 )}

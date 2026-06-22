@@ -21,7 +21,7 @@ export default function PrivacidadPage() {
           Política de tratamiento de datos personales
         </h1>
         <p className="mt-3 text-sm text-[var(--color-earth-700)]">
-          Vigente desde el 1 de mayo de 2026. Última actualización: 11 de junio de 2026.
+          Vigente desde el 1 de mayo de 2026. Última actualización: 14 de junio de 2026.
         </p>
       </header>
 
@@ -177,6 +177,10 @@ export default function PrivacidadPage() {
               Microsoft Corporation (Estados Unidos): Clarity, analítica de
               comportamiento (solo con tu consentimiento).
             </li>
+            <li>
+              Anthropic (Estados Unidos): modelo de inteligencia artificial que
+              genera las respuestas del Asistente NV.
+            </li>
           </ul>
           <p className="mt-3">
             La transferencia internacional de datos hacia estos proveedores se
@@ -227,7 +231,49 @@ export default function PrivacidadPage() {
 
         <section>
           <h2 className="font-serif text-xl text-[var(--color-leaf-900)] mt-8 mb-3">
-            9. Cambios en la política
+            9. Asistente conversacional (Asistente NV)
+          </h2>
+          <p>
+            Ofrecemos un asistente automatizado de atención (&quot;Asistente
+            NV&quot;) disponible las 24 horas. Es un sistema de inteligencia
+            artificial, no una persona, y así se identifica. Cuando lo usas:
+          </p>
+          <ul className="list-disc pl-6 space-y-1 mt-2">
+            <li>
+              Guardamos el contenido de la conversación (tus mensajes y las
+              respuestas) para atenderte, dar continuidad si un miembro del
+              equipo retoma el caso, y mejorar el servicio.
+            </li>
+            <li>
+              Asociamos la conversación a tu identificador anónimo de visitante
+              y, si has iniciado sesión, a tu cuenta de cliente.
+            </li>
+            <li>
+              Si consultas un pedido, validamos tu número de pedido junto con
+              tu correo antes de mostrar cualquier dato — nunca revelamos
+              información de pedidos de terceros.
+            </li>
+            <li>
+              Conservamos las conversaciones cerradas hasta noventa (90) días.
+              Las conversaciones que requirieron intervención humana o que
+              involucran una reclamación se conservan mientras dure su gestión
+              y por los plazos legales aplicables.
+            </li>
+          </ul>
+          <p className="mt-3">
+            El Asistente NV ofrece información orientativa sobre productos,
+            envíos y pedidos. <strong>No brinda diagnósticos ni consejo
+            médico</strong> y no sustituye la consulta con un profesional de
+            la salud. Las respuestas se generan con apoyo de modelos de
+            inteligencia artificial de Anthropic (Estados Unidos), que actúa
+            como encargado del tratamiento bajo cláusulas que garantizan un
+            nivel adecuado de protección.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="font-serif text-xl text-[var(--color-leaf-900)] mt-8 mb-3">
+            10. Cambios en la política
           </h2>
           <p>
             Esta política puede actualizarse para reflejar cambios legales o

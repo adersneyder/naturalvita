@@ -58,7 +58,7 @@ export async function GET(req: Request) {
     action: "config.update",
     entityType: "config",
     entityId: "cron:tasks",
-    summary: `Cron tareas: ${result ? result.churn.created + result.cart.created + result.wishlist.created : 0} creadas, ${expired} expiradas`,
+    summary: `Cron tareas: ${result ? result.churn.created + result.cart.created + result.wishlist.created + result.chatEscalation.created : 0} creadas, ${expired} expiradas`,
     metadata: {
       expired,
       result,

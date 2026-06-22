@@ -2976,6 +2976,18 @@ export type Database = {
         Args: { p_code: string }
         Returns: boolean
       }
+      chat_stale_escalations: {
+        Args: { p_minutes?: number }
+        Returns: {
+          conversation_id: string
+          visitor_id: string
+          customer_id: string | null
+          escalated_at: string
+          minutes_waiting: number
+          last_user_message: string | null
+          as_of: string
+        }[]
+      }
       expire_overdue_tasks: { Args: never; Returns: number }
       sembrado_cart_abandonment_candidates: {
         Args: { p_window_days?: number; p_cooldown_hours?: number }

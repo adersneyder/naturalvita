@@ -80,6 +80,46 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: "get_order_status",
+    description:
+      "Consulta el estado de un pedido. REQUIERE el número de pedido (formato NV-YYYYMMDD-XXXX) Y el correo electrónico del titular. Solo devuelve datos si AMBOS coinciden — protección de privacidad. Úsalo cuando el cliente pregunta por su pedido y te da ambos datos.",
+    input_schema: {
+      type: "object",
+      properties: {
+        order_number: {
+          type: "string",
+          description: "Número de pedido, formato NV-YYYYMMDD-XXXX.",
+        },
+        email: {
+          type: "string",
+          description: "Correo electrónico con el que se hizo el pedido.",
+        },
+      },
+      required: ["order_number", "email"],
+    },
+  },
+  {
+    name: "request_human",
+    description:
+      "Escala la conversación a un miembro del equipo humano. Úsalo cuando: el cliente está molesto, pide cancelar/cambiar un pedido, reporta un problema (no llegó, llegó dañado), pide consejo médico específico, pide hablar con un humano, o haces una pregunta que no puedes responder con las otras herramientas. Después de llamar esta tool, dile al cliente que lo conectas con el equipo y que no cierre la ventana.",
+    input_schema: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          description:
+            "Resumen breve del caso para el equipo (ej. 'Cliente reporta pedido NV-... no recibido'). Una frase.",
+        },
+        category: {
+          type: "string",
+          enum: ["pedido", "queja", "medico", "general", "otro"],
+          description: "Categoría del motivo de escalación.",
+        },
+      },
+      required: ["reason"],
+    },
+  },
 ];
 
 // ============================================================
@@ -88,9 +128,18 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
 
 type ToolResult = string;
 
+/**
+ * Contexto que el loop del agente pasa a las tools. request_human lo
+ * necesita para escalar la conversación correcta.
+ */
+export type ToolContext = {
+  conversationId: string;
+};
+
 export async function executeTool(
   name: string,
   input: Record<string, unknown>,
+  ctx: ToolContext,
 ): Promise<ToolResult> {
   switch (name) {
     case "search_products":
@@ -101,6 +150,10 @@ export async function executeTool(
       return await getShippingInfo(input);
     case "get_company_info":
       return getCompanyInfo();
+    case "get_order_status":
+      return await getOrderStatus(input);
+    case "request_human":
+      return await requestHuman(input, ctx);
     default:
       return JSON.stringify({ error: `Tool desconocida: ${name}` });
   }
@@ -217,5 +270,123 @@ function getCompanyInfo(): ToolResult {
       terms: `${COMPANY.siteUrl}/legal/terminos`,
       shipping: `${COMPANY.siteUrl}/legal/envios`,
     },
+  });
+}
+
+/**
+ * Consulta de pedido con doble verificación order_number + email.
+ * NUNCA devuelve datos si el email no coincide con el del pedido —
+ * protección contra enumeración de pedidos ajenos.
+ *
+ * No exponemos datos sensibles (dirección completa, teléfono): solo
+ * lo necesario para que el cliente sepa en qué va su pedido.
+ */
+async function getOrderStatus(input: Record<string, unknown>): Promise<ToolResult> {
+  const orderNumber =
+    typeof input.order_number === "string" ? input.order_number.trim().toUpperCase() : "";
+  const email =
+    typeof input.email === "string" ? input.email.trim().toLowerCase() : "";
+
+  if (!orderNumber || !email) {
+    return JSON.stringify({
+      error: "missing_fields",
+      message: "Necesito el número de pedido y el correo con el que se hizo.",
+    });
+  }
+
+  const admin = createAdminClient();
+  const { data: order } = await admin
+    .from("orders")
+    .select(
+      `order_number, customer_email, status, payment_status, fulfillment_status,
+       shipping_carrier, tracking_number, total_cop, created_at,
+       shipping_city, shipping_department,
+       items:order_items!order_id(product_name, quantity)`,
+    )
+    .eq("order_number", orderNumber)
+    .maybeSingle();
+
+  // Verificación: existe Y el email coincide. Mensaje genérico para no
+  // revelar si el pedido existe con otro email (anti-enumeración).
+  if (!order || order.customer_email.toLowerCase() !== email) {
+    return JSON.stringify({
+      error: "not_found_or_mismatch",
+      message:
+        "No encontré un pedido con ese número y correo. Verifica que ambos sean correctos. Si el problema persiste, puedo conectarte con el equipo.",
+    });
+  }
+
+  return JSON.stringify({
+    order_number: order.order_number,
+    status: order.status,
+    payment_status: order.payment_status,
+    fulfillment_status: order.fulfillment_status,
+    carrier: order.shipping_carrier,
+    tracking_number: order.tracking_number,
+    total_cop: order.total_cop,
+    created_at: order.created_at,
+    ship_to: `${order.shipping_city}, ${order.shipping_department}`,
+    items: (order.items as Array<{ product_name: string; quantity: number }>).map(
+      (i) => ({ product_name: i.product_name, quantity: i.quantity }),
+    ),
+    note: "Si el pedido tiene tracking_number, el cliente puede rastrearlo con el transportador. No prometas fechas exactas de entrega.",
+  });
+}
+
+/**
+ * Escala la conversación a un humano. Cambia status a 'escalated',
+ * registra escalated_at, y crea un mensaje de sistema con el motivo.
+ * El inbox del equipo lo recibe en tiempo real (Realtime).
+ *
+ * NO crea tarea aquí — eso lo hace un failsafe (cron) si nadie
+ * responde en 30 min, para no inundar la bandeja con cada escalación.
+ */
+async function requestHuman(
+  input: Record<string, unknown>,
+  ctx: ToolContext,
+): Promise<ToolResult> {
+  const reason =
+    typeof input.reason === "string" ? input.reason.trim().slice(0, 500) : "";
+  const category =
+    typeof input.category === "string" ? input.category : "general";
+
+  const admin = createAdminClient();
+
+  // Solo escalamos si no estaba ya escalada/asignada.
+  const { data: conv } = await admin
+    .from("chat_conversations")
+    .select("status")
+    .eq("id", ctx.conversationId)
+    .maybeSingle();
+
+  if (conv && (conv.status === "escalated" || conv.status === "assigned")) {
+    return JSON.stringify({
+      ok: true,
+      already_escalated: true,
+      message: "La conversación ya está con el equipo.",
+    });
+  }
+
+  await admin
+    .from("chat_conversations")
+    .update({
+      status: "escalated",
+      escalated_at: new Date().toISOString(),
+      resolved_intent: `escalated_${category}`,
+    })
+    .eq("id", ctx.conversationId);
+
+  // Mensaje de sistema con el motivo (visible en el inbox como contexto).
+  await admin.from("chat_messages").insert({
+    conversation_id: ctx.conversationId,
+    role: "system",
+    content: `[Escalado a humano] Categoría: ${category}. Motivo: ${reason}`,
+  });
+
+  return JSON.stringify({
+    ok: true,
+    escalated: true,
+    message:
+      "Conversación escalada al equipo. El cliente recibirá respuesta humana en su ventana de chat.",
   });
 }

@@ -29,6 +29,7 @@ export const TASK_TYPES = [
   "coupon.create",
   "product.review",
   "pricing.review",
+  "chat.escalation_reminder",
   "manual",
 ] as const;
 
@@ -55,6 +56,7 @@ export const TASK_SOURCES = [
   "sembrado.cart_abandonment",
   "sembrado.wishlist_gap",
   "sembrado.anomaly",
+  "chat.escalation",
 ] as const;
 export type TaskSource = (typeof TASK_SOURCES)[number];
 
@@ -86,6 +88,7 @@ export const TASK_TYPE_LABELS: Record<TaskType, string> = {
   "coupon.create": "Crear cupón sugerido",
   "product.review": "Revisar producto",
   "pricing.review": "Revisar precio",
+  "chat.escalation_reminder": "Escalación de chat sin atender",
   manual: "Tarea manual",
 };
 
@@ -95,6 +98,7 @@ export const TASK_SOURCE_LABELS: Record<TaskSource, string> = {
   "sembrado.cart_abandonment": "Sembrado · carrito abandonado",
   "sembrado.wishlist_gap": "Sembrado · wishlist sin compra",
   "sembrado.anomaly": "Sembrado · anomalía",
+  "chat.escalation": "Chat · escalación",
 };
 
 export const TASK_PRIORITY_STYLES: Record<

@@ -137,14 +137,48 @@ export async function generateWishlistGapTasks(): Promise<GeneratorResult> {
   return { created, deduplicated };
 }
 
-/** Ejecuta los 3 generadores en serie y suma los conteos. */
+/**
+ * Failsafe: crea recordatorios para escalaciones de chat que llevan más
+ * de 30 min sin respuesta humana. Prioridad urgent — un cliente esperando
+ * es lo más sensible. Dedup por conversación.
+ */
+export async function generateChatEscalationTasks(): Promise<GeneratorResult> {
+  const admin = createAdminClient();
+  const { data: stale } = await admin.rpc("chat_stale_escalations", {
+    p_minutes: 30,
+  });
+  if (!stale) return { created: 0, deduplicated: 0 };
+
+  let created = 0;
+  let deduplicated = 0;
+  for (const e of stale) {
+    const res = await createTask({
+      task_type: "chat.escalation_reminder",
+      source: "chat.escalation",
+      title: `Cliente esperando en chat hace ${e.minutes_waiting} min`,
+      description: `Conversación escalada sin respuesta humana. ${e.last_user_message ? `Último mensaje del cliente: "${e.last_user_message.slice(0, 200)}"` : ""}`,
+      priority: "urgent",
+      proposed_action: { conversation_id: e.conversation_id },
+      entity_type: "conversation",
+      entity_id: e.conversation_id,
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    });
+    if (res.ok && res.deduplicated) deduplicated++;
+    else if (res.ok) created++;
+  }
+  return { created, deduplicated };
+}
+
+/** Ejecuta todos los generadores en serie y suma los conteos. */
 export async function generateAllTasks(): Promise<{
   churn: GeneratorResult;
   cart: GeneratorResult;
   wishlist: GeneratorResult;
+  chatEscalation: GeneratorResult;
 }> {
   const churn = await generateChurnTasks();
   const cart = await generateCartAbandonmentTasks();
   const wishlist = await generateWishlistGapTasks();
-  return { churn, cart, wishlist };
+  const chatEscalation = await generateChatEscalationTasks();
+  return { churn, cart, wishlist, chatEscalation };
 }
