@@ -21,11 +21,13 @@ import { TOOL_DEFINITIONS, executeTool } from "./tools";
  * para evitar bucles infinitos.
  */
 
-const MODEL = "claude-sonnet-4-5-20250929";
+// Sonnet 4.6 — decisión del usuario. Balance costo/calidad para el
+// catálogo. Centralizado aquí para cambiar en un solo lugar.
+const MODEL = "claude-sonnet-4-6";
 const MAX_TOOL_ITERATIONS = 5;
 const MAX_TOKENS_OUTPUT = 1024;
 
-// Pricing del modelo (Sonnet 4.5 / 4.6) — USD por millón de tokens.
+// Pricing de Sonnet 4.6 — USD por millón de tokens.
 const PRICE_INPUT_PER_M = 3;
 const PRICE_OUTPUT_PER_M = 15;
 
