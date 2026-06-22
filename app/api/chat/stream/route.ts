@@ -92,14 +92,28 @@ export async function POST(req: Request) {
       );
     }
   } else {
-    // customer_id si hay sesión autenticada.
+    // customer_id si hay sesión autenticada. IMPORTANTE: la FK de
+    // chat_conversations.customer_id apunta a public.customers, no a
+    // auth.users. Un usuario logueado que NO tiene fila en customers
+    // (ej. un admin, o un cliente recién creado antes del onboarding)
+    // haría fallar el insert por violación de FK. Por eso solo vinculamos
+    // customer_id cuando confirmamos que existe la fila; si no, la
+    // conversación queda como visitante anónimo (identificado por
+    // visitor_id), que es válido.
     let customerId: string | null = null;
     try {
       const sb = await createClient();
       const {
         data: { user },
       } = await sb.auth.getUser();
-      customerId = user?.id ?? null;
+      if (user) {
+        const { data: cust } = await admin
+          .from("customers")
+          .select("id")
+          .eq("id", user.id)
+          .maybeSingle();
+        customerId = cust?.id ?? null;
+      }
     } catch {
       /* anónimo está OK */
     }
@@ -114,7 +128,12 @@ export async function POST(req: Request) {
       .select("id")
       .single();
     if (createErr || !created) {
-      console.error("[chat/stream] insert conversation", createErr?.message);
+      console.error("[chat/stream] insert conversation failed", {
+        message: createErr?.message,
+        code: createErr?.code,
+        details: createErr?.details,
+        hint: createErr?.hint,
+      });
       return NextResponse.json(
         { error: "No pudimos iniciar la conversación" },
         { status: 500 },
