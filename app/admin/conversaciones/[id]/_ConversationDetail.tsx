@@ -236,8 +236,47 @@ function MsgBubble({ msg }: { msg: Msg }) {
             Asistente NV
           </p>
         )}
-        {msg.content}
+        <AgentText content={msg.content} dark={!isUser && !isHuman} />
       </div>
     </div>
+  );
+}
+
+/**
+ * Texto del agente en el inbox: reemplaza los marcadores [[product:slug]]
+ * por un enlace legible a la ficha, para que el equipo no vea el código
+ * crudo. No renderiza la tarjeta completa (el equipo solo necesita ver
+ * qué producto se mostró y poder abrirlo).
+ */
+function AgentText({ content, dark }: { content: string; dark: boolean }) {
+  const marker = /\[\[product:([a-z0-9-]+)\]\]/gi;
+  const parts: Array<{ t: "text"; v: string } | { t: "prod"; slug: string }> = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = marker.exec(content)) !== null) {
+    if (m.index > last) parts.push({ t: "text", v: content.slice(last, m.index) });
+    parts.push({ t: "prod", slug: m[1].toLowerCase() });
+    last = m.index + m[0].length;
+  }
+  if (last < content.length) parts.push({ t: "text", v: content.slice(last) });
+
+  return (
+    <span className="whitespace-pre-wrap">
+      {parts.map((p, i) =>
+        p.t === "text" ? (
+          <span key={i}>{p.v}</span>
+        ) : (
+          <a
+            key={i}
+            href={`/producto/${p.slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`underline ${dark ? "text-white" : "text-[var(--color-iris-700)]"}`}
+          >
+            🔗 {p.slug}
+          </a>
+        ),
+      )}
+    </span>
   );
 }

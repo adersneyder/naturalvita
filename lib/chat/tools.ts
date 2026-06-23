@@ -2,6 +2,7 @@ import "server-only";
 import type Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { COMPANY } from "@/lib/legal/company-info";
+import { pickPrimaryImage } from "./shared-types";
 
 /**
  * Tools del Asistente NV. Definiciones JSON schema (formato Anthropic) +
@@ -173,7 +174,8 @@ async function searchProducts(input: Record<string, unknown>): Promise<ToolResul
   const { data } = await admin
     .from("products")
     .select(
-      "slug, name, presentation, price_cop, short_description, status, is_active",
+      `slug, name, presentation, price_cop, short_description,
+       images:product_images(url, is_primary, sort_order)`,
     )
     .eq("status", "active")
     .eq("is_active", true)
@@ -187,6 +189,9 @@ async function searchProducts(input: Record<string, unknown>): Promise<ToolResul
       presentation: p.presentation,
       price_cop: p.price_cop,
       short_description: p.short_description,
+      image_url: pickPrimaryImage(
+        p.images as Array<{ url: string; is_primary: boolean; sort_order: number }>,
+      ),
     })),
   });
 }
@@ -202,7 +207,8 @@ async function getProduct(input: Record<string, unknown>): Promise<ToolResult> {
       `slug, name, presentation, price_cop, compare_at_price_cop, stock,
        short_description, description, composition_use, invima_number,
        laboratory:laboratories!laboratory_id(name),
-       category:categories!category_id(name)`,
+       category:categories!category_id(name),
+       images:product_images(url, is_primary, sort_order)`,
     )
     .eq("slug", slug)
     .eq("status", "active")
@@ -216,6 +222,9 @@ async function getProduct(input: Record<string, unknown>): Promise<ToolResult> {
     presentation: data.presentation,
     price_cop: data.price_cop,
     compare_at_price_cop: data.compare_at_price_cop,
+    image_url: pickPrimaryImage(
+      data.images as Array<{ url: string; is_primary: boolean; sort_order: number }>,
+    ),
     // Política: todo producto activo en el catálogo está disponible
     // para venta. No exponemos stock real al agente — la trazabilidad
     // de inventario no se maneja hoy y mencionar "agotado" confunde.

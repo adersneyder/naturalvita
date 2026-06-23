@@ -3,6 +3,50 @@ import { createAnthropicClient } from "@/lib/anthropic/client";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { SYSTEM_PROMPT } from "./system-prompt";
 import { TOOL_DEFINITIONS, executeTool } from "./tools";
+import type { ProductCardData } from "./shared-types";
+
+/**
+ * Extrae datos de tarjeta de producto del resultado de una tool de
+ * producto (search_products o get_product). Devuelve [] si la tool no
+ * es de producto o el resultado no tiene productos. El widget acumula
+ * estos productos y los renderiza como tarjetas cuando el texto del
+ * agente incluye el marcador [[product:slug]].
+ */
+function extractProductCards(
+  toolName: string,
+  resultJson: string,
+): ProductCardData[] {
+  if (toolName !== "search_products" && toolName !== "get_product") return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(resultJson);
+  } catch {
+    return [];
+  }
+  const toCard = (o: Record<string, unknown>): ProductCardData | null => {
+    if (typeof o.slug !== "string" || typeof o.name !== "string") return null;
+    if (typeof o.price_cop !== "number") return null;
+    return {
+      slug: o.slug,
+      name: o.name,
+      presentation: typeof o.presentation === "string" ? o.presentation : null,
+      price_cop: o.price_cop,
+      image_url: typeof o.image_url === "string" ? o.image_url : null,
+    };
+  };
+  if (parsed && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    if (Array.isArray(obj.results)) {
+      return obj.results
+        .map((r) => toCard(r as Record<string, unknown>))
+        .filter((c): c is ProductCardData => c !== null);
+    }
+    // get_product devuelve un objeto plano de producto.
+    const single = toCard(obj);
+    return single ? [single] : [];
+  }
+  return [];
+}
 
 /**
  * Loop del agente conversacional con tool use de Claude.
@@ -40,6 +84,7 @@ export type AgentTurnInput = {
 export type AgentStreamEvent =
   | { type: "text"; delta: string }
   | { type: "tool_use"; name: string }
+  | { type: "products"; items: ProductCardData[] }
   | { type: "done"; tokens_input: number; tokens_output: number; cost_usd: number }
   | { type: "error"; message: string };
 
@@ -231,6 +276,14 @@ export async function* runAgentTurn(
         conversationId: input.conversationId,
       });
       toolResults.push({ tool_use_id: call.id, content: result });
+
+      // Si la tool devolvió productos, los emitimos al cliente para que
+      // los renderice como tarjetas. Llega ANTES del texto del agente,
+      // así el widget ya tiene los datos cuando aparece [[product:slug]].
+      const cards = extractProductCards(call.name, result);
+      if (cards.length > 0) {
+        yield { type: "products", items: cards };
+      }
     }
 
     // Añadir el turno assistant (con tool_use) y user (con tool_result)

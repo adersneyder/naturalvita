@@ -3,7 +3,28 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 import { track } from "@/lib/savia/tracker";
+import type { ProductCardData } from "@/lib/chat/shared-types";
+
+const PRODUCT_MARKER = /\[\[product:([a-z0-9-]+)\]\]/gi;
+
+function formatCop(value: number): string {
+  return new Intl.NumberFormat("es-CO", {
+    style: "currency",
+    currency: "COP",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+/** Extrae todos los slugs [[product:slug]] de un texto. */
+function extractSlugs(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(PRODUCT_MARKER)) {
+    if (m[1]) out.push(m[1].toLowerCase());
+  }
+  return out;
+}
 
 /**
  * Widget del Asistente NV. Burbuja flotante inferior izquierda + panel
@@ -58,10 +79,41 @@ export default function ChatWidget() {
   const [streamingText, setStreamingText] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [escalated, setEscalated] = useState(false);
+  // Cache de productos por slug, para renderizar las tarjetas que el
+  // agente referencia con [[product:slug]]. Se llena desde el stream
+  // (evento "products") y desde el endpoint batch al recargar historial.
+  const [productCache, setProductCache] = useState<
+    Record<string, ProductCardData>
+  >({});
   const visitorIdRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const supabaseRef = useRef<ReturnType<typeof createBrowserClient> | null>(
     null,
+  );
+
+  // Pide datos de tarjeta para los slugs que falten en el cache.
+  const ensureProducts = useCallback(
+    async (slugs: string[]) => {
+      const missing = slugs.filter((s) => !productCache[s]);
+      if (missing.length === 0) return;
+      try {
+        const res = await fetch(
+          `/api/chat/products?slugs=${encodeURIComponent(missing.join(","))}`,
+        );
+        if (!res.ok) return;
+        const json = (await res.json()) as { products: ProductCardData[] };
+        if (json.products?.length) {
+          setProductCache((prev) => {
+            const next = { ...prev };
+            for (const p of json.products) next[p.slug] = p;
+            return next;
+          });
+        }
+      } catch {
+        /* sin tarjetas si falla — el texto del agente sigue visible */
+      }
+    },
+    [productCache],
   );
 
   // Init visitor_id + conversation_id desde storage.
@@ -91,15 +143,21 @@ export default function ChatWidget() {
       .in("role", ["user", "assistant", "human"])
       .order("created_at", { ascending: true });
 
-    setMessages(
-      (data ?? []).map((m) => ({
-        id: m.id as string,
-        role: m.role as Message["role"],
-        content: m.content as string,
-        created_at: m.created_at as string,
-      })),
+    const loaded = (data ?? []).map((m) => ({
+      id: m.id as string,
+      role: m.role as Message["role"],
+      content: m.content as string,
+      created_at: m.created_at as string,
+    }));
+    setMessages(loaded);
+
+    // Reconstruir las tarjetas: juntar todos los slugs referenciados y
+    // pedir sus datos en un solo batch.
+    const allSlugs = Array.from(
+      new Set(loaded.flatMap((m) => extractSlugs(m.content))),
     );
-  }, [conversationId]);
+    if (allSlugs.length > 0) ensureProducts(allSlugs);
+  }, [conversationId, ensureProducts]);
 
   // Suscripción Realtime: nuevos mensajes humanos / del agente.
   useEffect(() => {
@@ -245,8 +303,18 @@ export default function ChatWidget() {
               | { conversation_id: string }
               | { type: "text"; delta: string }
               | { type: "tool_use"; name: string }
+              | { type: "products"; items: ProductCardData[] }
               | { type: "done" }
               | { type: "error"; message: string };
+
+            if ("type" in evt && evt.type === "products") {
+              setProductCache((prev) => {
+                const next = { ...prev };
+                for (const p of evt.items) next[p.slug] = p;
+                return next;
+              });
+              continue;
+            }
 
             if ("conversation_id" in evt && !conversationId) {
               setConversationId(evt.conversation_id);
@@ -373,7 +441,7 @@ export default function ChatWidget() {
               </div>
             )}
             {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} />
+              <MessageBubble key={m.id} message={m} products={productCache} />
             ))}
             {streamingText && (
               <MessageBubble
@@ -383,6 +451,7 @@ export default function ChatWidget() {
                   content: streamingText,
                   created_at: new Date().toISOString(),
                 }}
+                products={productCache}
               />
             )}
             {sending && !streamingText && (
@@ -444,17 +513,31 @@ export default function ChatWidget() {
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  products,
+}: {
+  message: Message;
+  products: Record<string, ProductCardData>;
+}) {
   const isUser = message.role === "user";
   const isHuman = message.role === "human";
+
+  // El assistant puede incluir marcadores [[product:slug]]. Los user/
+  // human no — su contenido se muestra tal cual. Regex local (sin flag
+  // global) para que .test() no arrastre lastIndex.
+  const hasMarkers =
+    message.role === "assistant" &&
+    /\[\[product:[a-z0-9-]+\]\]/i.test(message.content);
+
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap leading-relaxed ${
+        className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
           isUser
-            ? "bg-[var(--color-leaf-700)] text-white rounded-br-sm"
+            ? "bg-[var(--color-leaf-700)] text-white rounded-br-sm whitespace-pre-wrap"
             : isHuman
-              ? "bg-[var(--color-iris-100)] text-[var(--color-leaf-900)] rounded-bl-sm border border-[var(--color-iris-700)]/30"
+              ? "bg-[var(--color-iris-100)] text-[var(--color-leaf-900)] rounded-bl-sm border border-[var(--color-iris-700)]/30 whitespace-pre-wrap"
               : "bg-white text-[var(--color-leaf-900)] rounded-bl-sm border border-[var(--color-earth-100)]"
         }`}
       >
@@ -463,8 +546,132 @@ function MessageBubble({ message }: { message: Message }) {
             Equipo NaturalVita
           </p>
         )}
-        {message.content}
+        {hasMarkers ? (
+          <AssistantContent content={message.content} products={products} />
+        ) : (
+          message.content
+        )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Renderiza el contenido del agente intercalando texto y tarjetas de
+ * producto. Divide por el marcador [[product:slug]]:
+ *  - Segmentos de texto se muestran con saltos de línea preservados.
+ *  - Cada marcador con producto en cache → ProductCard.
+ *  - Marcadores parciales (durante streaming, sin cerrar) se ocultan.
+ */
+function AssistantContent({
+  content,
+  products,
+}: {
+  content: string;
+  products: Record<string, ProductCardData>;
+}) {
+  // Quita un marcador parcial colgante al final (mientras hace streaming
+  // del marcador, ej. "[[product:be-h"). Evita parpadeo de texto crudo.
+  const cleaned = content.replace(/\[\[product:[a-z0-9-]*$/i, "");
+
+  const parts: Array<{ type: "text"; value: string } | { type: "product"; slug: string }> =
+    [];
+  let lastIndex = 0;
+  const re = new RegExp(PRODUCT_MARKER.source, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(cleaned)) !== null) {
+    if (m.index > lastIndex) {
+      parts.push({ type: "text", value: cleaned.slice(lastIndex, m.index) });
+    }
+    parts.push({ type: "product", slug: m[1].toLowerCase() });
+    lastIndex = m.index + m[0].length;
+  }
+  if (lastIndex < cleaned.length) {
+    parts.push({ type: "text", value: cleaned.slice(lastIndex) });
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {parts.map((part, i) => {
+        if (part.type === "text") {
+          const trimmed = part.value.trim();
+          if (!trimmed) return null;
+          return (
+            <p key={i} className="whitespace-pre-wrap m-0">
+              {trimmed}
+            </p>
+          );
+        }
+        const product = products[part.slug];
+        if (!product) {
+          // Producto aún no cargado — placeholder discreto.
+          return (
+            <div
+              key={i}
+              className="h-16 rounded-xl bg-[var(--color-earth-50)] animate-pulse"
+            />
+          );
+        }
+        return <ProductCard key={i} product={product} />;
+      })}
+    </div>
+  );
+}
+
+function ProductCard({ product }: { product: ProductCardData }) {
+  return (
+    <a
+      href={`/producto/${product.slug}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-3 p-2 rounded-xl border border-[var(--color-earth-100)] bg-white hover:border-[var(--color-leaf-700)]/40 hover:shadow-sm transition-all group"
+    >
+      <div className="w-14 h-14 rounded-lg overflow-hidden bg-[var(--color-earth-50)] flex-shrink-0 relative">
+        {product.image_url ? (
+          <Image
+            src={product.image_url}
+            alt={product.name}
+            fill
+            sizes="56px"
+            className="object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-[var(--color-earth-300)]">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M4 16l4-4 4 4 4-6 4 6M4 6h16v12H4z"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-medium text-[var(--color-leaf-900)] m-0 leading-tight line-clamp-2 group-hover:text-[var(--color-leaf-700)]">
+          {product.name}
+        </p>
+        {product.presentation && (
+          <p className="text-[10px] text-[var(--color-earth-500)] m-0 mt-0.5">
+            {product.presentation}
+          </p>
+        )}
+        <p className="text-[13px] font-semibold text-[var(--color-leaf-700)] m-0 mt-0.5">
+          {formatCop(product.price_cop)}
+        </p>
+      </div>
+      <span className="text-[var(--color-earth-400)] group-hover:text-[var(--color-leaf-700)] flex-shrink-0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M9 6l6 6-6 6"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </span>
+    </a>
   );
 }
