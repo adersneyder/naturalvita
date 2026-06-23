@@ -650,7 +650,10 @@ function ChatWidgetInner() {
                 }
                 rows={1}
                 disabled={sending}
-                className="flex-1 resize-none px-3 py-2 rounded-lg border border-[var(--color-earth-100)] text-sm focus:outline-none focus:border-[var(--color-iris-700)] disabled:opacity-50 max-h-24"
+                // text-base (16px) en móvil evita el zoom automático de iOS
+                // Safari al enfocar el campo; md:text-sm (14px) en escritorio
+                // mantiene la proporción del panel.
+                className="flex-1 resize-none px-3 py-2 rounded-lg border border-[var(--color-earth-100)] text-base md:text-sm focus:outline-none focus:border-[var(--color-iris-700)] disabled:opacity-50 max-h-24"
               />
               <button
                 type="button"
