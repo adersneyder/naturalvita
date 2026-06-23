@@ -1,19 +1,72 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Component,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { usePathname } from "next/navigation";
 import { track } from "@/lib/savia/tracker";
 import type { ProductCardData } from "@/lib/chat/shared-types";
 
+/**
+ * Error boundary local del chat. Si el render de los mensajes lanza una
+ * excepción (diferencias de motor JS entre navegadores, contenido
+ * inesperado), captura el error y muestra un fallback en vez de tumbar
+ * toda la página. Un fallo en el chat NUNCA debe romper el sitio.
+ */
+class ChatErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; fallback: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: unknown) {
+    console.error("[chat] render error capturado por boundary", error);
+    // Reportamos al tracker para poder diagnosticar la causa raíz desde
+    // la BD (útil para errores específicos de navegador que no podemos
+    // reproducir, ej. iOS Safari).
+    try {
+      const message =
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+      track("chat_render_error", {
+        message: message.slice(0, 500),
+        ua: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : "",
+      });
+    } catch {
+      /* nada que hacer */
+    }
+  }
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
 const PRODUCT_MARKER = /\[\[product:([a-z0-9-]+)\]\]/gi;
 
 function formatCop(value: number): string {
-  return new Intl.NumberFormat("es-CO", {
-    style: "currency",
-    currency: "COP",
-    maximumFractionDigits: 0,
-  }).format(value);
+  if (typeof value !== "number" || !Number.isFinite(value)) return "";
+  try {
+    return new Intl.NumberFormat("es-CO", {
+      style: "currency",
+      currency: "COP",
+      maximumFractionDigits: 0,
+    }).format(value);
+  } catch {
+    return `$${Math.round(value).toLocaleString("es-CO")}`;
+  }
 }
 
 /** Extrae todos los slugs [[product:slug]] de un texto. */
@@ -35,36 +88,56 @@ type RichToken =
  *  - URL con protocolo: https://...
  *  - URL sin protocolo de NaturalVita: naturalvita.co/... o www....
  * Quita la puntuación final (.,;:!?) que no es parte de la URL.
+ *
+ * Defensivo: si algo falla en el parseo (diferencias de motor regex
+ * entre navegadores, entradas raras), devuelve el texto como un solo
+ * token plano en vez de lanzar — un fallo aquí NO debe romper el chat.
  */
 function tokenizeRichText(text: string): RichToken[] {
-  const tokens: RichToken[] = [];
-  const re =
-    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]+)|((?:www\.|naturalvita\.co\/)[^\s)]+)/gi;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) {
-      tokens.push({ type: "text", value: text.slice(last, m.index) });
-    }
-    if (m[1] !== undefined && m[2] !== undefined) {
-      // Markdown link
-      tokens.push({ type: "link", href: m[2], label: m[1] });
-    } else {
-      let raw = (m[3] ?? m[4]) as string;
-      let trailing = "";
-      const punct = raw.match(/[.,;:!?]+$/);
-      if (punct) {
-        trailing = punct[0];
-        raw = raw.slice(0, raw.length - trailing.length);
+  try {
+    const tokens: RichToken[] = [];
+    const re =
+      /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]+)|((?:www\.|naturalvita\.co\/)[^\s)]+)/gi;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      // Guard anti-loop: si por algún motivo el match es de longitud 0,
+      // avanzamos manualmente para no colgar el hilo.
+      if (m[0].length === 0) {
+        re.lastIndex++;
+        continue;
       }
-      const href = m[3] ? raw : `https://${raw}`;
-      tokens.push({ type: "link", href, label: raw });
-      if (trailing) tokens.push({ type: "text", value: trailing });
+      if (m.index > last) {
+        tokens.push({ type: "text", value: text.slice(last, m.index) });
+      }
+      if (m[1] != null && m[2] != null) {
+        // Markdown link
+        tokens.push({ type: "link", href: m[2], label: m[1] });
+      } else {
+        const rawMatch = m[3] ?? m[4];
+        if (rawMatch == null) {
+          // Ningún grupo de URL participó — tratamos el match como texto.
+          tokens.push({ type: "text", value: m[0] });
+        } else {
+          let raw = rawMatch;
+          let trailing = "";
+          const punct = raw.match(/[.,;:!?]+$/);
+          if (punct) {
+            trailing = punct[0];
+            raw = raw.slice(0, raw.length - trailing.length);
+          }
+          const href = m[3] != null ? raw : `https://${raw}`;
+          tokens.push({ type: "link", href, label: raw });
+          if (trailing) tokens.push({ type: "text", value: trailing });
+        }
+      }
+      last = m.index + m[0].length;
     }
-    last = m.index + m[0].length;
+    if (last < text.length) tokens.push({ type: "text", value: text.slice(last) });
+    return tokens;
+  } catch {
+    return [{ type: "text", value: text }];
   }
-  if (last < text.length) tokens.push({ type: "text", value: text.slice(last) });
-  return tokens;
 }
 
 /**
@@ -471,44 +544,55 @@ export default function ChatWidget() {
             ref={scrollRef}
             className="flex-1 overflow-y-auto px-4 py-3 space-y-2 bg-[var(--color-earth-50)]/40"
           >
-            {messages.length === 0 && !streamingText && (
-              <div className="text-center py-8">
-                <p className="text-sm text-[var(--color-leaf-900)] font-medium m-0">
-                  Hola 👋 Soy el Asistente NV
-                </p>
-                <p className="text-xs text-[var(--color-earth-700)] mt-1 m-0">
-                  Te ayudo con productos, envíos, pedidos y dudas. Disponible
-                  24/7.
-                </p>
-              </div>
-            )}
-            {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} products={productCache} />
-            ))}
-            {streamingText && (
-              <MessageBubble
-                message={{
-                  id: "streaming",
-                  role: "assistant",
-                  content: streamingText,
-                  created_at: new Date().toISOString(),
-                }}
-                products={productCache}
-              />
-            )}
-            {sending && !streamingText && (
-              <div className="flex items-center gap-1.5 px-3 py-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-earth-500)] animate-bounce" />
-                <span
-                  className="w-1.5 h-1.5 rounded-full bg-[var(--color-earth-500)] animate-bounce"
-                  style={{ animationDelay: "150ms" }}
+            <ChatErrorBoundary
+              fallback={
+                <div className="text-center py-6 px-4">
+                  <p className="text-sm text-[var(--color-earth-700)] m-0">
+                    No pudimos mostrar parte de la conversación. Cierra y vuelve
+                    a abrir el chat, o escríbenos de nuevo.
+                  </p>
+                </div>
+              }
+            >
+              {messages.length === 0 && !streamingText && (
+                <div className="text-center py-8">
+                  <p className="text-sm text-[var(--color-leaf-900)] font-medium m-0">
+                    Hola 👋 Soy el Asistente NV
+                  </p>
+                  <p className="text-xs text-[var(--color-earth-700)] mt-1 m-0">
+                    Te ayudo con productos, envíos, pedidos y dudas. Disponible
+                    24/7.
+                  </p>
+                </div>
+              )}
+              {messages.map((m) => (
+                <MessageBubble key={m.id} message={m} products={productCache} />
+              ))}
+              {streamingText && (
+                <MessageBubble
+                  message={{
+                    id: "streaming",
+                    role: "assistant",
+                    content: streamingText,
+                    created_at: new Date().toISOString(),
+                  }}
+                  products={productCache}
                 />
-                <span
-                  className="w-1.5 h-1.5 rounded-full bg-[var(--color-earth-500)] animate-bounce"
-                  style={{ animationDelay: "300ms" }}
-                />
-              </div>
-            )}
+              )}
+              {sending && !streamingText && (
+                <div className="flex items-center gap-1.5 px-3 py-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-earth-500)] animate-bounce" />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-[var(--color-earth-500)] animate-bounce"
+                    style={{ animationDelay: "150ms" }}
+                  />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-[var(--color-earth-500)] animate-bounce"
+                    style={{ animationDelay: "300ms" }}
+                  />
+                </div>
+              )}
+            </ChatErrorBoundary>
           </div>
 
           <div className="border-t border-[var(--color-earth-100)] p-3 bg-white">
@@ -649,18 +733,27 @@ function AssistantContent({
 
   const parts: Array<{ type: "text"; value: string } | { type: "product"; slug: string }> =
     [];
-  let lastIndex = 0;
-  const re = new RegExp(PRODUCT_MARKER.source, "gi");
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(cleaned)) !== null) {
-    if (m.index > lastIndex) {
-      parts.push({ type: "text", value: cleaned.slice(lastIndex, m.index) });
+  try {
+    let lastIndex = 0;
+    const re = new RegExp(PRODUCT_MARKER.source, "gi");
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(cleaned)) !== null) {
+      if (m[0].length === 0) {
+        re.lastIndex++;
+        continue;
+      }
+      if (m.index > lastIndex) {
+        parts.push({ type: "text", value: cleaned.slice(lastIndex, m.index) });
+      }
+      parts.push({ type: "product", slug: (m[1] ?? "").toLowerCase() });
+      lastIndex = m.index + m[0].length;
     }
-    parts.push({ type: "product", slug: m[1].toLowerCase() });
-    lastIndex = m.index + m[0].length;
-  }
-  if (lastIndex < cleaned.length) {
-    parts.push({ type: "text", value: cleaned.slice(lastIndex) });
+    if (lastIndex < cleaned.length) {
+      parts.push({ type: "text", value: cleaned.slice(lastIndex) });
+    }
+  } catch {
+    // Si el parseo falla, mostramos todo como texto (degradación segura).
+    return <RichText text={cleaned} />;
   }
 
   return (
