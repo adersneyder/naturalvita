@@ -288,67 +288,88 @@ function ChatWidgetInner() {
     if (allSlugs.length > 0) ensureProducts(allSlugs);
   }, [conversationId, ensureProducts]);
 
-  // Suscripción Realtime: nuevos mensajes humanos / del agente.
+  // Suscripción Realtime: nuevos mensajes humanos / cambio de estado.
+  //
+  // ENVUELTO EN TRY/CATCH: en iOS Safari/WebKit, abrir el WebSocket de
+  // Supabase Realtime puede lanzar "WebSocket not available: The operation
+  // is insecure" de forma SÍNCRONA, tumbando el componente. Realtime es
+  // OPCIONAL — solo sirve para recibir respuestas humanas en vivo tras una
+  // escalación. El chat con el agente NO lo necesita. Si falla, seguimos
+  // sin Realtime y el chat funciona igual (el cliente vería las respuestas
+  // humanas al recargar). Nunca debe romper el chat.
   useEffect(() => {
     if (!conversationId) return;
-    if (!supabaseRef.current) {
-      supabaseRef.current = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      );
+    let channel: ReturnType<
+      NonNullable<typeof supabaseRef.current>["channel"]
+    > | null = null;
+    try {
+      if (!supabaseRef.current) {
+        supabaseRef.current = createBrowserClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        );
+      }
+      const sb = supabaseRef.current;
+      channel = sb
+        .channel(`chat:${conversationId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "chat_messages",
+            filter: `conversation_id=eq.${conversationId}`,
+          },
+          (payload) => {
+            const m = payload.new as {
+              id: string;
+              role: string;
+              content: string;
+              created_at: string;
+            };
+            // Solo agregamos los que llegan por humanos — los user/assistant
+            // ya vienen del propio stream y queremos evitar duplicados.
+            if (m.role === "human") {
+              setMessages((prev) => {
+                if (prev.some((x) => x.id === m.id)) return prev;
+                return [
+                  ...prev,
+                  {
+                    id: m.id,
+                    role: "human",
+                    content: m.content,
+                    created_at: m.created_at,
+                  },
+                ];
+              });
+            }
+          },
+        )
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "chat_conversations",
+            filter: `id=eq.${conversationId}`,
+          },
+          (payload) => {
+            const c = payload.new as { status: string };
+            setEscalated(c.status === "escalated" || c.status === "assigned");
+          },
+        )
+        .subscribe();
+    } catch (err) {
+      console.warn("[chat] Realtime no disponible, sigo sin él", err);
     }
-    const sb = supabaseRef.current;
-    const channel = sb
-      .channel(`chat:${conversationId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "chat_messages",
-          filter: `conversation_id=eq.${conversationId}`,
-        },
-        (payload) => {
-          const m = payload.new as {
-            id: string;
-            role: string;
-            content: string;
-            created_at: string;
-          };
-          // Solo agregamos los que llegan por humanos — los user/assistant
-          // ya vienen del propio stream y queremos evitar duplicados.
-          if (m.role === "human") {
-            setMessages((prev) => {
-              if (prev.some((x) => x.id === m.id)) return prev;
-              return [
-                ...prev,
-                {
-                  id: m.id,
-                  role: "human",
-                  content: m.content,
-                  created_at: m.created_at,
-                },
-              ];
-            });
-          }
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "chat_conversations",
-          filter: `id=eq.${conversationId}`,
-        },
-        (payload) => {
-          const c = payload.new as { status: string };
-          setEscalated(c.status === "escalated" || c.status === "assigned");
-        },
-      )
-      .subscribe();
     return () => {
-      sb.removeChannel(channel);
+      try {
+        if (channel && supabaseRef.current) {
+          supabaseRef.current.removeChannel(channel);
+        }
+      } catch {
+        /* nada que hacer */
+      }
     };
   }, [conversationId]);
 
