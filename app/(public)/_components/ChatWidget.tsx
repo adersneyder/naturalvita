@@ -452,8 +452,9 @@ export default function ChatWidget() {
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="md:hidden text-white/80 hover:text-white"
-              aria-label="Cerrar"
+              className="text-white/80 hover:text-white transition-colors -mr-1 p-1"
+              aria-label="Cerrar conversación"
+              title="Cerrar"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <path
