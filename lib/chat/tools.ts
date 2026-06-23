@@ -20,7 +20,7 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "search_products",
     description:
-      "Busca productos del catálogo de NaturalVita. Úsalo cuando el cliente pregunta por categoría, beneficio buscado, ingrediente, o nombre parcial. Devuelve hasta 5 productos con nombre, slug, precio, y descripción corta.",
+      "Busca productos del catálogo de NaturalVita. Úsalo cuando el cliente pregunta por categoría, beneficio buscado, ingrediente, o nombre parcial. Devuelve los 3 productos más relevantes y un indicador has_more si existen más coincidencias.",
     input_schema: {
       type: "object",
       properties: {
@@ -28,12 +28,6 @@ export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
           type: "string",
           description:
             "Texto de búsqueda: nombre, ingrediente, o necesidad (ej. 'colágeno', 'piel grasa', 'vitamina D').",
-        },
-        limit: {
-          type: "integer",
-          description: "Máximo de resultados a devolver. Default 5.",
-          minimum: 1,
-          maximum: 10,
         },
       },
       required: ["query"],
@@ -160,17 +154,17 @@ export async function executeTool(
   }
 }
 
+const SEARCH_MAX_SHOWN = 3;
+
 async function searchProducts(input: Record<string, unknown>): Promise<ToolResult> {
   const query = typeof input.query === "string" ? input.query.trim() : "";
-  const limit = Math.min(
-    10,
-    Math.max(1, typeof input.limit === "number" ? input.limit : 5),
-  );
   if (!query) return JSON.stringify({ error: "query vacío" });
 
   const admin = createAdminClient();
   // Búsqueda ilike sobre nombre y short_description. En el futuro se
   // reemplaza por búsqueda semántica con embeddings.
+  // Pedimos uno extra (SHOWN+1) para detectar si hay más coincidencias
+  // sin un count adicional.
   const { data } = await admin
     .from("products")
     .select(
@@ -180,10 +174,14 @@ async function searchProducts(input: Record<string, unknown>): Promise<ToolResul
     .eq("status", "active")
     .eq("is_active", true)
     .or(`name.ilike.%${query}%,short_description.ilike.%${query}%`)
-    .limit(limit);
+    .limit(SEARCH_MAX_SHOWN + 1);
+
+  const rows = data ?? [];
+  const hasMore = rows.length > SEARCH_MAX_SHOWN;
+  const shown = rows.slice(0, SEARCH_MAX_SHOWN);
 
   return JSON.stringify({
-    results: (data ?? []).map((p) => ({
+    results: shown.map((p) => ({
       slug: p.slug,
       name: p.name,
       presentation: p.presentation,
@@ -193,6 +191,8 @@ async function searchProducts(input: Record<string, unknown>): Promise<ToolResul
         p.images as Array<{ url: string; is_primary: boolean; sort_order: number }>,
       ),
     })),
+    has_more: hasMore,
+    catalog_url: "https://naturalvita.co/tienda",
   });
 }
 

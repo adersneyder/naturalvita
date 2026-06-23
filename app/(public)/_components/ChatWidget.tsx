@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { usePathname } from "next/navigation";
-import Image from "next/image";
 import { track } from "@/lib/savia/tracker";
 import type { ProductCardData } from "@/lib/chat/shared-types";
 
@@ -628,12 +627,16 @@ function ProductCard({ product }: { product: ProductCardData }) {
     >
       <div className="w-14 h-14 rounded-lg overflow-hidden bg-[var(--color-earth-50)] flex-shrink-0 relative">
         {product.image_url ? (
-          <Image
+          // Usamos <img> nativo (no next/image) a propósito: las imágenes
+          // de producto pueden venir de dominios de laboratorios no
+          // listados en next.config remotePatterns. La tarjeta es de 56px,
+          // la optimización de next/image no aporta valor aquí.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
             src={product.image_url}
             alt={product.name}
-            fill
-            sizes="56px"
-            className="object-cover"
+            loading="lazy"
+            className="w-full h-full object-cover"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-[var(--color-earth-300)]">
