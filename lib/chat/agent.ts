@@ -98,20 +98,32 @@ export async function* runAgentTurn(
   const client = createAnthropicClient();
   const admin = createAdminClient();
 
-  // 1. Cargar historial de la conversación (últimos N mensajes).
-  // Excluimos mensajes 'tool' del payload al modelo — esos los maneja
-  // el loop dentro de este turno.
-  const { data: history } = await admin
+  // 1. Cargar los ÚLTIMOS N mensajes de la conversación. order desc +
+  // limit toma los más recientes; luego revertimos a orden cronológico.
+  const { data: historyDesc } = await admin
     .from("chat_messages")
-    .select("role, content, tool_calls, tool_results")
+    .select("role, content, created_at")
     .eq("conversation_id", input.conversationId)
-    .order("created_at", { ascending: true })
-    .limit(40);
+    .order("created_at", { ascending: false })
+    .limit(30);
+  const history = (historyDesc ?? []).slice().reverse();
 
-  // 2. Convertir historial a formato de Anthropic.
-  // Roles válidos para messages: user, assistant (human y system se
-  // representan como user con prefijo, tool va en content blocks).
-  const messages: Array<{
+  // 2. Convertir historial a formato de Anthropic — SOLO TEXTO.
+  //
+  // IMPORTANTE: NO re-enviamos al modelo los tool_use/tool_result de
+  // turnos pasados. La API de Anthropic exige que cada tool_use tenga su
+  // tool_result inmediatamente después; al recargar historial largo es
+  // fácil que ese emparejamiento se rompa (corte de ventana, orden de
+  // timestamps iguales), causando 400 "tool_use without tool_result".
+  // El historial conversacional que el modelo necesita es el intercambio
+  // de TEXTO; los tool calls solo viven dentro del turno actual (loop más
+  // abajo), donde están correctamente emparejados en memoria.
+  //
+  // Además colapsamos mensajes consecutivos del mismo rol (p.ej. dos
+  // 'assistant' seguidos cuando un turno tuvo tool turn + respuesta) y
+  // descartamos mensajes de texto vacío (los assistant que solo eran
+  // tool_use). La API requiere alternancia user/assistant.
+  type AnthropicMessage = {
     role: "user" | "assistant";
     content:
       | string
@@ -125,60 +137,37 @@ export async function* runAgentTurn(
             }
           | { type: "tool_result"; tool_use_id: string; content: string }
         >;
-  }> = [];
+  };
+  const messages: AnthropicMessage[] = [];
 
-  for (const m of history ?? []) {
-    if (m.role === "user") {
-      messages.push({ role: "user", content: m.content });
-    } else if (m.role === "assistant") {
-      // Si tuvo tool_calls, las re-incluimos para que el modelo recuerde
-      // el contexto del tool turn anterior.
-      const calls = m.tool_calls as
-        | Array<{ id: string; name: string; input: Record<string, unknown> }>
-        | null;
-      if (calls && calls.length > 0) {
-        const blocks: Array<
-          | { type: "text"; text: string }
-          | {
-              type: "tool_use";
-              id: string;
-              name: string;
-              input: Record<string, unknown>;
-            }
-        > = [];
-        if (m.content) blocks.push({ type: "text", text: m.content });
-        for (const c of calls) {
-          blocks.push({ type: "tool_use", id: c.id, name: c.name, input: c.input });
-        }
-        messages.push({ role: "assistant", content: blocks });
-      } else {
-        messages.push({ role: "assistant", content: m.content });
-      }
-    } else if (m.role === "tool") {
-      // Resultados de tool — se ponen en el siguiente user message.
-      const results = m.tool_results as
-        | Array<{ tool_use_id: string; content: string }>
-        | null;
-      if (results && results.length > 0) {
-        messages.push({
-          role: "user",
-          content: results.map((r) => ({
-            type: "tool_result" as const,
-            tool_use_id: r.tool_use_id,
-            content: r.content,
-          })),
-        });
-      }
-    } else if (m.role === "human") {
-      // Mensaje del equipo humano: se inyecta como assistant para el
-      // modelo (porque el cliente lo ve como respuesta del lado del
-      // negocio). En el contexto del agente decimos quién es.
-      messages.push({
-        role: "assistant",
-        content: `[Miembro del equipo respondió]: ${m.content}`,
-      });
+  function pushMsg(role: "user" | "assistant", text: string) {
+    const content = text.trim();
+    if (!content) return;
+    const last = messages[messages.length - 1];
+    if (last && last.role === role && typeof last.content === "string") {
+      // Mismo rol consecutivo: concatenamos para mantener alternancia.
+      last.content = `${last.content}\n\n${content}`;
+    } else {
+      messages.push({ role, content });
     }
-    // role 'system' se ignora aquí — el system prompt va aparte.
+  }
+
+  for (const m of history) {
+    if (m.role === "user") {
+      pushMsg("user", m.content);
+    } else if (m.role === "assistant") {
+      pushMsg("assistant", m.content);
+    } else if (m.role === "human") {
+      // Mensaje del equipo humano: para el modelo es "lado del negocio".
+      pushMsg("assistant", `[Miembro del equipo respondió]: ${m.content}`);
+    }
+    // role 'tool' y 'system' se ignoran en el payload al modelo.
+  }
+
+  // La API exige que el primer mensaje sea 'user'. Si el historial empieza
+  // con assistant (raro, por ventana cortada), lo quitamos.
+  while (messages.length > 0 && messages[0].role !== "user") {
+    messages.shift();
   }
 
   // 3. Tool use loop.
