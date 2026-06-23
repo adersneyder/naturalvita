@@ -185,6 +185,18 @@ function getOrCreateVisitorId(): string {
 }
 
 export default function ChatWidget() {
+  // Boundary externo que envuelve TODO el widget. Si algo falla en
+  // los hooks, refs, Realtime, parsers — lo que sea — el chat se
+  // oculta en silencio y el sitio sigue funcionando. El error se
+  // registra vía tracker para diagnóstico posterior.
+  return (
+    <ChatErrorBoundary fallback={null}>
+      <ChatWidgetInner />
+    </ChatErrorBoundary>
+  );
+}
+
+function ChatWidgetInner() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
