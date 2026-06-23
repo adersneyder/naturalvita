@@ -10,7 +10,7 @@ import {
 } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { usePathname } from "next/navigation";
-import { track } from "@/lib/savia/tracker";
+import { flush as flushTracker, track } from "@/lib/savia/tracker";
 import type { ProductCardData } from "@/lib/chat/shared-types";
 
 /**
@@ -44,6 +44,9 @@ class ChatErrorBoundary extends Component<
         message: message.slice(0, 500),
         ua: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 200) : "",
       });
+      // Flush inmediato: el componente se va a desmontar (fallback), así
+      // que forzamos el envío del evento antes de que el buffer se pierda.
+      flushTracker();
     } catch {
       /* nada que hacer */
     }
@@ -434,9 +437,15 @@ function ChatWidgetInner() {
               | { type: "error"; message: string };
 
             if ("type" in evt && evt.type === "products") {
+              // Guard: extraemos items con validación FUERA del setState
+              // updater. Si items no fuera iterable, el for...of dentro del
+              // updater escaparía al boundary (corre en commit de React).
+              const items = Array.isArray(evt.items) ? evt.items : [];
               setProductCache((prev) => {
                 const next = { ...prev };
-                for (const p of evt.items) next[p.slug] = p;
+                for (const p of items) {
+                  if (p && typeof p.slug === "string") next[p.slug] = p;
+                }
                 return next;
               });
               continue;
