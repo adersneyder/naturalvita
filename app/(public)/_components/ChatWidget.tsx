@@ -25,6 +25,48 @@ function extractSlugs(text: string): string[] {
   return out;
 }
 
+type RichToken =
+  | { type: "text"; value: string }
+  | { type: "link"; href: string; label: string };
+
+/**
+ * Tokeniza texto detectando enlaces para hacerlos clickeables:
+ *  - Markdown: [texto](https://url)
+ *  - URL con protocolo: https://...
+ *  - URL sin protocolo de NaturalVita: naturalvita.co/... o www....
+ * Quita la puntuación final (.,;:!?) que no es parte de la URL.
+ */
+function tokenizeRichText(text: string): RichToken[] {
+  const tokens: RichToken[] = [];
+  const re =
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]+)|((?:www\.|naturalvita\.co\/)[^\s)]+)/gi;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) {
+      tokens.push({ type: "text", value: text.slice(last, m.index) });
+    }
+    if (m[1] !== undefined && m[2] !== undefined) {
+      // Markdown link
+      tokens.push({ type: "link", href: m[2], label: m[1] });
+    } else {
+      let raw = (m[3] ?? m[4]) as string;
+      let trailing = "";
+      const punct = raw.match(/[.,;:!?]+$/);
+      if (punct) {
+        trailing = punct[0];
+        raw = raw.slice(0, raw.length - trailing.length);
+      }
+      const href = m[3] ? raw : `https://${raw}`;
+      tokens.push({ type: "link", href, label: raw });
+      if (trailing) tokens.push({ type: "text", value: trailing });
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) tokens.push({ type: "text", value: text.slice(last) });
+  return tokens;
+}
+
 /**
  * Widget del Asistente NV. Burbuja flotante inferior izquierda + panel
  * lateral derecho en desktop / slide-up en móvil.
@@ -547,11 +589,42 @@ function MessageBubble({
         )}
         {hasMarkers ? (
           <AssistantContent content={message.content} products={products} />
-        ) : (
+        ) : isUser ? (
           message.content
+        ) : (
+          // assistant/human sin tarjetas: links clickeables.
+          <RichText text={message.content} />
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Renderiza texto con enlaces clickeables (markdown + URLs sueltas),
+ * preservando saltos de línea. Los enlaces abren en pestaña nueva para
+ * no perder la conversación.
+ */
+function RichText({ text }: { text: string }) {
+  const tokens = tokenizeRichText(text);
+  return (
+    <span className="whitespace-pre-wrap break-words">
+      {tokens.map((t, i) =>
+        t.type === "text" ? (
+          <span key={i}>{t.value}</span>
+        ) : (
+          <a
+            key={i}
+            href={t.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline font-medium text-[var(--color-iris-700)] hover:text-[var(--color-iris-900)]"
+          >
+            {t.label}
+          </a>
+        ),
+      )}
+    </span>
   );
 }
 
@@ -596,8 +669,8 @@ function AssistantContent({
           const trimmed = part.value.trim();
           if (!trimmed) return null;
           return (
-            <p key={i} className="whitespace-pre-wrap m-0">
-              {trimmed}
+            <p key={i} className="m-0">
+              <RichText text={trimmed} />
             </p>
           );
         }
