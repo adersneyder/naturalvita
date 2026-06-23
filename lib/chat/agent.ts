@@ -88,6 +88,78 @@ export type AgentStreamEvent =
   | { type: "done"; tokens_input: number; tokens_output: number; cost_usd: number }
   | { type: "error"; message: string };
 
+type AnthropicChatMessage = {
+  role: "user" | "assistant";
+  content:
+    | string
+    | Array<
+        | { type: "text"; text: string }
+        | {
+            type: "tool_use";
+            id: string;
+            name: string;
+            input: Record<string, unknown>;
+          }
+        | { type: "tool_result"; tool_use_id: string; content: string }
+      >;
+};
+
+/**
+ * Salvaguarda anti-400: la API de Anthropic exige que cada bloque
+ * `tool_use` tenga un `tool_result` con su id en el SIGUIENTE mensaje.
+ * Esta función recorre los mensajes y, si encuentra un `tool_use` cuyo
+ * `tool_result` no aparece inmediatamente después, le quita los bloques
+ * tool_use (deja solo el texto, o descarta el mensaje si queda vacío).
+ *
+ * Con el historial reconstruido como solo-texto esto casi nunca se
+ * dispara, pero es defensa en profundidad: garantiza que NUNCA enviemos
+ * mensajes mal formados, sin importar bugs futuros en el armado del array.
+ */
+function sanitizeMessages(
+  msgs: AnthropicChatMessage[],
+): AnthropicChatMessage[] {
+  const out: AnthropicChatMessage[] = [];
+  for (let i = 0; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (!Array.isArray(m.content)) {
+      out.push(m);
+      continue;
+    }
+    const toolUseIds = m.content
+      .filter((b): b is Extract<typeof b, { type: "tool_use" }> => b.type === "tool_use")
+      .map((b) => b.id);
+
+    if (toolUseIds.length === 0) {
+      out.push(m);
+      continue;
+    }
+
+    const next = msgs[i + 1];
+    const nextResultIds =
+      next && Array.isArray(next.content)
+        ? next.content
+            .filter(
+              (b): b is Extract<typeof b, { type: "tool_result" }> =>
+                b.type === "tool_result",
+            )
+            .map((b) => b.tool_use_id)
+        : [];
+
+    const allMatched = toolUseIds.every((id) => nextResultIds.includes(id));
+    if (allMatched) {
+      out.push(m);
+    } else {
+      // tool_use huérfano: conservamos solo el texto del mensaje.
+      const textBlocks = m.content.filter(
+        (b): b is Extract<typeof b, { type: "text" }> => b.type === "text",
+      );
+      const joined = textBlocks.map((b) => b.text).join("").trim();
+      if (joined) out.push({ role: m.role, content: joined });
+    }
+  }
+  return out;
+}
+
 /**
  * Ejecuta un turno del agente. Devuelve un async iterator de eventos.
  * El consumidor (route SSE) los serializa como `data: <json>\n\n`.
@@ -194,7 +266,11 @@ export async function* runAgentTurn(
         max_tokens: MAX_TOKENS_OUTPUT,
         system: SYSTEM_PROMPT,
         tools: TOOL_DEFINITIONS,
-        messages,
+        // Salvaguarda: limpiamos cualquier tool_use sin su tool_result
+        // emparejado justo antes de enviar. Garantiza que nunca mandemos
+        // mensajes mal formados a la API (causa del 400 "tool_use without
+        // tool_result"), sin importar cómo se construyó el array.
+        messages: sanitizeMessages(messages),
       });
 
       for await (const event of stream) {
